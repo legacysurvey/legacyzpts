@@ -25,6 +25,10 @@ from astrometry.libkd.spherematch import match_radec
 from tractor.sfd import SFDMap
 from tractor.brightness import NanoMaggies
 
+from legacyzpts.qa.paper_plots import Depth
+from legacyzpts.qa.paper_plots import myscatter
+from legacyzpts.qa.params import band2color,col2plotname,getrms
+
 mygray='0.6'
 
 #######

@@ -1,8 +1,36 @@
 import numpy as np
 from collections import defaultdict
 
+
 class EmptyClass(object): 
     pass
+
+
+def getrms(x):
+    return np.sqrt( np.mean( np.power(x,2) ) ) 
+
+def band2color(band):
+    d=dict(g='g',r='r',z='m')
+    return d[band]
+
+def col2plotname(key):
+    d= dict(airmass= 'Airmass',
+            fwhm= 'FWHM (pixels)',
+            seeing= 'FWHM (arcsec)',
+            gain= 'Gain (e/ADU)',
+            skymag= 'Sky Brightness (AB mag/arcsec^2)',
+            skyrms= 'Sky RMS (e/sec/pixel)',
+            transp= 'Atmospheric Transparency',
+            zpt= 'Zeropoint (e/s)',
+            err_on_radecoff= 'Astrometric Offset Error (Std Err of Median, arcsec)',
+            err_on_phoff= r'Zeropoint Error (Std Err of Median), mag)',
+            psfdepth= r'Point-source Single Pass Depth (5$\sigma$)',
+            galdepth= r'Galaxy Single Pass Depth (5$\sigma$)')
+    d['psfdepth_extcorr']= r'Point-source Depth (5$\sigma$, ext. corrected)'
+    d['galdepth_extcorr']= r'Galaxy Depth (5$\sigma$, ext. corrected)'
+    return d.get(key,key)
+
+
 
 def get_fiducial(camera=None):
     assert(camera in ['decam','mosaic'])

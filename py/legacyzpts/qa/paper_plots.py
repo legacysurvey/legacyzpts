@@ -26,6 +26,7 @@ from tractor.sfd import SFDMap
 from tractor.brightness import NanoMaggies
 
 from legacyzpts.qa import params 
+from legacyzpts.qa.params import band2color,col2plotname
 
 mygray='0.6'
 
@@ -81,10 +82,6 @@ def myerrorbar(ax,x,y, yerr=None,xerr=None,color='b',ls='none',m='o',s=10.,mew=1
         ax.errorbar(x,y, xerr=xerr,yerr=yerr,ls=ls,alpha=alpha,label=label,
                     marker=m,ms=s,mfc=color,mec=color,ecolor=color,mew=mew)
         #ax.errorbar(x,y, xerr=xerr,yerr=yerr, c=color,ecolor=color,marker=m,s=s,rasterized=True,alpha=alpha,label=label)
-
-def getrms(x):
-    return np.sqrt( np.mean( np.power(x,2) ) ) 
-
 
 class LegacyZpts(object):
     '''
@@ -350,28 +347,6 @@ class DepthRequirements(object):
         mags['psf']['r']= 23.9
         mags['psf']['z']= 23.0
         return mags
-
-def band2color(band):
-    d=dict(g='g',r='r',z='m')
-    return d[band]
-
-def col2plotname(key):
-    d= dict(airmass= 'Airmass',
-            fwhm= 'FWHM (pixels)',
-            seeing= 'FWHM (arcsec)',
-            gain= 'Gain (e/ADU)',
-            skymag= 'Sky Brightness (AB mag/arcsec^2)',
-            skyrms= 'Sky RMS (e/sec/pixel)',
-            transp= 'Atmospheric Transparency',
-            zpt= 'Zeropoint (e/s)',
-            err_on_radecoff= 'Astrometric Offset Error (Std Err of Median, arcsec)',
-            err_on_phoff= r'Zeropoint Error (Std Err of Median), mag)',
-            psfdepth= r'Point-source Single Pass Depth (5$\sigma$)',
-            galdepth= r'Galaxy Single Pass Depth (5$\sigma$)')
-    d['psfdepth_extcorr']= r'Point-source Depth (5$\sigma$, ext. corrected)'
-    d['galdepth_extcorr']= r'Galaxy Depth (5$\sigma$, ext. corrected)'
-    return d.get(key,key)
-
 
 
 #######
