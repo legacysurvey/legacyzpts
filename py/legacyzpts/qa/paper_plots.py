@@ -264,6 +264,92 @@ class DepthRequirements(object):
         return mags
 
 
+#######
+# Master depth calculator, uses non galdepth columns to get exactly galdepth in annotated-ccds
+#######
+
+class Depth(object):
+    def __init__(self,camera,skyrms,gain,fwhm,zpt):
+        '''
+        See: observing_paper/depth.py
+        Return depth that agrees with galdepth doing equiv with annotated ccd cols
+        skyrms -- e/s
+        gain -- e/ADU
+        fwhm -- pixels so that gaussian std in pixels = fwhm/2.35
+        zpt -- e/s
+        '''
+        assert(camera in ['decam','mosaic'])
+        self.camera = camera
+        self.skyrms= skyrms.copy() #Will modify to get in right units
+        self.gain= gain.copy()
+        self.fwhm= fwhm.copy()
+        self.zpt= zpt.copy()
+        if self.camera == 'decam':
+            # natural camera units ADU/sec
+            self.skyrms /= self.gain # e/sec --> ADU/sec
+            self.zpt -= 2.5*np.log10(self.gain) # e/sec --> ADU/sec
+        elif self.camera == 'mosaic':
+            # e/sec are the natual camera units
+            pass
+        # self.get_depth_legacy_zpts(which='gal')
+
+    def get_depth_legacy_zpts(self,which=None):
+        assert(which in ['gal','psf'])
+        self.which= which
+        sigma= self.sigma_legacy_zpts() 
+        return -2.5*np.log10(5 * sigma) + self.zpt #natural camera units
+
+    def sigma_legacy_zpts(self):
+        return self.skyrms *np.sqrt(self.neff_empirical())
+
+    def neff_empirical(self):
+        #see observing_paper/depth.py plots
+        if self.which == 'psf':
+            rhalf=0
+            if self.camera == 'decam':
+                slope= 1.23 
+                yint= 9.43
+            elif self.camera == 'mosaic':
+                slope= 1.41 
+                yint= 1.58
+        elif self.which == 'gal':
+            rhalf=0.45
+            if self.camera == 'decam':
+                slope= 1.24 
+                yint= 45.86
+            elif self.camera == 'mosaic':
+                slope= 1.48 
+                yint= 35.78
+        return slope * self.neff_15(rhalf=rhalf) + yint
+
+    def neff_15(self,rhalf=0.45,pix=0.262):
+        '''seeing = FWHM/2.35 where FWHM is in units of Pixels'''
+        seeing= self.fwhm / 2.35
+        return 4*np.pi*seeing**2 + 8.91*rhalf**2 + pix**2/12  
+
+class DepthRequirements(object):
+    def __init__(self):
+        self.desi= self.depth_requirement_dict()
+    
+    def get_single_pass_depth(self,band,which,camera):
+        assert(which in ['gal','psf'])
+        assert(camera in ['decam','mosaic'])
+        # After 1 pass
+        if camera == 'decam':
+            return self.desi[which][band] - 2.5*np.log10(2)
+        elif camera == 'mosaic':
+            return self.desi[which][band] - 2.5*np.log10(3)
+
+    def depth_requirement_dict(self):
+        mags= defaultdict(lambda: defaultdict(dict))
+        mags['gal']['g']= 24.0
+        mags['gal']['r']= 23.4
+        mags['gal']['z']= 22.5
+        mags['psf']['g']= 24.7
+        mags['psf']['r']= 23.9
+        mags['psf']['z']= 23.0
+        return mags
+
 def band2color(band):
     d=dict(g='g',r='r',z='m')
     return d[band]
@@ -285,7 +371,8 @@ def col2plotname(key):
     d['galdepth_extcorr']= r'Galaxy Depth (5$\sigma$, ext. corrected)'
     return d.get(key,key)
 
- 
+
+
 #######
 # Histograms of CCD statistics from legacy zeropoints
 # for paper
@@ -922,7 +1009,6 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter,\
                             description='Generate a legacypipe-compatible CCDs file \
                                         from a set of reduced imaging.')
-    parser.add_argument('--camera',choices=['decam','mosaic','90prime'],action='store',required=True)
     parser.add_argument('--leg_dir',action='store',default='/global/cscratch1/sd/kaylanb/kaylan_Test',required=False)
     args = parser.parse_args()
 
