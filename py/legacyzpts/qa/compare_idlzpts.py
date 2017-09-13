@@ -25,6 +25,9 @@ from astrometry.libkd.spherematch import match_radec
 from tractor.sfd import SFDMap
 from tractor.brightness import NanoMaggies
 
+from legacyzpts.qa import params
+from legacyzpts.qa.paper_plots import LegacyZpts
+
 mygray='0.6'
 
 def sn_not_matched_by_arjun(extra_search,arjun_fn):
@@ -186,7 +189,7 @@ class Legacy_vs_IDL(object):
         self.camera= camera
         self.leg_dir= leg_dir
         self.idl_dir= idl_dir
-        self.fid= get_fiducial(camera=self.camera)
+        self.fid= params.get_fiducial(camera=self.camera)
         # Zeropoints
         self.idl= LegacyZpts(camera='decam',outdir=self.idl_dir)
         #outdir='/global/cscratch1/sd/kaylanb/zpts_compare_arjun_full60'
