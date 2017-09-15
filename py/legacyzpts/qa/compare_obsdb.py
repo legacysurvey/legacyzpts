@@ -293,12 +293,12 @@ class LoadDB(object):
     def scatter_plots(self,data,camera='decam'):
         """data is fits_table of legacy obsdb matched values"""
         from obiwan.common import fits2pandas,save_png
-        dat= fits2pandas(dat)
+        dat= fits2pandas(data)
         val_cnts= dat['db_band'].value_counts().to_frame()
         val_cnts.plot.bar()
-        save_png('./','hist_bands_%s' % camera)
+        save_png('./','hist_bands_%s' % camera,tight=False)
 
-        xlims=defaultdict(None)
+        xlims=defaultdict(lambda: None)
         xlims['db_tneed']= (0,300)
         px_scale= 0.262
         dat['zp_seeing']= dat.loc[:,'zp_fwhm'] * px_scale
@@ -319,7 +319,7 @@ class LoadDB(object):
                                      ylim=xlims[xname])
                     if xlims[xname]:
                       ax[cnt].plot(xlims[xname],xlims[xname],'k--')
-                    save_png('./','scatter_%s_%s' % (xname,camera))
+                    save_png('./','scatter_%s_%s' % (xname,camera),tight=False)
 
 
 
