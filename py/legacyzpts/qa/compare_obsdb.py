@@ -3408,6 +3408,34 @@ class LoadDB(object):
         plt.close() 
         print "wrote %s" % savefn 
 
+    def scatter_plots(self,data):
+        """data is fits_table of legacy obsdb matched values"""
+        from obiwan.common import fits2pandas,save_png
+        dat= fits2pandas(dat)
+        val_cnts= dat['db_band'].value_counts().to_frame()
+        val_cnts.plot.bar()
+        save_png('./','band_hist')
+
+        xlims=defaultdict(None)
+        xlims['db_tneed']= (0,300)
+        px_scale= 0.262
+        dat['zp_seeing']= dat.loc[:,'zp_fwhm'] * px_scale
+        xnames= ['db_tneed','db_zeropoint','db_sky',
+                 'db_seeing','db_transparency']
+        ynames= ['zp_tneed_med','zp_zpt','zp_skymag',
+                 'zp_seeing','zp_transp']
+        for xname,yname in zip(xnames,ynames):
+            fig,ax= plt.subplots(3,1,figsize=(5,10))
+            plt.subplots_adjust(hspace=0.2)
+            for cnt,band in enumerate(['g','r','z']):
+                isBand= dat['db_band'] == band
+                if np.any(isBand):
+                    dat[isBand].plot(ax=ax[cnt], kind='scatter', 
+                                     x=xname,y=yname,
+                                     label=band,
+                                     xlim=xlims[xname],
+                                     ylim=xlims[xname])
+                    ax[cnt].plot([0,300],[0,300],'k--')
 
 
 
