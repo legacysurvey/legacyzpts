@@ -290,13 +290,13 @@ class LoadDB(object):
         plt.close() 
         print "wrote %s" % savefn 
 
-    def scatter_plots(self,data):
+    def scatter_plots(self,data,camera='decam'):
         """data is fits_table of legacy obsdb matched values"""
         from obiwan.common import fits2pandas,save_png
         dat= fits2pandas(dat)
         val_cnts= dat['db_band'].value_counts().to_frame()
         val_cnts.plot.bar()
-        save_png('./','band_hist')
+        save_png('./','hist_bands_%s' % camera)
 
         xlims=defaultdict(None)
         xlims['db_tneed']= (0,300)
@@ -317,7 +317,9 @@ class LoadDB(object):
                                      label=band,
                                      xlim=xlims[xname],
                                      ylim=xlims[xname])
-                    ax[cnt].plot([0,300],[0,300],'k--')
+                    if xlims[xname]:
+                      ax[cnt].plot(xlims[xname],xlims[xname],'k--')
+                    save_png('./','scatter_%s_%s' % (xname,camera))
 
 
 
@@ -347,5 +349,7 @@ if __name__ == '__main__':
         m[camera]= db.match_to_zeropoints(tab=zp.data)
     #db.make_tneed_plot(decam=m['decam'])
     db.make_tneed_plot(decam=m['decam'],mosaic=m['mosaic'])
+    db.scatter_plots(m['decam'],camera='decam')
+    db.scatter_plots(m['mosaic'],camera='mosaic')
 
 
