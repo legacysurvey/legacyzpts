@@ -183,17 +183,26 @@ def stellarlocus(x,a,b,c,d,e):
     return a + b*x + c*x**2 - d/(1. + np.exp(-d*(x-e)))
 
 class Legacy_vs_IDL(object):
-    def __init__(self,camera='decam',
-                 leg_dir='/global/cscratch1/sd/kaylanb/kaylan',
-                 idl_dir='/global/cscratch1/sd/kaylanb/arjundey_Test'):
+    def __init__(self,camera='decam',savedir='./',
+                 zpts_or_stars='zpts',
+                 leg_list=[],
+                 idl_list=[])
+        assert(zpts_or_stars in ['zpts','stars'])
         self.camera= camera
-        self.leg_dir= leg_dir
-        self.idl_dir= idl_dir
-        self.fid= params.get_fiducial(camera=self.camera)
-        # Zeropoints
-        self.idl= LegacyZpts(camera='decam',outdir=self.idl_dir)
-        #outdir='/global/cscratch1/sd/kaylanb/zpts_compare_arjun_full60'
-        self.legacy= LegacyZpts(camera='decam',outdir=self.leg_dir)
+        self.zpts_or_stars= zpts_or_stars
+        self.savedir= savedir
+        self.idl= LegacyZpts(zpt_list=idl_list, camera=camera, savedir=savedir)
+        self.legacy= LegacyZpts(zpt_list=leg_list, camera=camera,savedir=savedir)
+
+    def run(self):
+        self.idl.load()
+        self.legacy.load()
+        # Convert legacy names/units to idl
+        if False:
+            from legacyzpts.legacy_zeropoints import legacy2idl_zpts
+            self.legacy.data= legacy2idl_zpts(self.legacy.data)
+            #ZeropointResiduals(object)
+            #MatchesResiduals(object):
         self.match_zpts()
         self.data_to_idl_units()
         #self.plots()
@@ -1976,6 +1985,7 @@ class ZeropointResiduals(object):
             plt.close() 
             print "wrote %s" % savefn 
 
+
 class MatchesResiduals(object):
     '''
     use create_matches_table() to convert my -star.fits table into 
@@ -2112,10 +2122,19 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter,\
                             description='Generate a legacypipe-compatible CCDs file \
                                         from a set of reduced imaging.')
-    parser.add_argument('--camera',choices=['decam','mosaic','90prime'],action='store',required=True)
-    parser.add_argument('--leg_dir',action='store',default='/global/cscratch1/sd/kaylanb/kaylan_Test',required=False)
-    parser.add_argument('--idl_dir',action='store',default='/global/cscratch1/sd/kaylanb/arjundey_Test/AD_exact_skymed',required=False)
+    parser.add_argument('--camera',choices=['decam','mosaic','90prime'],
+                        action='store',required=True)
+    parser.add_argument('--data_dir',action='store',
+                        default='/home/kaylan/mydata/',required=False)
+    parser.add_argument('--idl_dir',action='store',
+                        default='/global/cscratch1/sd/kaylanb/arjundey_Test/AD_exact_skymed',
+                        required=False)
     args = parser.parse_args()
+
+    from legacyzpts.fetch import fetch_targz
+    url_dir= 'http://portal.nersc.gov/project/desi/users/kburleigh/legacyzpts'
+    targz_url= os.path.join(url_dir,'idl_legacy_data.tar.gz')
+    fetch_targz(targz_url, args.data_dir)
 
     # default plots
     a=Legacy_vs_IDL(camera=args.camera,

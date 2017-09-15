@@ -540,6 +540,15 @@ def create_matches_table(stars_fn, zpt_fn):
     print('Wrote %s' % outfn)
 
 def create_zeropoints_table(zpt_fn):
+    assert('-zpt.fits' in zpt_fn)
+    T = fits_table(zpt_fn)
+    T= legacy2idl_zpts(T)
+    # Write
+    outfn=zpt_fn.replace('-zpt.fits','-zeropoint.fits')
+    T.writeto(outfn) #, columns=cols, header=hdr, primheader=primhdr, units=units)
+    print('Wrote %s' % outfn)
+
+def legacy2idl_zpts(T):
     '''Arjun's "zeropoint-*.fits" zpts table
     input _ccds_table fn
     output same thing but with Arjun's column names and units'''
@@ -556,10 +565,6 @@ def create_zeropoints_table(zpt_fn):
     ignoring_these= \
         ['arawgain','ccdhdunum','ccdzpta', 'ccdzptb','ccdnstarfind', 'ccdnstar',
          'ccdnmatcha', 'ccdnmatchb', 'ccdmdncol','temp']
-    # Load full zpt table
-    assert('-zpt.fits' in zpt_fn)
-    # HACK: need magoff
-    T = fits_table(zpt_fn)
     # Change units
     pix= 0.262
     T.set('fwhm',T.fwhm * pix)
@@ -592,10 +597,7 @@ def create_zeropoints_table(zpt_fn):
     del_keys= list( set(T.get_columns()).difference(needed) )
     for key in del_keys:
         T.delete_column(key)
-    # Write
-    outfn=zpt_fn.replace('-zpt.fits','-zeropoint.fits')
-    T.writeto(outfn) #, columns=cols, header=hdr, primheader=primhdr, units=units)
-    print('Wrote %s' % outfn)
+    return T
 
 
 

@@ -25,6 +25,8 @@ from astrometry.libkd.spherematch import match_radec
 from tractor.sfd import SFDMap
 from tractor.brightness import NanoMaggies
 
+from obiwan.theValidator.catalogues import CatalogueFuncs             
+
 from legacyzpts.qa import params 
 from legacyzpts.qa.params import band2color,col2plotname
 
@@ -84,91 +86,54 @@ def myerrorbar(ax,x,y, yerr=None,xerr=None,color='b',ls='none',m='o',s=10.,mew=1
         #ax.errorbar(x,y, xerr=xerr,yerr=yerr, c=color,ecolor=color,marker=m,s=s,rasterized=True,alpha=alpha,label=label)
 
 class LegacyZpts(object):
-    '''
-    Gets all the data we need: legacy-zeropoints for DECam, additional data like exp needed
-    Applies appropriate cuts etc
+    """Takes a list of zpt files, combines them, saves for easy reload
+    
+    Has additional info get fiducial values
 
-    USE:
-    ----------
-    L= LegacyZpts(zpt_list='/global/cscratch1/sd/kaylanb/cosmo/staging/decam//DECam_CP/allzpts_list_2017-01-11.txt')
-    if os.path.exists(L.pkl_fn):
-        with open(L.pkl_fn,'r') as foo:
-            L,= pickle.load(foo)
-    else:
-        L.get_data() 
-    -----------
+    Attributes:
+        zpt_list: list of -zpt or -star.fits file
+        camera: decam,mosaic,90prime
+        fid: get_fiducial dict
+        data: merged fits table of zpt_list 
 
-    self.data -- data
-    self.obs_method -- observing method, dict of "dynamic,fixed"
-    '''
-    def __init__(self,camera=None,outdir=None,what='zpt_data'):
+    Example: 
+        fns= glob(os.path.join(os.getenv['CSCRATCH'],
+                              'dr5_zpts/decam',
+                              'c4d*-zpt.fits')
+        Z= LegacyZpts(zpt_list=fns, camera='decam')
+        Z.load_data() 
+    """
+
+    def __init__(self,zpt_list=None,camera=None,savedir='./'):
         '''
         '''
-        # Outdir
-        if outdir:
-            self.outdir= outdir
-        else:
-            self.outdir='/global/cscratch1/sd/kaylanb/observing_paper_zptfixes'
-        #self.outdir='/global/cscratch1/sd/kaylanb/observing_paper'
-        assert(camera in ['decam','mosaic'])
+        self.zpt_list= zpt_list
         self.camera= camera
+        if savedir:
+            self.savedir= savedir
+        else:
+            self.savedir= './'
+            #self.outdir='/global/cscratch1/sd/kaylanb/observing_paper_zptfixes'
+        assert(camera in ['decam','mosaic'])
         self.fid= params.get_fiducial(camera=self.camera)
-        self.zpt_list= self.get_zptlist(what)
-        # Fits table having all zpts
-        self.merged_zpts= self.zpt_list.replace('.txt','_merged.fits')
-        self.final_zpts= self.zpt_list.replace('.txt','_final.fits')
-        # Get data
-        self.get_raw_zpts()
 
-    def get_zptlist(self,what='zpt_data'):
-        if what == 'zpt_data':
-            return os.path.join(self.outdir,'%s_list_zpts.txt' % self.camera)
-        elif what == 'star_data':
-            return os.path.join(self.outdir,'%s_list_stars.txt' % self.camera)
-        else: raise ValueError('%s not supported' % what)
+    def get_merge_fn(self):
+        return os.path.join(self.savedir,'merged_tables.fits')
 
-
-    def get_raw_zpts(self):
-        '''Read in merged_zpts, apply all cuts, any fixes, and add tneed,depth quantities 
+    def load_data(self):
+        '''merge the fits_tables in zpt_list 
         '''
-        if os.path.exists( self.merged_zpts ):
+        if os.path.exists( self.get_merge_fn() ):
             # Read merged fits
-            self.load('merged')
+            self.data= fits_table( self.get_merge_fn() )
         else: 
-            # Merge 
-            data=[]
-            data_fns= np.loadtxt(self.zpt_list,dtype=str) 
-            if data_fns.size == 1:
-                data_fns= [data_fns.tostring()]
-            for cnt,fn in enumerate(data_fns):
-                print('%d/%d: ' % (cnt+1,len(data_fns)))
-                try:
-                    tb= fits_table(fn) 
-                    # If here, was able to read all 4 tables, store in Big Table
-                    data.append( tb ) 
-                except IOError:
-                    print('WARNING: cannot read: %s' % fn)
-            self.data= merge_tables(data, columns='fillzero')
-            self.save('merged')
+            self.data= CatalogueFuncs().stack(self.zpt_list,textfile=False)
+            self.save_data()
         print('Merged zpt data: zpts=%d' % self.num_zpts())
 
-    def load(self,name):
-        assert(name in ['merged','final'])
-        if name == 'merged':
-            fn= self.merged_zpts
-        elif name == 'final':
-            fn= self.final_zpts
-        self.data= fits_table(fn)
-        print('Loaded %s' % fn)
-
-    def save(self,name):
-        assert(name in ['merged','final'])
-        if name == 'merged':
-            fn= self.merged_zpts
-        elif name == 'final':
-            fn= self.final_zpts
-        self.data.writeto(fn)
-        print('Wrote %s' % fn)
+    def save_data(self):
+        self.data.writeto( self.get_merge_fn() )
+        print('Wrote %s' % self.get_merge_fn() )
  
     def num_zpts(self):
         return len(self.data)
