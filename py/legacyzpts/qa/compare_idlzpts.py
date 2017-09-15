@@ -2118,12 +2118,14 @@ if __name__ == '__main__':
     args = parser.parse_args()
 
     # default plots
-    a=Legacy_vs_IDL(camera=args.camera,leg_dir=args.leg_dir,idl_dir=args.idl_dir)
+    a=Legacy_vs_IDL(camera=args.camera,
+                    leg_dir=args.leg_dir,
+                    idl_dir=args.idl_dir)
     # oplot stars on ccd
-    #run_imshow_stars(os.path.join(args.leg_dir,
-    #                             'decam/DECam_CP/CP20170326/c4d_170326_233934_oki_z_v1-35-extra.pkl'),
-    #                 arjun_fn=os.path.join(args.idl_dir,
-    #                                       'matches-c4d_170326_233934_oki_z_v1.fits'))
+    run_imshow_stars(os.path.join(args.leg_dir,
+                                 'decam/DECam_CP/CP20170326/c4d_170326_233934_oki_z_v1-35-extra.pkl'),
+                     arjun_fn=os.path.join(args.idl_dir,
+                                           'matches-c4d_170326_233934_oki_z_v1.fits'))
     
     # OLDER:
     # SN
