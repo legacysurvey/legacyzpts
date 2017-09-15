@@ -27,6 +27,7 @@ from tractor.brightness import NanoMaggies
 
 from legacyzpts.qa import params
 from legacyzpts.qa.paper_plots import LegacyZpts
+from legacyzpts.legacy_zeropoints import legacy2idl_zpts
 
 mygray='0.6'
 
@@ -204,162 +205,6 @@ class Legacy_vs_IDL(object):
             #ZeropointResiduals(object)
             #MatchesResiduals(object):
         self.match_zpts()
-        self.data_to_idl_units()
-        #self.plots()
-        #self.plot_nstar()
-        # later: 'skymag','skycounts','skyrms','fwhm'
-        ms=50
-#        for leg_key,idl_key,ylim_arr in zip(['zpt','phrms','rarms','decrms','skymag','skyrms','fwhm'],
-#                                            ['ccdzpt','ccdphrms','ccdrarms','ccddecrms','ccdskymag','ccdskyrms','fwhm'],
-#                                           [[None],[None],[None],[None],[None],[None]]):
-#        for leg_key,idl_key,ylim_arr in zip(['skycounts','skyrms'],
-#                                            ['ccdskycounts','ccdskyrms'],
-#                                           [[None],[None]]):
-#            for cnt,ylim in enumerate(ylim_arr):
-#                self.plots_ratios(leg_key=leg_key,idl_key=idl_key,ylim=ylim,prefix='zoom%d' % (cnt+1,),ms=ms)
-#
-        #for leg_key,idl_key,ylim_arr in zip(['zpt','skymag'],
-        #                                    ['ccdzpt','ccdskymag'],
-        #                                   [[None],[None]]):
-        #    for cnt,ylim in enumerate(ylim_arr):
-        #        self.plots_deltas(leg_key=leg_key,idl_key=idl_key,ylim=ylim,prefix='zoom%d' % (cnt+1,),ms=ms)
-        ##self.plots_crosshairs(leg_keys=('zpt','phrms'),idl_keys=('ccdzpt','ccdphrms'),ylim=None,prefix='zoom1',ms=ms)
-        ##self.plots_crosshairs(leg_keys=('rarms','decrms'),idl_keys=('ccdrarms','ccddecrms'),ylim=None,prefix='zoom1',ms=ms)
-        # Stars
-        obj= LegacyZpts(camera='decam',outdir=self.idl_dir,what='star_data')
-        self.idl.stars= obj.data.copy()
-        del obj
-        obj= LegacyZpts(camera='decam',outdir=self.leg_dir,what='star_data')
-        self.legacy.stars= obj.data.copy()
-        del obj
-        # Match stars
-        self.matched_unmatched_stars()
-        # add exptimes,gain,... to star data
-        self.add_zpt_data_to_stars()
-        # idl ccd_mag -> total electrons in aperature, ccd_sky --> e- in ap from sky
-        self.idl.stars.set('obj_Ne_per_sec', self.ccd_mag_to_Ne_per_sec())
-        self.idl.stars.set('sky_Ne_per_sec_per_pix', self.ccd_sky_to_Ne_per_sec_per_pix())
-        # Same for Legacy
-        self.legacy.stars.set('obj_Ne_per_sec', self.legacy.stars.apflux / self.legacy.stars.exptime)
-        self.legacy.stars.set('sky_Ne_per_sec_per_pix', self.legacy.stars.apskyflux_perpix / self.legacy.stars.exptime)
-        # Sky per sec also useful
-        num_pix_in_ap= np.pi * 3.5**2 / self.fid.pixscale**2 #560.639094553 for DECam
-        self.legacy.stars.set('sky_Ne_per_sec', num_pix_in_ap * self.legacy.stars.sky_Ne_per_sec_per_pix)
-        self.idl.stars.set('sky_Ne_per_sec', num_pix_in_ap * self.idl.stars.sky_Ne_per_sec_per_pix)
-        # leg ccd_mag col
-        self.legacy.stars.set('ccd_mag', self.apflux_to_idlmag())
-        self.legacy.stars.set('ccd_sky', self.apskyflux_to_idlmag())
-        # Sky mag in aperture that can compare idl to legacy
-        self.skymag_for_idl_legacy()
-        # Arjun's measured seeing ('') to fwhm (pixels)
-        self.idl.data.set('fwhm_measured',self.idl.data.seeing / self.fid.pixscale)
-        print('plotting')
-        self.plots_like_arjuns()
-        use_keys= ['zpt'] 
-        use_keys=None
-        self.plot_everything_vs_everything_data(doplot='diff',use_keys=use_keys)
-        #self.plot_everything_vs_everything_data(doplot='div',use_keys=use_keys)
-        #use_keys= ['ra','dec','obj_Ne_per_sec'] 
-        use_keys=None
-        #self.plot_everything_vs_everything_stars(doplot='delta_mag',x_eq_ccdmag=True,use_keys=use_keys) 
-        #self.plot_everything_vs_everything_stars(doplot='div',x_eq_ccdmag=True,use_keys=use_keys) 
-        #self.plot_everything_vs_everything_stars(doplot='div',use_keys=use_keys) 
-        self.plot_everything_vs_everything_stars(doplot='diff',use_keys=use_keys) #,ylim=(-1e-8,1e-8))
-        raise ValueError
-        #self.plot_everything_vs_everything_stars(doplot='div')
-        #self.plot_everything_vs_everything_stars(doplot='diff',x_eq_ccdmag=True)
-        #self.plot_everything_vs_everything(data_or_stars='data', doplot='diff')
-        #self.plot_everything_vs_everything(data_or_stars='data', doplot='div')
-        #self.plot_everything_vs_everything(data_or_stars='stars', doplot='diff')
-        #self.plot_everything_vs_everything(data_or_stars='stars', doplot='div')
-        #self.plot_everything_vs_everything(data_or_stars='stars', doplot='diff',x_eq_mags=True)
-        #self.plot_everything_vs_everything(data_or_stars='stars', doplot='div',x_eq_mags=True)
-        raise ValueError
-        # legacy to idl units
-        self.plot_stars_obj_sky_apers_ratios(prefix='',ms=ms)
-        self.plot_stars_obj_sky_apers_ratios(prefix='',ms=ms,mags=True)
-        self.plot_stars_obj_sky_apflux(prefix='',ms=ms)
-        self.plot_stars_obj_sky_apflux(errbars=False,prefix='',ms=ms)
-        raise ValueError
-        self.plot_stars_obj_sky_chi2(prefix='')
-        self.plot_stars_obj_sky_chi2(xlims=1,prefix='xlims')
-        #self.plot_stars_obj_sky_apflux(prefix='',ms=ms,sky_per_pix=False)
-        self.plot_stars_obj_sky_apflux(prefix='',ms=ms)
-        self.plot_stars_obj_sky_apmag(prefix='',ms=ms)
-        raise ValueError
-        self.idl.stars.set('ccd_rad',np.sqrt(self.idl.stars.ccd_x**2 + self.idl.stars.ccd_y**2))
-        self.plot_stars_sky_apers_vs_key(key='ccd_rad',prefix='',ms=ms)
-        #self.plot_stars_sky_apers_vs_key(key='ccd_y',prefix='',ms=ms)
-        #self.plot_stars_sky_apers_vs_key(key='ccd_y',prefix='',ms=ms)
-        raise ValueError
-        ms=50
-        self.star_plots_dmag_model(prefix='zoom1',ms=ms)
-        raise ValueError
-        self.star_plots_dmag_model2(ylims=(0.9,1.1),prefix='zoom1',ms=ms)
-        raise ValueError
-        self.star_plots_dmag(ylims=(0.8,1.4),prefix='zoom1',ms=ms)
-        raise ValueError
-        self.plots_apskyflux_vs_apskyflux()
-        raise ValueError
-        self.star_plots_dmag_div_err(ylims=(-5,5),prefix='zoom1',ms=ms)
-        self.star_plots_dmag_div_err_sky(prefix='zoom1',ms=ms)
-        self.star_plots_dmag_err_bars(prefix='zoom1',ms=ms)
-        raise ValueError
-        self.star_plots_leg_corrected_w_idl_sky(prefix='zoom1',ms=ms)
-        self.star_plots_dmag_dmag(prefix='zoom1',ms=ms)
-        self.star_plots_dmag_norm_err(prefix='zoom1',ms=ms)
-        self.star_plots_dmag(ylims=(-0.1,0.1),prefix='zoom2',ms=ms)
-        #self.star_plots_dmag(ylims=(-0.01,0.01),prefix='zoom3',ms=ms)
-        raise ValueError
-        self.star_plots()
-        self.plot_star_sn()
-        self.plot_star_gaiaoffset()
-
-
-    def get_numeric_keys(self,data_or_stars):
-        assert(data_or_stars in ['data','stars'])
-        if data_or_stars == 'data':
-             legacy_keys= ['airmass','exptime','fwhm','fwhm_cp','gain','image_hdu',
-                          'skycounts','skymag','skyrms',
-                          'nmatch','nstar','nstarfind',
-                          'dec','dec_bore','decoff','decrms',
-                          'ra','ra_bore','raoff','rarms',
-                          'phoff','phrms','transp',
-                          'zpt']
-        elif data_or_stars == 'stars':
-            legacy_keys= ['obj_Ne_per_sec','sky_Ne_per_sec_per_pix','sky_Ne_per_sec',
-                          'ra','dec','x','y']
-        # IDL Equivalent
-        idl_dict={}
-        if data_or_stars == 'data':
-            # Add ccd prefix
-            for key in ['decoff','decrms','raoff','rarms',
-                        'skycounts','skymag','skyrms',
-                        'nmatch','nstar','nstarfind',
-                        'phoff','phrms','transp',
-                        'zpt','zptavg']:
-                idl_dict[key]= 'ccd%s' % key
-            # Not obvious
-            idl_dict['gain']= 'arawgain'
-            idl_dict['image_hdu']= 'ccdhdunum'
-            idl_dict['dec_bore']= 'dec'
-            idl_dict['ra_bore']= 'ra'
-            idl_dict['dec']= 'ccddec'
-            idl_dict['ra']= 'ccdra'
-            idl_dict['fwhm_cp']= 'fwhm'
-            idl_dict['fwhm']= 'fwhm_measured'
-            # Identical
-            for key in legacy_keys:
-                if not key in idl_dict.keys():
-                    idl_dict[key]= key
-        elif data_or_stars == 'stars':
-            for key in ['ra','dec','x','y']:
-                idl_dict[key] = 'ccd_%s' % key
-            # Identical
-            for key in legacy_keys:
-                if not key in idl_dict.keys():
-                    idl_dict[key]= key
-        return legacy_keys,idl_dict
 
     def get_defaultdict_ylim(self,doplot,ylim=None):
         ylim_dict=defaultdict(lambda: ylim)
@@ -372,17 +217,7 @@ class Legacy_vs_IDL(object):
             ylim_dict['skycounts']= (0.99,1.01)
         else:
             pass
-        return ylim_dict
- 
-    def get_defaultdict_xlim(self,doplot,xlim=None):
-        xlim_dict=defaultdict(lambda: xlim)
-        if doplot == 'diff':
-            pass
-        elif doplot == 'div':
-            pass
-        else:
-            pass
-        return xlim_dict      
+        return ylim_dict     
 
     def plots_like_arjuns(self):
         # Plot
@@ -491,1406 +326,89 @@ class Legacy_vs_IDL(object):
                 print "wrote %s" % savefn 
 
 
-    def plot_everything_vs_everything_data(self,doplot=None,
-                                           ms=100,use_keys=None,ylim=None,xlim=None):
-        '''two plots of everything numberic between legacy zeropoints and Arjun's
-        1) x vs. y-x 
-        2) x vs. y/x
-        use_keys= list of legacy_keys to use ONLY
-        '''
-        #raise ValueError
-        assert(doplot in ['diff','div'])
-        # All keys and any ylims to use
-        legacy_keys,idl_dict= self.get_numeric_keys(data_or_stars='data')
-        ylim= self.get_defaultdict_ylim(doplot=doplot,ylim=ylim)
-        xlim= self.get_defaultdict_xlim(doplot=doplot,xlim=xlim)
-        # Plot
-        FS=25
-        eFS=FS+5
-        tickFS=FS
-        for cnt,leg_key in enumerate(legacy_keys):
-            if use_keys:
-                if not leg_key in use_keys:
-                    print('skipping legacy_key=%s' % leg_key)
-                    continue
-            idl_key= idl_dict[leg_key]
-            # Plot
-            fig,ax= plt.subplots(3,1,figsize=(10,15))
-            plt.subplots_adjust(hspace=0.2,wspace=0.)
-            # Loop over bands, hdus
-            for row,band in zip( range(3), self.fid.bands ):
-                for hdu,color in zip(set(self.legacy.data.image_hdu),['g','r','m','b','k','y']):
-                    keep= (self.legacy.data.filter == band)*\
-                          (self.legacy.data.image_hdu == hdu)
-                    if np.where(keep)[0].size > 0:
-                        x= self.idl.data.get( idl_key )[keep]
-                        xlabel= 'IDL'
-                        if doplot == 'diff':
-                            y= self.legacy.data.get(leg_key)[keep] - self.idl.data.get(idl_key)[keep]
-                            y_horiz= 0
-                            ylabel= 'Legacy - IDL'
-                        elif doplot == 'div':
-                            y= self.legacy.data.get(leg_key)[keep] / self.idl.data.get(idl_key)[keep]
-                            y_horiz= 1
-                            ylabel= 'Legacy / IDL'
-                        myscatter(ax[row],x,y,color=color,m='o',s=ms,alpha=0.75) 
-                        ax[row].axhline(y_horiz,color='k',linestyle='dashed',linewidth=1)
-                        #ax[row].text(0.025,0.88,idl_key,\
-                        #             va='center',ha='left',transform=ax[cnt].transAxes,fontsize=20)
-                        ylab= ax[row].set_ylabel(ylabel,fontsize=FS)
-            xlab = ax[row].set_xlabel(xlabel,fontsize=FS)
-            for row in range(3):
-                ax[row].tick_params(axis='both', labelsize=tickFS)
-                if ylim[leg_key]:
-                    ax[row].set_ylim(ylim[leg_key])
-                if xlim[leg_key]:
-                    ax[row].set_xlim(xlim[leg_key])
-            savefn="everything_data_%s_%s_%s.png" % (self.camera,doplot,leg_key)
-            plt.savefig(savefn, bbox_extra_artists=[xlab,ylab], bbox_inches='tight')
-            plt.close() 
-            print "wrote %s" % savefn 
+class Residuals(object):
+    """Base class for plotting legacy idl matched zpt and star residuals
+
+    Loads and matches the data, ZptResiduals and StarResiduals do the plotting
+    
+    Attributes:
+        camera: decam,mosaic,90prime
+        savedir: has to write merged zpts file somewhere
+        leg_list: list of legacy zpt files
+        idl_list: list of idl zpt files
+
+    Example:
+        leg_fns= glob(os.path.join(os.getenv['CSCRATCH'],
+                                   'dr5_zpts/decam',
+                                   'c4d*-zpt.fits')
+        idl_fns= glob(os.path.join(os.getenv['CSCRATCH'],
+                                   'arjundey_Test/AD_exact_skymed',
+                                   'zeropoint*.fits')
+        zpt= Residuals(camera='decam',savedir='.',
+                       leg_list=leg_list,
+                       idl_list=idl_list)
+        zpt.load_data()
+        zpt.match() 
+    """
+
+    def __init__(self,camera='decam',savedir='./',
+                 leg_list=[],
+                 idl_list=[])
+        self.camera= camera
+        self.savedir= savedir
+        self.idl= LegacyZpts(zpt_list=idl_list, camera=camera, savedir=savedir)
+        self.legacy= LegacyZpts(zpt_list=leg_list, camera=camera,savedir=savedir)
+
+    def load_data(self):
+        """Add zeropoints data to LegacyZpts objects"""
+        self.idl.load()
+        self.legacy.load()
 
 
-    def plot_everything_vs_everything_stars(self,doplot=None,x_eq_ccdmag=False,
-                                           ms=100,use_keys=None,xlim=None,ylim=None,
-                                           prefix=''):
-        '''two plots of everything numberic between legacy zeropoints and Arjun's
-        1) x vs. y-x 
-        2) x vs. y/x
-        use_keys= list of legacy_keys to use ONLY
-        x_eq_mags -- only for data_or_stars="stars", plots y-axis vs. x=ccd_mag
-        '''
-        #raise ValueError
-        assert(doplot in ['diff','div','delta_mag'])
-        # All keys and any ylims to use
-        legacy_keys,idl_dict= self.get_numeric_keys(data_or_stars='stars')
-        ylim= self.get_defaultdict_ylim(doplot=doplot,ylim=ylim)
-        xlim= self.get_defaultdict_xlim(doplot=doplot,xlim=xlim)
-        # Plot
-        FS=25
-        eFS=FS+5
-        tickFS=FS
-        for cnt,leg_key in enumerate(legacy_keys):
-            if use_keys:
-                if not leg_key in use_keys:
-                    print('skipping legacy_key=%s' % leg_key)
-                    continue
-            if doplot == 'delta_mag':
-                if not leg_key in ['obj_Ne_per_sec']:
-                    print('skipping legacy_key=%s' % leg_key)
-                    continue
-            idl_key= idl_dict[leg_key]
-            # Plot
-            fig,ax= plt.subplots(3,1,figsize=(10,15))
-            plt.subplots_adjust(hspace=0.2,wspace=0.)
-            # Loop over bands, hdus
-            for row,band in zip( range(3), self.fid.bands ):
-                for hdu,color in zip(set(self.legacy.stars.image_hdu),['g','r','m','b','k','y']):
-                    keep= (self.legacy.stars.filter == band)*\
-                          (self.legacy.stars.image_hdu == hdu)
-                    if np.where(keep)[0].size > 0:
-                        if x_eq_ccdmag:
-                            x= self.idl.stars.ccd_mag[keep]
-                            xlabel= 'ccd_mag (IDL)'
-                        else:
-                            x= self.idl.stars.get( idl_key )[keep]
-                            xlabel= 'IDL'
-                        if doplot == 'diff':
-                            y= self.legacy.stars.get(leg_key)[keep] - self.idl.stars.get(idl_key)[keep]
-                            y_horiz= 0
-                            ylabel= 'Legacy - IDL'
-                        elif doplot == 'div':
-                            y= self.legacy.stars.get(leg_key)[keep] / self.idl.stars.get(idl_key)[keep]
-                            y_horiz= 1
-                            ylabel= 'Legacy / IDL'
-                        elif doplot == 'delta_mag':
-                            y= -2.5*np.log10(self.legacy.stars.get(leg_key)[keep] / self.idl.stars.get(idl_key)[keep])
-                            y_horiz= 0
-                            ylabel= 'Legacy - IDL'
-                            prefix= 'DeltaMag'
-                        myscatter(ax[row],x,y,color=color,m='o',s=ms,alpha=0.75) 
-                        print('leg_key=%s, median y=' % leg_key,np.median(y)) 
-                        ax[row].axhline(y_horiz,color='k',linestyle='dashed',linewidth=1)
-                        #ax[row].text(0.025,0.88,idl_key,\
-                        #             va='center',ha='left',transform=ax[cnt].transAxes,fontsize=20)
-                        ylab= ax[row].set_ylabel(ylabel,fontsize=FS)
-            xlab = ax[row].set_xlabel(xlabel,fontsize=FS)
-            for row in range(3):
-                ax[row].tick_params(axis='both', labelsize=tickFS)
-                if ylim[leg_key]:
-                    ax[row].set_ylim(ylim[leg_key])
-                try:
-                    if xlim[leg_key]:
-                        ax[row].set_xlim(xlim[leg_key])
-                except:
-                    raise ValueError
-            savefn="everything_stars_%s_%s_xeqccdmag%s_%s%s.png" % (self.camera,doplot,x_eq_ccdmag,leg_key,prefix)
-            plt.savefig(savefn, bbox_extra_artists=[xlab,ylab], bbox_inches='tight')
-            plt.close() 
-            print "wrote %s" % savefn 
-
-
-
-    def plot_stars_obj_sky_apflux(self,prefix='',xlims=None,ylims=None,ms=50,
-                                  errbars=True,annotate=False):
-        FS=25
-        eFS=FS+5
-        tickFS=FS
-        fig,ax= plt.subplots(3,1,figsize=(10,15))
-        plt.subplots_adjust(hspace=0.2,wspace=0.)
-        num_pix_in_ap= np.pi * 3.5**2 / self.fid.pixscale**2 #560.639094553 for DECam
-        for row,band in zip( range(3), self.fid.bands ):
-            for hdu,color in zip(set(self.legacy.stars.image_hdu),['g','r','m','b','k','y']):
-                keep= (self.legacy.stars.filter == band)*\
-                      (self.legacy.stars.image_hdu == hdu)
-                if np.where(keep)[0].size > 0:
-                    x= self.legacy.stars.sky_Ne_per_sec[keep] -\
-                       self.idl.stars.sky_Ne_per_sec[keep] 
-                    xerr= np.sqrt(self.legacy.stars.sky_Ne_per_sec[keep] +\
-                                  self.idl.stars.sky_Ne_per_sec[keep])
-                    y= self.legacy.stars.obj_Ne_per_sec[keep] - \
-                       self.idl.stars.obj_Ne_per_sec[keep] 
-                    yerr= np.sqrt(self.legacy.stars.obj_Ne_per_sec[keep] + \
-                                  self.legacy.stars.sky_Ne_per_sec[keep] +\
-                                  self.idl.stars.obj_Ne_per_sec[keep] +\
-                                  self.idl.stars.sky_Ne_per_sec[keep])
-                    xlab='sky_Ne_per_sec_per_pix (legacy - idl)'
-                    ylab='obj_Ne_per_sec (legacy - idl)'
-                    if errbars:
-                        myerrorbar(ax[row],x,y, yerr=yerr,xerr=xerr,color=color,m='o',s=10.,alpha=0.75)
-                    else:
-                        myscatter(ax[row],x,y,color=color,m='o',s=ms,alpha=0.75)
-                    # Annotate with SN
-                    if annotate:
-                        SN= self.legacy.stars.obj_Ne_per_sec[keep] / \
-                            np.sqrt(self.legacy.stars.obj_Ne_per_sec[keep] + \
-                                        self.legacy.stars.sky_Ne_per_sec_per_pix[keep]*\
-                                        num_pix_in_ap)
-                        myannot(ax[row],x,y, np.around(SN,decimals=0).astype(np.string_), fontsize=15)
-                    # lines through 0
-                    ax[row].axhline(0,color='k',linestyle='dashed',linewidth=1)
-                    ax[row].axvline(0,color='k',linestyle='dashed',linewidth=1)
-                    # fit line
-                    #try:
-                    #    popt= np.polyfit(x,y, 1)
-                    #except:
-                    #    raise ValueError
-                    #x= np.linspace(ax[row].get_xlim()[0],ax[row].get_xlim()[1],num=2)
-                    #ax[row].plot(x,popt[0]*x + popt[1],c="gray",ls='--',label='m=%.2f, b=%.2f' % (popt[0],popt[1]))
-                    # slope 1
-                    #ax[row].plot([x.min(),x.max()],[x.min(),x.max()],'k--',lw=2)
-                    # Label
-                    ylab=ax[row].set_ylabel(ylab,fontsize=FS)
-                    if xlims:
-                        ax[row].set_xlim(xlims)
-                    if ylims:
-                        ax[row].set_ylim(ylims)
-        xlab=ax[2].set_xlabel(xlab,fontsize=FS) #0.45'' galaxy
-        for row in range(3):
-            ax[row].tick_params(axis='both', labelsize=tickFS)
-            #leg=ax[row].legend(loc=(0.,1.02),ncol=3,scatterpoints=1,markerscale=3,fontsize=FS-5)
-        savefn='%s_obj_sky_apflux_errbars%s_%s.png' % (self.camera,errbars,prefix)
-        plt.savefig(savefn, bbox_extra_artists=[xlab,ylab], bbox_inches='tight')
-        plt.close() 
-        print "wrote %s" % savefn 
-
-    def plot_stars_obj_sky_apmag(self,prefix='',xlims=None,ylims=None,ms=50):
-        FS=25
-        eFS=FS+5
-        tickFS=FS
-        fig,ax= plt.subplots(3,1,figsize=(10,15))
-        plt.subplots_adjust(hspace=0.2,wspace=0.)
-        for row,band in zip( range(3), self.fid.bands ):
-            for hdu,color in zip(set(self.legacy.stars.image_hdu),['g','r','m','b','k','y']):
-                keep= (self.legacy.stars.filter == band)*\
-                      (self.legacy.stars.image_hdu == hdu)
-                if np.where(keep)[0].size > 0:
-                    x= -2.5*np.log10(self.legacy.stars.sky_Ne_per_sec_per_pix[keep] /\
-                                     self.idl.stars.sky_Ne_per_sec_per_pix[keep])
-                    y= -2.5*np.log10(self.legacy.stars.obj_Ne_per_sec[keep] / \
-                                     self.idl.stars.obj_Ne_per_sec[keep] )
-                    xlab='mag sky_Ne_per_sec_per_pix [-2.5log10(legacy idl)]'
-                    ylab='mag obj_Ne_per_sec [-2.5log10(legacy - idl)]'
-                    myscatter(ax[row],x,y,
-                              color=color,m='o',s=ms,alpha=0.75)
-                    # lines through 0
-                    ax[row].axhline(0,color='k',linestyle='dashed',linewidth=1)
-                    ax[row].axvline(0,color='k',linestyle='dashed',linewidth=1)
-                    # fit line
-                    #try:
-                    #    popt= np.polyfit(x,y, 1)
-                    #except:
-                    #    raise ValueError
-                    #x= np.linspace(ax[row].get_xlim()[0],ax[row].get_xlim()[1],num=2)
-                    #ax[row].plot(x,popt[0]*x + popt[1],c="gray",ls='--',label='m=%.2f, b=%.2f' % (popt[0],popt[1]))
-                    # slope 1
-                    #ax[row].plot([x.min(),x.max()],[x.min(),x.max()],'k--',lw=2)
-                    # Label
-                    ylab=ax[row].set_ylabel(ylab,fontsize=FS)
-                    if xlims:
-                        ax[row].set_xlim(xlims)
-                    if ylims:
-                        ax[row].set_ylim(ylims)
-        xlab=ax[2].set_xlabel(xlab,fontsize=FS) #0.45'' galaxy
-        for row in range(3):
-            ax[row].tick_params(axis='both', labelsize=tickFS)
-            #leg=ax[row].legend(loc=(0.,1.02),ncol=3,scatterpoints=1,markerscale=3,fontsize=FS-5)
-        savefn='%s_obj_sky_apmag_%s.png' % (self.camera,prefix)
-        plt.savefig(savefn, bbox_extra_artists=[xlab,ylab], bbox_inches='tight')
-        plt.close() 
-        print "wrote %s" % savefn 
-
-    def plot_stars_obj_sky_chi2(self,prefix='',xlims=None,ylims=None,ms=50):
-        FS=25
-        eFS=FS+5
-        tickFS=FS
-        for key in ['sky_Ne_per_sec','obj_Ne_per_sec']:
-            fig,ax= plt.subplots(3,1,figsize=(10,15))
-            plt.subplots_adjust(hspace=0.2,wspace=0.)
-            for row,band in zip( range(3), self.fid.bands ):
-                for hdu,color in zip(set(self.legacy.stars.image_hdu),['g','r','m','b','k','y']):
-                    keep= (self.legacy.stars.filter == band)*\
-                          (self.legacy.stars.image_hdu == hdu)
-                    if np.where(keep)[0].size > 0:
-                        dflux= self.legacy.stars.get(key)[keep] -\
-                               self.idl.stars.get(key)[keep]
-                        if key == 'sky_Ne_per_sec':
-                            err= np.sqrt(self.legacy.stars.get(key)[keep] + \
-                                         self.idl.stars.get(key)[keep])
-                        if key == 'obj_Ne_per_sec':
-                            err= np.sqrt(self.legacy.stars.get(key)[keep] + \
-                                         self.legacy.stars.sky_Ne_per_sec[keep] + \
-                                         self.idl.stars.get(key)[keep] +\
-                                         self.idl.stars.sky_Ne_per_sec[keep])
-                        chi2= dflux / err
-                        h,bins= myhist_step(ax[row],chi2,bins=20,color=color,normed=True,lw=2,return_vals=True)
-                        sanity= np.sum(h*(bins[1:]-bins[:-1]))
-                        print('sanity = 1? = %f' % sanity)
-                        ylab='PDF'
-                        xlab='%s (Legacy - IDL) / sqrt(Var)' % key
-                        # Unit gaussian N(0,1)
-                        from scipy.stats import norm as scipy_norm
-                        G= scipy_norm(0,1)
-                        xvals= np.linspace(chi2.min(),chi2.max())
-                        ax[row].plot(xvals,G.pdf(xvals),'k--',lw=2)
-                        # lines through 0
-                        ax[row].axvline(0,color='k',linestyle='dashed',linewidth=1)
-                        # Label
-                        ylab=ax[row].set_ylabel(ylab,fontsize=FS)
-                        if xlims:
-                            if key == 'sky_Ne_per_sec':
-                                xlims=(-0.2,1.2)
-                            if key == 'obj_Ne_per_sec':
-                                xlims=(-1.2,0.2)
-                            ax[row].set_xlim(xlims)
-                        if ylims:
-                            ax[row].set_ylim(ylims)
-            xlab=ax[2].set_xlabel(xlab,fontsize=FS) #0.45'' galaxy
-            for row in range(3):
-                ax[row].tick_params(axis='both', labelsize=tickFS)
-                #leg=ax[row].legend(loc=(0.,1.02),ncol=3,scatterpoints=1,markerscale=3,fontsize=FS-5)
-            savefn='%s_obj_sky_chi2_%s_%s.png' % (self.camera,key,prefix)
-            plt.savefig(savefn, bbox_extra_artists=[xlab,ylab], bbox_inches='tight')
-            plt.close() 
-            print "wrote %s" % savefn 
-
-
-
-    def plot_stars_obj_sky_apers_ratios(self,prefix='',xlims=None,ylims=None,ms=50,mags=False):
-        FS=25
-        eFS=FS+5
-        tickFS=FS
-        for key in ['obj_Ne_per_sec','sky_Ne_per_sec']:
-            fig,ax= plt.subplots(3,1,figsize=(10,15))
-            plt.subplots_adjust(hspace=0.2,wspace=0.)
-            for row,band in zip( range(3), self.fid.bands ):
-                for hdu,color in zip(set(self.legacy.stars.image_hdu),['g','r','m','b','k','y']):
-                    print('hdu=',hdu,'color=%s' % color)
-                    keep= (self.legacy.stars.filter == band)*\
-                          (self.legacy.stars.image_hdu == hdu)
-                    if np.where(keep)[0].size > 0:
-                        x= self.idl.stars.ccd_mag[keep] 
-                        y= self.legacy.stars.get(key)[keep] / self.idl.stars.get(key)[keep] 
-                        ylab= '(legacy/idl)'
-                        y_goal= 1.
-                        if mags:
-                            y= -2.5*np.log10(y)
-                            ylab= '-2.5 log10(legacy/idl)'
-                            y_goal= 0.
-                        myscatter(ax[row],x,y,
-                                  color=color,m='o',s=ms,alpha=0.75)
-                        # HDU factors
-                        #ref_gain=4.3
-                        #for gain in [4.51,4.47,4.4,4.3]:
-                        #    ax[row].axhline(gain/ref_gain,color='k',linestyle='dashed',linewidth=1)
-                        ax[row].axhline(y_goal,color='k',linestyle='dashed',linewidth=1)
-                        # Label
-                        ylab=ax[row].set_ylabel('%s %s' % (key,ylab),fontsize=FS)
-                        if xlims:
-                            ax[row].set_xlim(xlims)
-                        if ylims:
-                            ax[row].set_ylim(ylims)
-            ax[0].set_ylim(-0.4,0.6)
-            ax[1].set_ylim(-0.15,0.3)
-            ax[2].set_ylim(-0.1,0.35)
-            xlab=ax[2].set_xlabel("ccd_mag (idl)",fontsize=FS) #0.45'' galaxy
-            for row in range(3):
-                ax[row].tick_params(axis='both', labelsize=tickFS)
-                #leg=ax[row].legend(loc=(0.,1.02),ncol=3,scatterpoints=1,markerscale=3,fontsize=FS-5)
-            savefn='legacy_vs_idl_%s_obj_sky_apers_ratio_%s_mags%s%s.png' % (self.camera,key,mags,prefix)
-            plt.savefig(savefn, bbox_extra_artists=[xlab,ylab], bbox_inches='tight')
-            plt.close() 
-            print "wrote %s" % savefn 
-
-    def plot_stars_sky_apers_vs_key(self,key='x',prefix='',xlims=None,ylims=None,ms=50):
-        FS=25
-        eFS=FS+5
-        tickFS=FS
-        fig,ax= plt.subplots(3,1,figsize=(10,15))
-        plt.subplots_adjust(hspace=0.2,wspace=0.)
-        for row,band in zip( range(3), self.fid.bands ):
-            for hdu,color in zip(set(self.legacy.stars.image_hdu),['g','r','m','b','k','y']):
-                keep= (self.legacy.stars.filter == band)*\
-                      (self.legacy.stars.image_hdu == hdu)
-                if np.where(keep)[0].size > 0:
-                    x= self.idl.stars.get(key)[keep] 
-                    y= self.legacy.stars.sky_Ne_per_sec_per_pix[keep] - self.idl.stars.sky_Ne_per_sec_per_pix[keep] 
-                    myscatter(ax[row],x,y,
-                              color=color,m='o',s=ms,alpha=0.75)
-                    # lines through 0
-                    ax[row].axhline(1,color='k',linestyle='dashed',linewidth=1)
-                    # fit line
-                    #try:
-                    #    popt= np.polyfit(x,y, 1)
-                    #except:
-                    #    raise ValueError
-                    #x= np.linspace(ax[row].get_xlim()[0],ax[row].get_xlim()[1],num=2)
-                    #ax[row].plot(x,popt[0]*x + popt[1],c="gray",ls='--',label='m=%.2f, b=%.2f' % (popt[0],popt[1]))
-                    # slope 1
-                    #ax[row].plot([x.min(),x.max()],[x.min(),x.max()],'k--',lw=2)
-                    # Label
-                    ylab=ax[row].set_ylabel('sky_Ne_per_sec_per_pix (legacy - idl)',fontsize=FS)
-                    if xlims:
-                        ax[row].set_xlim(xlims)
-                    if ylims:
-                        ax[row].set_ylim(ylims)
-        xlab=ax[2].set_xlabel("%s (idl)" % key,fontsize=FS) #0.45'' galaxy
-        for row in range(3):
-            ax[row].tick_params(axis='both', labelsize=tickFS)
-            #leg=ax[row].legend(loc=(0.,1.02),ncol=3,scatterpoints=1,markerscale=3,fontsize=FS-5)
-        savefn='legacy_vs_idl_%s_sky_apers_vs_%s%s.png' % (self.camera,key,prefix)
-        plt.savefig(savefn, bbox_extra_artists=[xlab,ylab], bbox_inches='tight')
-        plt.close() 
-        print "wrote %s" % savefn 
-
-
-
-
-    def add_zpt_data_to_stars(self):
-        '''Assuming self.legacy.stars and self.idl.stars are matched samples'''
-        assert(len(self.legacy.stars) == len(self.idl.stars))
-        # Have all the info in legacy, legacy zpt -> legacy stars
-        exptime= np.zeros(len(self.legacy.stars))
-        gain= np.zeros(len(self.legacy.stars))
-        # loop through
-        expnums= set(self.legacy.data.expnum)
-        hdus= set(self.legacy.data.image_hdu)
-        for expnum in set(self.legacy.stars.expnum):
-            for hdu in set(self.legacy.stars.image_hdu):
-                assert(expnum in expnums)
-                assert(hdu in hdus)
-                indata= (self.legacy.data.expnum == expnum)*(self.legacy.data.image_hdu == hdu)
-                instars= (self.legacy.stars.expnum == expnum)*(self.legacy.stars.image_hdu == hdu)
-                # Store
-                exptime[ instars ]= self.legacy.data.exptime[ indata ][0]
-                gain[ instars ]= self.legacy.data.gain[ indata ][0]
-        # Add to table
-        self.legacy.stars.set('exptime',exptime)
-        self.legacy.stars.set('gain',gain)
-        # Now legacy stars -> idl_stars
-        self.idl.stars.set('exptime',exptime)
-        self.idl.stars.set('gain',gain)
-        # Add filter as well
-        self.idl.stars.set('filter',self.legacy.stars.filter)
-        #filter= np.zeros(len(self.idl.stars)).astype(str)
-        #filter[ instars ]= self.idl.data.filter[ indata ][0]
-        #self.idl.stars.set('filter',filter)
-
-    def ccd_mag_to_Ne_per_sec(self):
-        '''IDL aper.pro returns "mags" as -2.5log10(Ne) + 25
-        In arjuns code, Ne is in units of ADU which he converts to e- and thereofer AB mags with
-        ccd_mag= "mags" - 25 + 2.5log10(exptime) + zp0
-            where zp0 = 26.610,26.818,26.484 (g,r,z) - 2.5log10(gain)
-            and gain is ARAWGAIN from the header
-        '''
-        data= np.zeros(len(self.idl.stars))
-        for band in self.fid.bands:
-            keep= self.idl.stars.filter == band
-            #data[keep]= self.idl.stars.exptime[keep] * \
-            #            10**(-1/2.5 * (self.idl.stars.ccd_mag[keep] - self.fid.zp0[band]))
-            data[keep]= 10**(-1/2.5 * (self.idl.stars.ccd_mag[keep] - self.fid.zp0[band]))
-        return data
-
-    def ccd_sky_to_Ne_per_sec_per_pix(self):
-        '''IDL aper.pro returns sky in as the Mode of Counts in the 7-10 arcsec sky aperture
-        for arjuns code Counts is ADU so 
-        sky Ne / pix / sec (e/pix/sec)= ccd_sky (ADU) * gain / exptime'''
-        #num_pix_in_ap= np.pi * 7**2 / self.fid.pixscale**2 #560.639094553 for DECam
-        #data= np.zeros(len(self.idl.stars))
-        #for band in self.fid.bands:
-        #    keep= self.idl.stars.filter == band
-        #    data[keep]= self.idl.stars.ccd_sky[keep] * npix_7arcsec_ap
-        #return data
-        #return num_pix_in_ap * self.idl.stars.ccd_sky # * self.idl.stars.gain 
-        return self.idl.stars.ccd_sky * self.idl.stars.gain / self.idl.stars.exptime
-
-
-    def skymag_for_idl_legacy(self):
-        num_pix_in_ap= np.pi * 7**2 / self.fid.pixscale**2
-        # IDL
-        idl_Ne= self.idl.stars.ccd_sky * num_pix_in_ap # idl ccd_sky: ADU / pixel * gain * N pixels
-        # units e/pix?? * self.idl.stars.gain
-        idl_skymag= np.zeros(len(self.idl.stars))
-        for band in self.fid.bands:
-            keep= self.idl.stars.filter == band
-            idl_skymag[keep]= -2.5 * np.log10(idl_Ne[keep] / self.idl.stars.exptime[keep]) +  \
-                              self.fid.zp0[band]
-        self.idl.stars.set('skymag_inap', idl_skymag)
-        # Legacy
-        leg_Ne= self.legacy.stars.apskyflux_perpix * num_pix_in_ap # leg apsky: e / pixel * N pixels
-        leg_skymag= np.zeros(len(self.legacy.stars))
-        for band in self.fid.bands:
-            keep= self.legacy.stars.filter == band
-            leg_skymag[keep]= -2.5 * np.log10(leg_Ne[keep] / self.legacy.stars.exptime[keep]) +  \
-                              self.fid.zp0[band]
-        self.legacy.stars.set('skymag_inap', leg_skymag)
-
-
-    def apflux_to_idlmag(self):
-        '''leg apflux to idl ccd_mag'''
-        data= np.zeros(len(self.legacy.stars))
-        for band in self.fid.bands:
-            keep= self.legacy.stars.filter == band
-            data[keep]= -2.5 * np.log10(self.legacy.stars.apflux[keep] / self.legacy.stars.exptime[keep]) +  \
-                        self.fid.zp0[band]
-        return data
-
-    def apskyflux_to_idlmag(self):
-        '''leg apflux to idl ccd_mag'''
-        data= np.zeros(len(self.legacy.stars))
-        for band in self.fid.bands:
-            keep= self.legacy.stars.filter == band
-            data[keep]= -2.5 * np.log10(self.legacy.stars.apskyflux[keep] / self.legacy.stars.exptime[keep]) +  \
-                        self.fid.zp0[band]
-        return data
-
-    def matched_unmatched_stars(self):
-        ''' Matched: legacy.stars,idl.stars
-        Unmatched: .stars_unm
-        '''
-        self.legacy.stars_unm= self.legacy.stars.copy()
-        self.idl.stars_unm= self.idl.stars.copy()
-        # matched
-        m1, m2, d12 = match_radec(self.legacy.stars.ra,self.legacy.stars.dec,
-                                  self.idl.stars.ccd_ra,self.idl.stars.ccd_dec, 
+    def match(self,ra_key='ccdra',dec_key='ccdec'):
+        """Cut data to matching ccd centers"""
+        m1, m2, d12 = match_radec(self.legacy.data.get(ra_key),self.legacy.data.get(dec_key),
+                                  self.idl.data.get(ra_key),self.idl.data.get(dec_key),
                                   1./3600.0,nearest=True)
-        self.legacy.stars.cut(m1)
-        self.idl.stars.cut(m2)
-        # Not matched
-        unm1= np.delete(np.arange(len(self.legacy.stars)),m1)
-        unm2= np.delete(np.arange(len(self.idl.stars)),m2)
-        self.legacy.stars_unm.cut(unm1)
-        self.idl.stars_unm.cut(unm2)
+        self.legacy.data.cut(m1)
+        self.idl.data.cut(m2)
 
 
-    def match_zpts(self):
-        ## Save time
-        #if os.path.exists(self.save_fn):
-        #    self.load()
-        #    # Cuts afer looking at idl vs. legacy plots
-        #    if self.camera == 'mosaic':
-        #        self.tab.cut( self.tab.anot_transp_med < 2)
-        #        self.tab.cut( self.tab.anot_transp_med < 30)
-        #else:
-        m1, m2, d12 = match_radec(self.legacy.data.ra,self.legacy.data.dec,
-                                  self.idl.data.ccdra,self.idl.data.ccddec, 
-                                  60./3600.0,nearest=True)
-        self.legacy.data= self.legacy.data[m1] 
-        self.idl.data= self.idl.data[m2] 
-        #expnums= set(self.idl.data.expnum)
-        #d= defaultdict(list)
-        #for i,expnum in enumerate(expnums):
-        #    ccdnames= set(self.
-        #    for j,ccdname in enumerate(
-        #    if (i+1) % 100 == 0:
-        #        print('match_expnum_ccdname: %d/%d' % (i+1,len(expnums)))
-        #    keep= self.legacy.data.expnum == expnum
-        #    if len(legacy.data[keep]) > 0:
-        #        band= legacy.data.filter[keep][0]
-        #        exptime= legacy.data.exptime[keep][0]
-        #        #assert(band == np.string_.strip(db.data.band[i]))
-        #        idl_keep= self.idl.data.expnum == expnum
-        #        assert(band == self.idl.data.filter[idl_keep][0])
-        #        assert(int(exptime) == int(self.idl.data.exptime[idl_keep][0]))
-        #        d['expnum'].append( expnum )
-        #        d['filter'].append( band )
-        #        d['exptime'].append( exptime )
-        #        # Me
-        #        for key in ['skymag','zpt','transp','fwhm','fwhm2']:
-        #            d['legacy_'+key+'_med'].append( np.median(legacy.data.get(key)[keep]) ) 
-        #            d['legacy_'+key+'_std'].append( np.std(legacy.data.get(key)[keep]) ) 
-        #        # db
-        #        for key,dbkey in zip(['skymag','zpt','transp','fwhm','fwhm2'],
-        #                             ['ccdskymag','ccdzpt','ccdtransp','fwhm','fwhm']):
-        #            d['anot_'+key+'_med'].append( np.median(anot.get(dbkey)[anot_keep]) ) 
-        #            d['anot_'+key+'_std'].append( np.std(anot.get(dbkey)[anot_keep]) ) 
-        #    # Repackage
-        #    self.tab= fits_table()
-        #    for key in d.keys():
-        #        self.tab.set(key, np.array(d[key]) )
-        #    print('compare_me_db fits_table: %d' % len(self.tab))
-        #    # my tneeded exposure time can be set to tmin, 
-        #    # but db tneed can be larger tmin by a lot
-        #    #keep= np.ones(len(self.tab),bool)
-        #    #for band in self.fid.bands:
-        #    #    rem= (self.tab.filter == band) * \
-        #    #         (self.tab.me_tneed_med.astype(int) == int(self.fid.tmin[band])) * \
-        #    #         (self.tab.db_tneed.astype(int) > 10 + int(self.fid.tmin[band]))
-        #    #    keep[rem]= False
-        #    #self.tab.cut(keep)
-        #    #print('compare_me_db after remove tneed=min, db tneed >> tmin: %d' % len(self.tab))
-        #    # Save
-        #    self.save()
+class ZptResiduals(Residuals):
+    """Matches zeropoint data to idl and plots residuals
     
-    def data_to_idl_units(self):
-        for key in ['skycounts','skyrms']:
-            self.legacy.data.set(key, self.legacy.data.get(key) * self.legacy.data.exptime / self.legacy.data.gain)
-        for key in ['zpt']:
-            self.legacy.data.set(key, self.legacy.data.get(key) - 2.5*np.log10(self.legacy.data.gain))
+    Attributes:
+        camera: decam,mosaic,90prime
+        savedir: has to write merged zpts file somewhere
+        leg_list: list of legacy zpt files
+        idl_list: list of idl zpt files
 
-    def save(self):
-        self.tab.writeto(self.save_fn)
-        print('Wrote %s' % self.save_fn)
+    Example:
+        leg_fns= glob(os.path.join(os.getenv['CSCRATCH'],
+                                   'dr5_zpts/decam',
+                                   'c4d*-zpt.fits')
+        idl_fns= glob(os.path.join(os.getenv['CSCRATCH'],
+                                   'arjundey_Test/AD_exact_skymed',
+                                   'zeropoint*.fits')
+        zpt= ZptResiduals(camera='decam',savedir='.',
+                          leg_list=leg_list,
+                          idl_list=idl_list)
+        zpt.load_data()
+        zpt.convert_legacy()
+        zpt.match(ra_key='ccdra',dec_key='ccdec')
+        zpt.plot_residuals(doplot='diff') 
+    """
+
+    def __init__(self,camera='decam',savedir='./',
+                 leg_list=[],
+                 idl_list=[]):
+        super(ZptResiduals, self).__init__(camera,savidir,
+                                           leg_list,idl_list)
     
-    def load(self):
-        self.tab= fits_table(self.save_fn)
-        print('Loaded %s' % self.save_fn)
+    def convert_legacy(self):
+        # Converts to idl names, units
+        self.legacy.data= convert_zeropoints_table(self.legacy.data)
 
-    def plots(self,prefix=''):
-        FS=25
-        eFS=FS+5
-        tickFS=FS
-        xlims,ylims= None,None
-        for leg_key,idl_key in zip(['skymag','skycounts','skyrms',
-                                    'zpt','transp','fwhm','phoff','rarms',
-                                    'decrms'],
-                                   ['ccdskymag','ccdskycounts','ccdskyrms',
-                                    'ccdzpt','ccdtransp','fwhm','ccdphoff','ccdrarms',
-                                    'ccddecrms']): 
-            fig,ax= plt.subplots(3,1,figsize=(12,15))
-            plt.subplots_adjust(hspace=0.2,wspace=0)
-            for row,band,color in zip( range(3), self.fid.bands, ['g','r','m'] ):
-                keep= self.legacy.data.filter == band
-                if np.where(keep)[0].size > 0:
-                    x= self.legacy.data.get(leg_key)[keep]
-                    y= self.idl.data.get(idl_key)[keep]
-                    myscatter(ax[row],x,y,
-                              color=color,m='o',s=10.,alpha=0.75, 
-                              label='%d' % len(x))
-                    # fit line
-                    try:
-                        popt= np.polyfit(x,y, 1)
-                    except:
-                        raise ValueError
-                    x= np.linspace(ax[row].get_xlim()[0],ax[row].get_xlim()[1],num=2)
-                    ax[row].plot(x,popt[0]*x + popt[1],c="gray",ls='--',label='m=%.2f, b=%.2f' % (popt[0],popt[1]))
-                    # slope 1
-                    ax[row].plot([x.min(),x.max()],[x.min(),x.max()],'k--',lw=2)
-                    # Label
-                    ylab=ax[row].set_ylabel('%s (idl)' % idl_key,fontsize=FS)
-                    if xlims:
-                        ax[row].set_xlim(xlims[band])
-                    if ylims:
-                        ax[row].set_ylim(ylims[band])
-            xlab=ax[2].set_xlabel("%s (legacy)" % leg_key,fontsize=FS) #0.45'' galaxy
-            for row in range(3):
-                ax[row].tick_params(axis='both', labelsize=tickFS)
-                ax[row].legend(loc='upper left',fontsize=FS)
-            savefn='legacy_vs_idl_%s_%s.png' % (self.camera,leg_key)
-            plt.savefig(savefn, bbox_extra_artists=[xlab,ylab], bbox_inches='tight')
-            plt.close() 
-            print "wrote %s" % savefn 
-
-    def plots_deltas(self,leg_key='zpt',idl_key='ccdzpt',ylim=None,prefix='',ms=50):
-        '''zpt - zpt vs. zpt, skymag - skymag vs skymag etc
-        '''
-        FS=25
-        eFS=FS+5
-        tickFS=FS
-        fig,ax= plt.subplots(3,1,figsize=(12,15))
-        plt.subplots_adjust(hspace=0.2,wspace=0)
-        for row,band,color in zip( range(3), self.fid.bands, ['g','r','m'] ):
-            keep= self.legacy.data.filter == band
-            if np.where(keep)[0].size > 0:
-                x= self.legacy.data.get(leg_key)[keep]
-                y= self.idl.data.get(idl_key)[keep]
-                myscatter(ax[row],y,x - y,
-                          color=color,m='o',s=ms,alpha=0.75)
-                # Label
-                ylab=ax[row].set_ylabel('%s %s (legacy - idl)' % (band,idl_key),fontsize=FS)
-                if ylim:
-                    ax[row].set_ylim(ylim)
-        xlab=ax[2].set_xlabel("%s (idl)" % leg_key,fontsize=FS) #0.45'' galaxy
-        for row in range(3):
-            ax[row].tick_params(axis='both', labelsize=tickFS)
-            ax[row].legend(loc='upper left',fontsize=FS)
-            # lines through 1
-            ax[row].axhline(1,color='k',linestyle='dashed',linewidth=1)
-        savefn='legacy_vs_idl_deltas_%s_%s%s.png' % (self.camera,leg_key,prefix)
-        plt.savefig(savefn, bbox_extra_artists=[xlab,ylab], bbox_inches='tight')
-        plt.close() 
-        print "wrote %s" % savefn 
-
-
-
-    def plots_ratios(self,leg_key='zpt',idl_key='ccdzpt',ylim=None,prefix='',ms=50):
-        '''zpt/zpt vs. zpt, rarms/rarms vs rarms etc
-        Useful in tadem with plot_crosshairs 
-        phrms/phrms vs. zpt/zpt
-        decrms/decrms vs. rarms/rarms'''
-        FS=25
-        eFS=FS+5
-        tickFS=FS
-        fig,ax= plt.subplots(3,1,figsize=(12,15))
-        plt.subplots_adjust(hspace=0.2,wspace=0)
-        for row,band,color in zip( range(3), self.fid.bands, ['g','r','m'] ):
-            keep= self.legacy.data.filter == band
-            if np.where(keep)[0].size > 0:
-                x= self.legacy.data.get(leg_key)[keep]
-                y= self.idl.data.get(idl_key)[keep]
-                myscatter(ax[row],y,x/y,
-                          color=color,m='o',s=ms,alpha=0.75)
-                # Label
-                ylab=ax[row].set_ylabel('%s %s (legacy/idl)' % (band,idl_key),fontsize=FS)
-                if ylim:
-                    ax[row].set_ylim(ylim)
-        xlab=ax[2].set_xlabel("%s (idl)" % leg_key,fontsize=FS) #0.45'' galaxy
-        for row in range(3):
-            ax[row].tick_params(axis='both', labelsize=tickFS)
-            ax[row].legend(loc='upper left',fontsize=FS)
-            # lines through 1
-            ax[row].axhline(1,color='k',linestyle='dashed',linewidth=1)
-        savefn='legacy_vs_idl_ratios_%s_%s%s.png' % (self.camera,leg_key,prefix)
-        plt.savefig(savefn, bbox_extra_artists=[xlab,ylab], bbox_inches='tight')
-        plt.close() 
-        print "wrote %s" % savefn 
-
-    def plots_crosshairs(self,leg_keys=('zpt','phrms'),idl_keys=('ccdzpt','ccdphrms'),ylim=None,prefix='',ms=50):
-        '''crosshair plots of 
-        phrms/phrms vs. zpt/zpt
-        decrms/decrms vs. rarms/rarms'''
-        FS=25
-        eFS=FS+5
-        tickFS=FS
-        fig,ax= plt.subplots(3,1,figsize=(12,15))
-        plt.subplots_adjust(hspace=0.2,wspace=0)
-        for row,band,color in zip( range(3), self.fid.bands, ['g','r','m'] ):
-            keep= self.legacy.data.filter == band
-            if np.where(keep)[0].size > 0:
-                x= self.legacy.data.get(leg_keys[0])[keep] / self.idl.data.get(idl_keys[0])[keep]
-                y= self.legacy.data.get(leg_keys[1])[keep] / self.idl.data.get(idl_keys[1])[keep]
-                myscatter(ax[row],x,y,
-                          color=color,m='o',s=ms,alpha=0.75)
-                # Label
-                ylab=ax[row].set_ylabel('%s %s (legacy/idl)' % (band,idl_keys[1]),fontsize=FS)
-                if ylim:
-                    ax[row].set_ylim(ylim)
-        xlab=ax[2].set_xlabel("%s (legacy/idl)" % idl_keys[0],fontsize=FS) #0.45'' galaxy
-        for row in range(3):
-            ax[row].tick_params(axis='both', labelsize=tickFS)
-            ax[row].legend(loc='upper left',fontsize=FS)
-            # lines through 1
-            ax[row].axhline(1,color='k',linestyle='dashed',linewidth=1)
-            ax[row].axvline(1,color='k',linestyle='dashed',linewidth=1)
-        savefn='legacy_vs_idl_crosshairs_%s_%s_%s%s.png' % (self.camera,leg_keys[0],leg_keys[1],prefix)
-        plt.savefig(savefn, bbox_extra_artists=[xlab,ylab], bbox_inches='tight')
-        plt.close() 
-        print "wrote %s" % savefn 
-
-    def plot_nstar(self,prefix=''):
-        FS=25
-        eFS=FS+5
-        tickFS=FS
-        xlims,ylims= None,None
-        fig,ax= plt.subplots(3,1,figsize=(10,15))
-        plt.subplots_adjust(hspace=0.5,wspace=0)
-        for row,band in zip( range(3), self.fid.bands):
-            for leg_key,idl_key,color in zip(['nstarfind','nstar','nmatch'],
-                                             ['ccdnstarfind','ccdnstar','ccdnmatch'],
-                                             ['g','r','m']): 
-                keep= self.legacy.data.filter == band
-                if np.where(keep)[0].size > 0:
-                    x= self.legacy.data.get(leg_key)[keep]
-                    y= self.idl.data.get(idl_key)[keep]
-                    myscatter(ax[row],x,y,
-                              color=color,m='o',s=20.,alpha=0.75, 
-                              label='%s' % leg_key)
-                    # fit line
-                    popt= np.polyfit(x,y, 1)
-                    x= np.linspace(ax[row].get_xlim()[0],ax[row].get_xlim()[1],num=2)
-                    ax[row].plot(x,popt[0]*x + popt[1],c=color,ls='--',label='m=%.2f, b=%.2f' % (popt[0],popt[1]))
-            ylab=ax[row].set_ylabel('%s N stars (idl)' % band,fontsize=FS)
-        xlab=ax[2].set_xlabel("N stars (legacy)",fontsize=FS) #0.45'' galaxy
-        for row in range(3)[::-1]:
-            ax[row].tick_params(axis='both', labelsize=tickFS)
-            leg=ax[row].legend(loc=(0.,1.02),ncol=3,scatterpoints=1,markerscale=3,fontsize=FS-5)
-        savefn='legacy_vs_idl_%s_%s.png' % (self.camera,'nstar')
-        plt.savefig(savefn,bbox_extra_artists=[leg,xlab,ylab], bbox_inches='tight')
-        plt.close() 
-        print "wrote %s" % savefn 
-
-    def star_plots(self,prefix=''):
-        FS=25
-        eFS=FS+5
-        tickFS=FS
-        xlims,ylims= None,None
-        for leg_key,idl_key in zip(['ccd_mag','apflux','apskyflux'],
-                                   ['ccd_mag','apflux','apskyflux']):
-            fig,ax= plt.subplots(3,1,figsize=(10,15))
-            plt.subplots_adjust(hspace=0.2,wspace=0.)
-            for row,band,color in zip( range(3), self.fid.bands, ['g','r','m'] ):
-                keep= self.legacy.stars.filter == band
-                if np.where(keep)[0].size > 0:
-                    x= self.legacy.stars.get(leg_key)[keep]
-                    y= self.idl.stars.get(idl_key)[keep]
-                    myscatter(ax[row],x,y,
-                              color=color,m='o',s=10.,alpha=0.75, 
-                              label='%d' % len(x))
-                    # fit line
-                    try:
-                        popt= np.polyfit(x,y, 1)
-                    except:
-                        raise ValueError
-                    x= np.linspace(ax[row].get_xlim()[0],ax[row].get_xlim()[1],num=2)
-                    ax[row].plot(x,popt[0]*x + popt[1],c="gray",ls='--',label='m=%.2f, b=%.2f' % (popt[0],popt[1]))
-                    # slope 1
-                    ax[row].plot([x.min(),x.max()],[x.min(),x.max()],'k--',lw=2)
-                    # Label
-                    ylab=ax[row].set_ylabel('%s (idl)' % idl_key,fontsize=FS)
-                    if xlims:
-                        ax[row].set_xlim(xlims[band])
-                    if ylims:
-                        ax[row].set_ylim(ylims[band])
-            xlab=ax[2].set_xlabel("%s (legacy)" % leg_key,fontsize=FS) #0.45'' galaxy
-            for row in range(3):
-                ax[row].tick_params(axis='both', labelsize=tickFS)
-                #leg=ax[row].legend(loc=(0.,1.02),ncol=3,scatterpoints=1,markerscale=3,fontsize=FS-5)
-            savefn='legacy_vs_idl_%s_%s.png' % (self.camera,leg_key)
-            plt.savefig(savefn, bbox_extra_artists=[xlab,ylab], bbox_inches='tight')
-            plt.close() 
-            print "wrote %s" % savefn 
-
-
-    def star_plots_dmag(self,prefix='',xlims=None,ylims=None,ms=50):
-        FS=25
-        eFS=FS+5
-        tickFS=FS
-        for leg_key,idl_key in zip(['ccd_mag','skymag_inap','apflux','apskyflux'],
-                                   ['ccd_mag','skymag_inap','apflux','apskyflux']):
-            fig,ax= plt.subplots(3,1,figsize=(10,15))
-            plt.subplots_adjust(hspace=0.2,wspace=0.)
-            for row,band,color in zip( range(3), self.fid.bands, ['g','r','m'] ):
-                keep= self.legacy.stars.filter == band
-                if np.where(keep)[0].size > 0:
-                    x= self.idl.stars.ccd_mag[keep]
-                    y= self.legacy.stars.get(leg_key)[keep] / self.idl.stars.get(idl_key)[keep] 
-                    myscatter(ax[row],x,y,
-                              color=color,m='o',s=ms,alpha=0.75)
-                    # lines through 0
-                    ax[row].axhline(0,color='k',linestyle='dashed',linewidth=1)
-                    # fit line
-                    #try:
-                    #    popt= np.polyfit(x,y, 1)
-                    #except:
-                    #    raise ValueError
-                    #x= np.linspace(ax[row].get_xlim()[0],ax[row].get_xlim()[1],num=2)
-                    #ax[row].plot(x,popt[0]*x + popt[1],c="gray",ls='--',label='m=%.2f, b=%.2f' % (popt[0],popt[1]))
-                    # slope 1
-                    #ax[row].plot([x.min(),x.max()],[x.min(),x.max()],'k--',lw=2)
-                    # Label
-                    ylab=ax[row].set_ylabel('%s %s (legacy / idl)' % (band,idl_key),fontsize=FS)
-                    if xlims:
-                        ax[row].set_xlim(xlims)
-                    if ylims:
-                        ax[row].set_ylim(ylims)
-            xlab=ax[2].set_xlabel("ccd_mag (idl)",fontsize=FS) #0.45'' galaxy
-            for row in range(3):
-                ax[row].tick_params(axis='both', labelsize=tickFS)
-                #leg=ax[row].legend(loc=(0.,1.02),ncol=3,scatterpoints=1,markerscale=3,fontsize=FS-5)
-            savefn='legacy_vs_idl_%s_dmag_%s_%s.png' % (self.camera,leg_key,prefix)
-            plt.savefig(savefn, bbox_extra_artists=[xlab,ylab], bbox_inches='tight')
-            plt.close() 
-            print "wrote %s" % savefn 
-
-    def star_plots_dmag_model(self,prefix='',xlims=None,ylims=None,ms=50):
-        FS=25
-        eFS=FS+5
-        tickFS=FS
-        fig,ax= plt.subplots(3,1,figsize=(10,15))
-        plt.subplots_adjust(hspace=0.2,wspace=0.)
-        for row,band,color in zip( range(3), self.fid.bands, ['g','r','m'] ):
-            keep= self.legacy.stars.filter == band
-            if np.where(keep)[0].size > 0:
-                x= self.idl.stars.ccd_mag[keep]
-                y= self.legacy.stars.apflux[keep] - self.idl.stars.apflux[keep] 
-                stddev= np.sqrt(self.legacy.stars.apflux[keep] +\
-                                self.idl.stars.apflux[keep] +\
-                                self.legacy.stars.apskyflux[keep] +\
-                                self.idl.stars.apskyflux[keep])
-                myscatter(ax[row],x,y / stddev,
-                          color=color,m='o',s=ms,alpha=0.75)
-                # lines through 0
-                #ax[row].axhline(0,color='k',linestyle='dashed',linewidth=1)
-                # Model
-                xarr_dic=dict(g=np.linspace(16,23,num=20),
-                             r=np.linspace(15,21,num=20),
-                             z=np.linspace(15,20,num=20))
-                xarr= xarr_dic[band]
-                dmag= 0.1
-                Oa,Sa= [],[]
-                for xa in xarr:
-                    samp= (keep) * (self.idl.stars.ccd_mag > xa-dmag)*(self.idl.stars.ccd_mag < xa+dmag)
-                    Oa.append( self.idl.stars.apflux[samp].mean() )
-                    Sa.append( self.idl.stars.apskyflux[samp].mean() )
-                Oa= np.array(Oa)
-                Sa= np.array(Sa)
-                print('Oa= ',Oa)
-                print('Sa= ',Sa)
-                for f,ls in zip([1.01,1.05,1.1],['dotted','solid','dashed']):
-                    y_mod= -Sa * (f-1) / np.sqrt(2*Oa + 2*Sa)
-                    print('y_mod=',y_mod)
-                    ax[row].plot(xarr, y_mod,c='k',ls=ls,lw=2,label='f = %.2f' % f)
-                # more points
-                #Oa= self.idl.stars.apflux[keep]
-                #Sa= self.idl.stars.apskyflux[keep]
-                #f=1.2
-                #y_mod= -Sa * (f-1) / np.sqrt(2*Oa + 2*Sa)
-                #print('y_mod=',y_mod)
-                #myscatter(ax[row],x,y_mod,
-                #          color='k',m='o',s=ms,alpha=0.75)
-                # fit line
-                #try:
-                #    popt= np.polyfit(x,y, 1)
-                #except:
-                #    raise ValueError
-                #x= np.linspace(ax[row].get_xlim()[0],ax[row].get_xlim()[1],num=2)
-                #ax[row].plot(x,popt[0]*x + popt[1],c="gray",ls='--',label='m=%.2f, b=%.2f' % (popt[0],popt[1]))
-                # slope 1
-                #ax[row].plot([x.min(),x.max()],[x.min(),x.max()],'k--',lw=2)
-                # Label
-                ylab=ax[row].set_ylabel('%s %s (legacy - idl)' % (band,'apflux'),fontsize=FS)
-                if xlims:
-                    ax[row].set_xlim(xlims)
-                if ylims:
-                    ax[row].set_ylim(ylims)
-                ax[row].set_ylim(-20,1)
-                #ax[row].set_yscale('log')
-                #ax[row].set_xscale('log')
-        leg=ax[0].legend(loc=(0,1.01),ncol=3)
-        xlab=ax[2].set_xlabel("ccd_mag (idl)",fontsize=FS) #0.45'' galaxy
-        for row in range(3):
-            ax[row].tick_params(axis='both', labelsize=tickFS)
-            #leg=ax[row].legend(loc=(0.,1.02),ncol=3,scatterpoints=1,markerscale=3,fontsize=FS-5)
-        savefn='legacy_vs_idl_%s_dmag_model_%s_%s.png' % (self.camera,'apskyflux',prefix)
-        plt.savefig(savefn, bbox_extra_artists=[leg,xlab,ylab], bbox_inches='tight')
-        plt.close() 
-        print "wrote %s" % savefn 
-
-
-
-
-    def star_plots_dmag_model2(self,prefix='',xlims=None,ylims=None,ms=50):
-        FS=25
-        eFS=FS+5
-        tickFS=FS
-        for leg_key,idl_key in zip(['apflux'],
-                                   ['apflux']):
-            fig,ax= plt.subplots(3,1,figsize=(10,15))
-            plt.subplots_adjust(hspace=0.2,wspace=0.)
-            for row,band,color in zip( range(3), self.fid.bands, ['g','r','m'] ):
-                keep= self.legacy.stars.filter == band
-                if np.where(keep)[0].size > 0:
-                    x= self.idl.stars.ccd_mag[keep]
-                    y= self.legacy.stars.get(leg_key)[keep] / self.idl.stars.get(idl_key)[keep] 
-                    myscatter(ax[row],x,y,
-                              color=color,m='o',s=ms,alpha=0.75)
-                    # lines through 0
-                    ax[row].axhline(0,color='k',linestyle='dashed',linewidth=1)
-                    # Model
-                    xarr= np.linspace(16,20,num=10)
-                    dmag= 0.1
-                    Oa,Sa= [],[]
-                    for xa in xarr:
-                        samp= (self.idl.stars.ccd_mag[keep] > xa-dmag)*(self.idl.stars.ccd_mag[keep] < xa+dmag)
-                        Oa.append( self.idl.stars.apflux[samp].mean() )
-                        Sa.append( self.idl.stars.apskyflux[samp].mean() )
-                    Oa= np.array(Oa)
-                    Sa= np.array(Sa)
-                    #Oa= self.idl.stars.apflux[keep]
-                    #Sa= self.idl.stars.apskyflux[keep]
-                    for f,ls in zip([1.,1.2],['dotted','dashed']):
-                        y_mod= (Oa + (1-f)*Sa) / Oa
-                        ax[row].plot(xarr, y_mod,c='k',ls=ls,lw=2)
-                    # fit line
-                    #try:
-                    #    popt= np.polyfit(x,y, 1)
-                    #except:
-                    #    raise ValueError
-                    #x= np.linspace(ax[row].get_xlim()[0],ax[row].get_xlim()[1],num=2)
-                    #ax[row].plot(x,popt[0]*x + popt[1],c="gray",ls='--',label='m=%.2f, b=%.2f' % (popt[0],popt[1]))
-                    # slope 1
-                    #ax[row].plot([x.min(),x.max()],[x.min(),x.max()],'k--',lw=2)
-                    # Label
-                    ylab=ax[row].set_ylabel('%s %s (legacy / idl)' % (band,idl_key),fontsize=FS)
-                    if xlims:
-                        ax[row].set_xlim(xlims)
-                    if ylims:
-                        ax[row].set_ylim(ylims)
-                    ax[row].set_yscale('log')
-                    #ax[row].set_xscale('log')
-            xlab=ax[2].set_xlabel("ccd_mag (idl)",fontsize=FS) #0.45'' galaxy
-            for row in range(3):
-                ax[row].tick_params(axis='both', labelsize=tickFS)
-                #leg=ax[row].legend(loc=(0.,1.02),ncol=3,scatterpoints=1,markerscale=3,fontsize=FS-5)
-            savefn='legacy_vs_idl_%s_dmag_model2_%s_%s.png' % (self.camera,leg_key,prefix)
-            plt.savefig(savefn, bbox_extra_artists=[xlab,ylab], bbox_inches='tight')
-            plt.close() 
-            print "wrote %s" % savefn 
-
-
-
-    def star_plots_leg_corrected_w_idl_sky(self,prefix='',xlims=None,ylims=None,ms=50):
-        ''''''
-        FS=25
-        eFS=FS+5
-        tickFS=FS
-        fig,ax= plt.subplots(3,1,figsize=(10,15))
-        plt.subplots_adjust(hspace=0.2,wspace=0.)
-        for row,band,color in zip( range(3), self.fid.bands, ['g','r','m'] ):
-            keep= self.legacy.stars.filter == band
-            if np.where(keep)[0].size > 0:
-                raise ValueError
-                apskyflux_diff= self.legacy.stars.apskyflux[keep] - self.idl.stars.apskyflux[keep] 
-                Ne_leg= self.legacy.stars.apflux[keep] + apskyflux_diff
-                Ne_idl= self.idl.stars.apflux[keep]
-                x= apskyflux_diff
-                y= Ne_leg / Ne_idl
-                myscatter(ax[row],x,y,
-                          color=color,m='o',s=ms,alpha=0.75)
-                # lines through 1
-                ax[row].axhline(1,color='k',linestyle='dashed',linewidth=1)
-                # fit line
-                #try:
-                #    popt= np.polyfit(x,y, 1)
-                #except:
-                #    raise ValueError
-                #x= np.linspace(ax[row].get_xlim()[0],ax[row].get_xlim()[1],num=2)
-                #ax[row].plot(x,popt[0]*x + popt[1],c="gray",ls='--',label='m=%.2f, b=%.2f' % (popt[0],popt[1]))
-                # slope 1
-                #ax[row].plot([x.min(),x.max()],[x.min(),x.max()],'k--',lw=2)
-                # Label
-                ylab=ax[row].set_ylabel('%s f_leg\'/f_idl' % (band,),fontsize=FS)
-                if xlims:
-                    ax[row].set_xlim(xlims)
-                if ylims:
-                    ax[row].set_ylim(ylims)
-        xlab=ax[2].set_xlabel("sky_leg - sky_idl",fontsize=FS) #0.45'' galaxy
-        for row in range(3):
-            ax[row].tick_params(axis='both', labelsize=tickFS)
-            #leg=ax[row].legend(loc=(0.,1.02),ncol=3,scatterpoints=1,markerscale=3,fontsize=FS-5)
-        savefn='legacy_vs_idl_%s_fleg_fidl_%s.png' % (self.camera,prefix)
-        plt.savefig(savefn, bbox_extra_artists=[xlab,ylab], bbox_inches='tight')
-        plt.close() 
-        print "wrote %s" % savefn 
-
-
-
-    def star_plots_dmag_dmag(self,prefix='',xlims=None,ylims=None,ms=50):
-        '''delta ccd_mag versus delta skymag_inap'''
-        FS=25
-        eFS=FS+5
-        tickFS=FS
-        fig,ax= plt.subplots(3,1,figsize=(10,15))
-        plt.subplots_adjust(hspace=0.2,wspace=0.)
-        for row,band,color in zip( range(3), self.fid.bands, ['g','r','m'] ):
-            keep= self.legacy.stars.filter == band
-            if np.where(keep)[0].size > 0:
-                x= self.legacy.stars.skymag_inap[keep] - self.idl.stars.skymag_inap[keep]
-                y= self.legacy.stars.ccd_mag[keep] - self.idl.stars.ccd_mag[keep]
-                myscatter(ax[row],x,y,
-                          color=color,m='o',s=ms,alpha=0.75)
-                # lines through 0
-                ax[row].axhline(0,color='k',linestyle='dashed',linewidth=1)
-                ax[row].axvline(0,color='k',linestyle='dashed',linewidth=1)
-                # fit line
-                #try:
-                #    popt= np.polyfit(x,y, 1)
-                #except:
-                #    raise ValueError
-                #x= np.linspace(ax[row].get_xlim()[0],ax[row].get_xlim()[1],num=2)
-                #ax[row].plot(x,popt[0]*x + popt[1],c="gray",ls='--',label='m=%.2f, b=%.2f' % (popt[0],popt[1]))
-                # slope 1
-                #ax[row].plot([x.min(),x.max()],[x.min(),x.max()],'k--',lw=2)
-                # Label
-                ylab=ax[row].set_ylabel('%s ccd_mag (legacy - idl)' % (band,),fontsize=FS)
-                if xlims:
-                    ax[row].set_xlim(xlims)
-                if ylims:
-                    ax[row].set_ylim(ylims)
-        xlab=ax[2].set_xlabel("skymag_inap (legacy - idl)",fontsize=FS) #0.45'' galaxy
-        for row in range(3):
-            ax[row].tick_params(axis='both', labelsize=tickFS)
-            #leg=ax[row].legend(loc=(0.,1.02),ncol=3,scatterpoints=1,markerscale=3,fontsize=FS-5)
-        savefn='legacy_vs_idl_%s_ccdmag_skymaginap_%s.png' % (self.camera,prefix)
-        plt.savefig(savefn, bbox_extra_artists=[xlab,ylab], bbox_inches='tight')
-        plt.close() 
-        print "wrote %s" % savefn 
-
-    def star_plots_dmag_div_err(self,prefix='',xlims=None,ylims=None,ms=50):
-        FS=25
-        eFS=FS+5
-        tickFS=FS
-        for leg_key,idl_key in zip(['apflux'],
-                                   ['apflux']):
-            fig,ax= plt.subplots(3,1,figsize=(10,15))
-            plt.subplots_adjust(hspace=0.2,wspace=0.)
-            for row,band,color in zip( range(3), self.fid.bands, ['g','r','m'] ):
-                keep= self.legacy.stars.filter == band
-                if np.where(keep)[0].size > 0:
-                    x= self.idl.stars.ccd_mag[keep]
-                    y= self.legacy.stars.get(leg_key)[keep] - self.idl.stars.get(idl_key)[keep] 
-                    stddev= np.sqrt(self.legacy.stars.apflux[keep] +\
-                                    self.idl.stars.apflux[keep] +\
-                                    self.legacy.stars.apskyflux[keep] +\
-                                    self.idl.stars.apskyflux[keep])
-                    myscatter(ax[row],x,y / stddev,
-                              color=color,m='o',s=ms,alpha=0.75)
-                    # lines through 0
-                    ax[row].axhline(0,color='k',linestyle='dashed',linewidth=1)
-                    # fit line
-                    #try:
-                    #    popt= np.polyfit(x,y, 1)
-                    #except:
-                    #    raise ValueError
-                    #x= np.linspace(ax[row].get_xlim()[0],ax[row].get_xlim()[1],num=2)
-                    #ax[row].plot(x,popt[0]*x + popt[1],c="gray",ls='--',label='m=%.2f, b=%.2f' % (popt[0],popt[1]))
-                    # slope 1
-                    #ax[row].plot([x.min(),x.max()],[x.min(),x.max()],'k--',lw=2)
-                    # Label
-                    ylab=ax[row].set_ylabel('%s %s (legacy - idl) / sqrt(var)' % (band,idl_key),fontsize=FS)
-                    if xlims:
-                        ax[row].set_xlim(xlims)
-                    if ylims:
-                        ax[row].set_ylim(ylims)
-            xlab=ax[2].set_xlabel("ccd_mag (idl)",fontsize=FS) #0.45'' galaxy
-            for row in range(3):
-                ax[row].tick_params(axis='both', labelsize=tickFS)
-                #leg=ax[row].legend(loc=(0.,1.02),ncol=3,scatterpoints=1,markerscale=3,fontsize=FS-5)
-            savefn='legacy_vs_idl_%s_dmag_diverr_%s_%s.png' % (self.camera,leg_key,prefix)
-            plt.savefig(savefn, bbox_extra_artists=[xlab,ylab], bbox_inches='tight')
-            plt.close() 
-            print "wrote %s" % savefn 
-
-    def star_plots_dmag_div_err_sky(self,prefix='',xlims=None,ylims=None,ms=50):
-        FS=25
-        eFS=FS+5
-        tickFS=FS
-        for leg_key,idl_key in zip(['apskyflux'],
-                                   ['apskyflux']):
-            fig,ax= plt.subplots(3,1,figsize=(10,15))
-            plt.subplots_adjust(hspace=0.2,wspace=0.)
-            for row,band,color in zip( range(3), self.fid.bands, ['g','r','m'] ):
-                keep= self.legacy.stars.filter == band
-                if np.where(keep)[0].size > 0:
-                    x= self.idl.stars.ccd_mag[keep]
-                    y= self.legacy.stars.get(leg_key)[keep] - self.idl.stars.get(idl_key)[keep] 
-                    stddev= np.sqrt(self.legacy.stars.apskyflux[keep] +\
-                                    self.idl.stars.apskyflux[keep])
-                    myscatter(ax[row],x,y / stddev,
-                              color=color,m='o',s=ms,alpha=0.75)
-                    # lines through 0
-                    ax[row].axhline(0,color='k',linestyle='dashed',linewidth=1)
-                    # fit line
-                    #try:
-                    #    popt= np.polyfit(x,y, 1)
-                    #except:
-                    #    raise ValueError
-                    #x= np.linspace(ax[row].get_xlim()[0],ax[row].get_xlim()[1],num=2)
-                    #ax[row].plot(x,popt[0]*x + popt[1],c="gray",ls='--',label='m=%.2f, b=%.2f' % (popt[0],popt[1]))
-                    # slope 1
-                    #ax[row].plot([x.min(),x.max()],[x.min(),x.max()],'k--',lw=2)
-                    # Label
-                    ylab=ax[row].set_ylabel('%s %s (legacy - idl) / sqrt(var)' % (band,idl_key),fontsize=FS)
-                    if xlims:
-                        ax[row].set_xlim(xlims)
-                    if ylims:
-                        ax[row].set_ylim(ylims)
-            xlab=ax[2].set_xlabel("ccd_mag (idl)",fontsize=FS) #0.45'' galaxy
-            for row in range(3):
-                ax[row].tick_params(axis='both', labelsize=tickFS)
-                #leg=ax[row].legend(loc=(0.,1.02),ncol=3,scatterpoints=1,markerscale=3,fontsize=FS-5)
-            savefn='legacy_vs_idl_%s_dmag_diverr_sky_%s_%s.png' % (self.camera,leg_key,prefix)
-            plt.savefig(savefn, bbox_extra_artists=[xlab,ylab], bbox_inches='tight')
-            plt.close() 
-            print "wrote %s" % savefn 
-
-    def plots_apskyflux_vs_apskyflux(self,prefix=''):
-        FS=25
-        eFS=FS+5
-        tickFS=FS
-        xlims,ylims= None,None
-        fig,ax= plt.subplots(3,1,figsize=(10,15))
-        plt.subplots_adjust(hspace=0.5,wspace=0)
-        for row,band,color in zip( range(3), self.fid.bands, ['g','r','m']):
-            for leg_key,idl_key in zip(['apskyflux'],
-                                             ['apskyflux']):
-                keep= self.legacy.data.filter == band
-                if np.where(keep)[0].size > 0:
-                    x= self.idl.stars.apskyflux[keep] #/ np.sqrt(self.idl.stars.apskyflux[keep])
-                    y= self.legacy.stars.apskyflux[keep] #/ np.sqrt(self.legacy.stars.apskyflux[keep]) 
-                    myscatter(ax[row],x,y,
-                              color=color,m='o',s=20.,alpha=0.75, 
-                              label='%s' % leg_key)
-                    # fit line
-                    popt= np.polyfit(x,y, 1)
-                    x= np.linspace(ax[row].get_xlim()[0],ax[row].get_xlim()[1],num=2)
-                    ax[row].plot(x,popt[0]*x + popt[1],c=color,ls='--',label='m=%.2f, b=%.2f' % (popt[0],popt[1]))
-            ylab=ax[row].set_ylabel('%s %s (legacy)' % (band,leg_key),fontsize=FS)
-        xlab=ax[2].set_xlabel("%s (idl)" % idl_key,fontsize=FS) #0.45'' galaxy
-        for row in range(3)[::-1]:
-            ax[row].tick_params(axis='both', labelsize=tickFS)
-            leg=ax[row].legend(loc=(0.,1.02),ncol=3,scatterpoints=1,markerscale=3,fontsize=FS-5)
-        savefn='legacy_vs_idl_%s_apskyflux2_%s.png' % (self.camera,prefix)
-        plt.savefig(savefn,bbox_extra_artists=[leg,xlab,ylab], bbox_inches='tight')
-        plt.close() 
-        print "wrote %s" % savefn 
-
-
-
-    def star_plots_dmag_err_bars(self,prefix='',xlims=None,ylims=None,ms=50):
-        FS=25
-        eFS=FS+5
-        tickFS=FS
-        for leg_key,idl_key in zip(['apflux'],
-                                   ['apflux']):
-            fig,ax= plt.subplots(3,1,figsize=(10,15))
-            plt.subplots_adjust(hspace=0.2,wspace=0.)
-            for row,band,color in zip( range(3), self.fid.bands, ['g','r','m'] ):
-                keep= self.legacy.stars.filter == band
-                if np.where(keep)[0].size > 0:
-                    x= self.idl.stars.ccd_mag[keep]
-                    y= self.legacy.stars.get(leg_key)[keep] - self.idl.stars.get(idl_key)[keep] 
-                    stddev= np.sqrt(self.legacy.stars.apflux[keep] +\
-                                    self.idl.stars.apflux[keep] +\
-                                    self.legacy.stars.apskyflux[keep] +\
-                                    self.idl.stars.apskyflux[keep])
-                    myerrorbar(ax[row],x,y,yerr=stddev,
-                               color=color,m='o',s=ms,alpha=0.75)
-                    # lines through 0
-                    ax[row].axhline(0,color='k',linestyle='dashed',linewidth=1)
-                    # fit line
-                    #try:
-                    #    popt= np.polyfit(x,y, 1)
-                    #except:
-                    #    raise ValueError
-                    #x= np.linspace(ax[row].get_xlim()[0],ax[row].get_xlim()[1],num=2)
-                    #ax[row].plot(x,popt[0]*x + popt[1],c="gray",ls='--',label='m=%.2f, b=%.2f' % (popt[0],popt[1]))
-                    # slope 1
-                    #ax[row].plot([x.min(),x.max()],[x.min(),x.max()],'k--',lw=2)
-                    # Label
-                    ylab=ax[row].set_ylabel('%s %s (legacy - idl) / sqrt(var)' % (band,idl_key),fontsize=FS)
-                    if xlims:
-                        ax[row].set_xlim(xlims)
-                    if ylims:
-                        ax[row].set_ylim(ylims)
-            xlab=ax[2].set_xlabel("ccd_mag (idl)",fontsize=FS) #0.45'' galaxy
-            for row in range(3):
-                ax[row].tick_params(axis='both', labelsize=tickFS)
-                #leg=ax[row].legend(loc=(0.,1.02),ncol=3,scatterpoints=1,markerscale=3,fontsize=FS-5)
-            savefn='legacy_vs_idl_%s_dmag_errbar_%s_%s.png' % (self.camera,leg_key,prefix)
-            plt.savefig(savefn, bbox_extra_artists=[xlab,ylab], bbox_inches='tight')
-            plt.close() 
-            print "wrote %s" % savefn 
-
-
-
-    def plot_star_sn(self):
-        FS=25
-        eFS=FS+5
-        tickFS=FS
-        xlims,ylims= None,None
-        fig,ax= plt.subplots(3,1,figsize=(10,15))
-        plt.subplots_adjust(hspace=0.2,wspace=0)
-        sn={}
-        sn['idl']= self.idl.stars.apflux/ np.sqrt(self.idl.stars.apskyflux)
-        sn['idl_unm']= self.idl.stars_unm.apflux/ np.sqrt(self.idl.stars_unm.apskyflux)
-        sn['leg']= self.legacy.stars.apflux/ np.sqrt(self.legacy.stars.apskyflux)
-        sn['leg_unm']= self.legacy.stars_unm.apflux/ np.sqrt(self.legacy.stars_unm.apskyflux)
-        for row,band in zip( range(3), self.fid.bands):
-            # Legacy
-            color='b'
-            keep= self.legacy.stars.filter == band
-            if np.where(keep)[0].size > 0:
-                myhist_step(ax[row],sn['leg'][keep],bins=50,color=color,ls='solid',
-                            normed=False,lw=2,label='leg matched (%s)' % len(sn['leg'][keep]))
-            # unm
-            keep= self.legacy.stars_unm.filter == band
-            if np.where(keep)[0].size > 0:
-                myhist_step(ax[row],sn['leg_unm'][keep],bins=50,color=color,ls='dashed',
-                            normed=False,lw=2,label='leg unm (%s)' % len(sn['leg_unm'][keep]) )
-            # IDL
-            color='g'
-            keep= self.idl.stars.filter == band
-            if np.where(keep)[0].size > 0:
-                myhist_step(ax[row],sn['idl'][keep],bins=50,color=color,ls='solid',
-                            normed=False,lw=2,label='idl matched (%s)' % len(sn['idl'][keep]))
-            # unm
-            keep= self.idl.stars_unm.filter == band
-            if np.where(keep)[0].size > 0:
-                myhist_step(ax[row],sn['idl_unm'][keep],bins=50,color=color,ls='dashed',
-                            normed=False,lw=2,label='idl unm (%s)' % len(sn['idl_unm'][keep]))
-            # Label
-            ylab=ax[row].set_ylabel('N',fontsize=FS)
-            ax[row].set_xscale('log')
-        xlab=ax[2].set_xlabel("S/N",fontsize=FS) #0.45'' galaxy
-        for row in range(3):
-            ax[row].tick_params(axis='both', labelsize=tickFS)
-            #leg=ax[row].legend(loc=(0.,1.02),ncol=3,fontsize=FS-5)
-        savefn='legacy_vs_idl_%s_sn_logx.png' % (self.camera,)
-        plt.savefig(savefn, bbox_extra_artists=[xlab,ylab], bbox_inches='tight')
-        print "wrote %s" % savefn 
-        for row in range(3):
-            ax[row].set_yscale('log')
-        savefn='legacy_vs_idl_%s_sn_logxlogy.png' % (self.camera,)
-        plt.savefig(savefn, bbox_extra_artists=[xlab,ylab], bbox_inches='tight')
-        plt.close() 
-        print "wrote %s" % savefn 
-
-
-    def plot_star_gaiaoffset(self):
-        FS=25
-        eFS=FS+5
-        tickFS=FS
-        xlims,ylims= None,None
-        fig,ax= plt.subplots(3,1,figsize=(10,15))
-        plt.subplots_adjust(hspace=0.5,wspace=0.)
-        sn={}
-        for row,band in zip( range(3), self.fid.bands):
-            # IDL
-            color='g'
-            keep= self.idl.stars.filter == band
-            if np.where(keep)[0].size > 0:
-                x= self.idl.stars.raoff
-                y= self.idl.stars.decoff
-                myscatter(ax[row],x[keep],y[keep], color=color,s=20.,alpha=0.75,
-                          label='idl matched (%s)' % len(x[keep]))
-            # unm
-            keep= self.idl.stars_unm.filter == band
-            if np.where(keep)[0].size > 0:
-                x= self.idl.stars_unm.raoff
-                y= self.idl.stars_unm.decoff
-                myscatter_open(ax[row],x[keep],y[keep], color=color,s=20.,alpha=0.75,
-                               label='idl unm (%s)' % len(x[keep]))
-            # Legacy
-            color='b'
-            keep= self.legacy.stars.filter == band
-            if np.where(keep)[0].size > 0:
-                x= self.legacy.stars.radiff
-                y= self.legacy.stars.decdiff
-                myscatter(ax[row],x[keep],y[keep], color=color,s=20.,alpha=0.75,
-                          label='leg matched (%s)' % len(x[keep]))
-            # unm
-            keep= self.legacy.stars_unm.filter == band
-            if np.where(keep)[0].size > 0:
-                x= self.legacy.stars_unm.radiff
-                y= self.legacy.stars_unm.decdiff
-                myscatter_open(ax[row],x[keep],y[keep], color=color,s=20.,alpha=0.75,
-                               label='leg unm (%s)' % len(x[keep]))
-            # lines through 0
-            ax[row].axhline(0,color='k',linestyle='dashed',linewidth=1)
-            ax[row].axvline(0,color='k',linestyle='dashed',linewidth=1)
-            # Label
-            ylab=ax[row].set_ylabel('Dec Offset (arcsec)',fontsize=FS)
-            #leg=ax[row].legend(loc=(0.,1.02),ncol=3,scatterpoints=1,markerscale=3,fontsize=FS-5)
-            ax[row].set_xlim(-0.1,0.1)
-            ax[row].set_ylim(-0.1,0.1)
-            ax[row].set_aspect('equal')
-        xlab=ax[2].set_xlabel("Ra Offset (arcsec)",fontsize=FS) #0.45'' galaxy
-        for row in range(3):
-            ax[row].tick_params(axis='both', labelsize=tickFS)
-        savefn='legacy_vs_idl_%s_gaiaoffset.png' % (self.camera,)
-        plt.savefig(savefn, bbox_extra_artists=[xlab,ylab], bbox_inches='tight')
-        plt.close() 
-        print "wrote %s" % savefn 
-
-       
-#    def plot_on_ccd(ccdname='N19'):
-#        rad = 7./self.fid.pixscale
-#        # CCD filename
-#        ccd_fn= self.legacy.stars.image_filename[(self.legacy.data.expid == expid)*\
-#                                                 (self.legacy.data.ccdname == ccdname)]
-#        hdu= self.legacy.stars.image_hdu[(self.legacy.data.expid == expid)*\
-#                                         (self.legacy.data.ccdname == ccdname)]
-#        ccd_fn= os.path.join('/project/projectdirs/cosmo/staging',ccd_fn)
-#        img,h = fitsio.read(ccd_fn, ext=hdu, header=True)
-#        sz = img.shape #img.size
-#        #draw = ImageDraw.Draw(img)
-#        plt.imshow(img, interpolation='nearest', origin='lower',
-#                        cmap='gray', ticks=True,
-#                   vmin=np.percentile(img,q=5), vmax=vmin=np.percentile(img,q=95))
-#        # CCD only
-#        cuts={}
-#        cuts['idl']= (self.idl.stars.ccdname == ccdname)
-#        cuts['leg']= (self.legacy.stars.ccdname == ccdname)
-#        # Matched * on ccd
-#        tab= self.idl.stars.copy()[self.idl.stars.ccdname == ccdname]
-#        [draw.ellipse((cat.x-rad, sz[1]-cat.x-rad, 
-#                       cat.x+rad, sz[1]-cat.y+rad), outline='yellow') for cat in tab]
-#        # Legacy only * on ccd
-#        tab= self.legacy.stars_unm.copy()[self.legacy_unm.stars.ccdname == ccdname]
-#        [draw.ellipse((cat.x-rad, sz[1]-cat.x-rad, 
-#                       cat.x+rad, sz[1]-cat.y+rad), outline='yellow') for cat in tab]
-#        # IDL only * on ccd
-#        tab= self.idl.stars_unm.copy()[self.idl_unm.stars.ccdname == ccdname]
-#        [draw.ellipse((cat.x-rad, sz[1]-cat.x-rad, 
-#                       cat.x+rad, sz[1]-cat.y+rad), outline='yellow') for cat in tab]
-#        # Save
-#        im.save(qafile)
-
-#######
-# Residual plots of legacy zeropoints - arjuns
-# legacy zeropoints repackaged to arjuns colnames and units
-# -zpt & -star files
-#######
-
-class ZeropointResiduals(object):
-    '''
-    use create_zeropoint_table() to convert my -zpt.fits table into 
-        arjuns zeropoint-*.fits table
-    then run this on my converted table versus arjuns
-    '''
-    def __init__(self,legacy_zpt_fn,arjun_zpt_fn):
-        self.legacy= fits_table(legacy_zpt_fn)
-        self.idl= fits_table(arjun_zpt_fn)
-        self.match()
-        self.plot_residuals(doplot='diff')
-
-    def match(self):
-        m1, m2, d12 = match_radec(self.legacy.ccdra,self.legacy.ccddec,
-                                  self.idl.ccdra,self.idl.ccddec,1./3600.0,nearest=True)
-        self.legacy= self.legacy[m1]
-        self.idl= self.idl[m2]
-    
     def get_numeric_keys(self):
         idl_keys= \
              ['exptime','seeing', 'ra', 'dec', 
@@ -1942,8 +460,8 @@ class ZeropointResiduals(object):
         FS=25
         eFS=FS+5
         tickFS=FS
-        bands= set(self.legacy.filter)
-        ccdnums= set(self.legacy.ccdnum)
+        bands= set(self.legacy.data.filter)
+        ccdnums= set(self.legacy.data.ccdnum)
         for cnt,col in enumerate(cols):
             if use_keys:
                 if not col in use_keys:
@@ -1955,17 +473,17 @@ class ZeropointResiduals(object):
             # Loop over bands, hdus
             for row,band in zip( range(3), bands ):
                 for ccdnum,color in zip(ccdnums,['g','r','m','b','k','y']*12):
-                    keep= (self.legacy.filter == band)*\
-                          (self.legacy.ccdnum == ccdnum)
+                    keep= (self.legacy.data.filter == band)*\
+                          (self.legacy.data.ccdnum == ccdnum)
                     if np.where(keep)[0].size > 0:
-                        x= self.idl.get( col )[keep]
+                        x= self.idl.data.get( col )[keep]
                         xlabel= 'IDL'
                         if doplot == 'diff':
-                            y= self.legacy.get(col)[keep] - self.idl.get(col)[keep]
+                            y= self.legacy.data.get(col)[keep] - self.idl.data.get(col)[keep]
                             y_horiz= 0
                             ylabel= 'Legacy - IDL'
                         elif doplot == 'div':
-                            y= self.legacy.get(col)[keep] / self.idl.get(col)[keep]
+                            y= self.legacy.data.get(col)[keep] / self.idl.data.get(col)[keep]
                             y_horiz= 1
                             ylabel= 'Legacy / IDL'
                         myscatter(ax[row],x,y,color=color,m='o',s=ms,alpha=0.75) 
@@ -1986,24 +504,46 @@ class ZeropointResiduals(object):
             print "wrote %s" % savefn 
 
 
-class MatchesResiduals(object):
-    '''
-    use create_matches_table() to convert my -star.fits table into 
-        arjuns matches-*.fits table
-    then run this on my converted table versus arjuns
-    '''
-    def __init__(self,legacy_fn,arjun_fn):
-        self.legacy= fits_table(legacy_fn)
-        self.idl= fits_table(arjun_fn)
-        self.match()
-        self.plot_residuals(doplot='diff')
-
-    def match(self):
-        m1, m2, d12 = match_radec(self.legacy.ccd_ra,self.legacy.ccd_dec,
-                                  self.idl.ccd_ra,self.idl.ccd_dec,1./3600.0,nearest=True)
-        self.legacy= self.legacy[m1]
-        self.idl= self.idl[m2]
+class StarResiduals(object):    
+    """Matches star data to idl and plots residuals
     
+    Attributes:
+        camera: decam,mosaic,90prime
+        savedir: has to write merged star file somewhere
+        leg_list: list of legacy star files
+        idl_list: list of idl star files
+
+    Example:
+        leg_fns= glob(os.path.join(os.getenv['CSCRATCH'],
+                                   'dr5_zpts/decam',
+                                   'c4d*-star.fits')
+        idl_fns= glob(os.path.join(os.getenv['CSCRATCH'],
+                                   'arjundey_Test/AD_exact_skymed',
+                                   'matches*.fits')
+        star= StarResiduals(camera='decam',savedir='.',
+                            leg_list=leg_list,
+                            idl_list=idl_list)
+        star.load_data()
+        star.convert_legacy()
+        star.match(ra_key='ccd_ra',dec_key='ccd_dec')
+        star.plot_residuals(doplot='diff') 
+    """
+
+    def __init__(self,camera='decam',savedir='./',
+                 leg_list=[],
+                 idl_list=[]):
+        super(StarResiduals, self).__init__(camera,savidir,
+                                            leg_list,idl_list)
+    
+    def convert_legacy(self):
+        # Converts to idl names, units
+        band= list( set(self.legacy.data.filter) )
+        assert(len(band) == 1)
+        self.legacy.data= convert_stars_table(self.legacy.data,
+                                              zp_fid=self.legacy.fid.zp0[band],
+                                              pixscale=self.legacy.fid.pixscale)
+
+
     def get_numeric_keys(self):
         idl_keys= \
             ['ccd_x','ccd_y','ccd_ra','ccd_dec',
@@ -2052,8 +592,8 @@ class MatchesResiduals(object):
         FS=25
         eFS=FS+5
         tickFS=FS
-        bands= set(self.legacy.filter)
-        ccdnums= set(self.legacy.image_hdu)
+        bands= set(self.legacy.data.filter)
+        ccdnums= set(self.legacy.data.image_hdu)
         for cnt,col in enumerate(cols):
             if use_keys:
                 if not col in use_keys:
@@ -2065,17 +605,17 @@ class MatchesResiduals(object):
             # Loop over bands, hdus
             for row,band in zip( range(3), bands ):
                 for ccdnum,color in zip(ccdnums,['g','r','m','b','k','y']*12):
-                    keep= (self.legacy.filter == band)*\
-                          (self.legacy.ccdnum == ccdnum)
+                    keep= (self.legacy.data.filter == band)*\
+                          (self.legacy.data.ccdnum == ccdnum)
                     if np.where(keep)[0].size > 0:
-                        x= self.idl.get( col )[keep]
+                        x= self.idl.data.get( col )[keep]
                         xlabel= 'IDL'
                         if doplot == 'diff':
-                            y= self.legacy.get(col)[keep] - self.idl.get(col)[keep]
+                            y= self.legacy.data.get(col)[keep] - self.idl.data.get(col)[keep]
                             y_horiz= 0
                             ylabel= 'Legacy - IDL'
                         elif doplot == 'div':
-                            y= self.legacy.get(col)[keep] / self.idl.get(col)[keep]
+                            y= self.legacy.data.get(col)[keep] / self.idl.data.get(col)[keep]
                             y_horiz= 1
                             ylabel= 'Legacy / IDL'
                         myscatter(ax[row],x,y,color=color,m='o',s=ms,alpha=0.75) 
@@ -2095,26 +635,6 @@ class MatchesResiduals(object):
             plt.close() 
             print "wrote %s" % savefn 
 
-def band2color(band):
-    d=dict(g='g',r='r',z='m')
-    return d[band]
-
-def col2plotname(key):
-    d= dict(airmass= 'Airmass',
-            fwhm= 'FWHM (pixels)',
-            seeing= 'FWHM (arcsec)',
-            gain= 'Gain (e/ADU)',
-            skymag= 'Sky Brightness (AB mag/arcsec^2)',
-            skyrms= 'Sky RMS (e/sec/pixel)',
-            transp= 'Atmospheric Transparency',
-            zpt= 'Zeropoint (e/s)',
-            err_on_radecoff= 'Astrometric Offset Error (Std Err of Median, arcsec)',
-            err_on_phoff= r'Zeropoint Error (Std Err of Median), mag)',
-            psfdepth= r'Point-source Single Pass Depth (5$\sigma$)',
-            galdepth= r'Galaxy Single Pass Depth (5$\sigma$)')
-    d['psfdepth_extcorr']= r'Point-source Depth (5$\sigma$, ext. corrected)'
-    d['galdepth_extcorr']= r'Galaxy Depth (5$\sigma$, ext. corrected)'
-    return d.get(key,key)
 
 
 if __name__ == '__main__':

@@ -414,7 +414,7 @@ def cuts_for_brick_2016p122(legacy_fn,survey_fn):
     print('Wrote %s' % fn)
      
 
-def read_prim_header(fn):
+def primary_hdr(fn):
     a= fitsio.FITS(fn)
     h= a[0].read_header()
     a.close()
@@ -490,13 +490,42 @@ def create_legacypipe_table(ccds_fn):
     print('Wrote %s' % outfn)
 
 
-def create_matches_table(stars_fn, zpt_fn):
-    '''Arjun's "matches-*.fits" stars table
-    input _stars_table fn, zpt_fn for its primary header
-    output Arjun's matches table, same column names but units can be different'''
-    # fiducials in the zpt header
-    kwargs= read_prim_header(zpt_fn)
-    # carry on 
+def create_matches_table(stars_fn, zp_fid=None,pixscale=0.262):
+    """Takes legacy star table fn, reads, write out converted to idl names and units
+
+    Attributes:
+      stars_fn: legacy star file, ends with -star.fits
+      zp_fid: fiducial zeropoint for the band
+      pixscale: pixscale
+
+    Example:
+        kwargs= primary_hdr(zpt_fn)
+        create_matches_table(stars_fn, 
+                             zp_fid=kwargs['zp_fid'],
+                             pixscale=kwargs['pixscale'])
+    """
+    assert('-star.fits' in stars_fn)
+    T = fits_table(stars_fn)
+    convert_stars_table(T, zp_fid=zp_fid,pixscale=pixscale)
+    # Write
+    outfn= stars_fn.replace('-star.fits','-matches.fits')
+    T.writeto(outfn) #, columns=cols, header=hdr, primheader=primhdr, units=units)
+    print('Wrote %s' % outfn)
+
+def convert_stars_table(T, zp_fid=None,pixscale=0.262):
+    """Converts legacy star fits table (T) to idl names and units
+
+    Attributes:
+      T: legacy star fits table
+      zp_fid: fiducial zeropoint for the band
+      pixscale: pixscale
+
+    Example:
+        kwargs= primary_hdr(zpt_fn)
+        T= fits_table(stars_fn)
+        newT= convert_stars_table(T, zp_fid=kwargs['zp_fid'],
+                                     pixscale=kwargs['pixscale'])
+    """ 
     need_arjuns_keys= ['filename','expnum','extname',
                        'ccd_x','ccd_y','ccd_ra','ccd_dec',
                        'ccd_mag','ccd_sky',
@@ -505,10 +534,7 @@ def create_matches_table(stars_fn, zpt_fn):
                        'nmatch',
                        'gmag','ps1_g','ps1_r','ps1_i','ps1_z']
     extra_keys= ['image_hdu','filter'] # Check for hdu and band depenent trends
-    # Load full zpt table
-    assert('-star.fits' in stars_fn)
-    # HACK: need magoff
-    T = fits_table(stars_fn)
+    # 
     extname=[ccdname for _,ccdname in np.char.split(T.expid,'-')]
     T.set('extname', np.array(extname))
     # AB mag of stars using fiducial ZP to convert
@@ -534,10 +560,8 @@ def create_matches_table(stars_fn, zpt_fn):
         T.delete_column(key)
         #if key in units.keys():
         #    _= units.pop(key)
-    # legacypipe/merge-zeropoints.py
-    outfn=stars_fn.replace('-star.fits','-matches.fits')
-    T.writeto(outfn) #, columns=cols, header=hdr, primheader=primhdr, units=units)
-    print('Wrote %s' % outfn)
+    return T
+
 
 def create_zeropoints_table(zpt_fn):
     assert('-zpt.fits' in zpt_fn)
@@ -548,7 +572,7 @@ def create_zeropoints_table(zpt_fn):
     T.writeto(outfn) #, columns=cols, header=hdr, primheader=primhdr, units=units)
     print('Wrote %s' % outfn)
 
-def legacy2idl_zpts(T):
+def convert_zeropoints_table(T):
     '''Arjun's "zeropoint-*.fits" zpts table
     input _ccds_table fn
     output same thing but with Arjun's column names and units'''
