@@ -512,13 +512,27 @@ def create_matches_table(stars_fn, zp_fid=None,pixscale=0.262):
     T.writeto(outfn) #, columns=cols, header=hdr, primheader=primhdr, units=units)
     print('Wrote %s' % outfn)
 
-def convert_stars_table(T, zp_fid=None,pixscale=0.262):
+def lookup_exptime(expnum_arr, num2time_dic):
+    """return arr of exposure times given list of expnums and mapping dict
+
+    Args:
+        expnum_arr: list like of exposure numbers
+        num2time_dic: mapping from exposure numbers to exposure times
+    """
+    time_arr= np.zeros(len(expnum_arr))-1 
+    for expnum in num2time_dic.keys():
+        time_arr[expnum_arr == expnum]= num2time_dic[expnum]
+    return time_arr
+
+def convert_stars_table(T, zp_fid=None,pixscale=0.262,
+                        expnum2exptime={}):
     """Converts legacy star fits table (T) to idl names and units
 
     Attributes:
       T: legacy star fits table
       zp_fid: fiducial zeropoint for the band
       pixscale: pixscale
+      expnum2exptime: dict mapping expnum to exptime
 
     Example:
         kwargs= primary_hdr(zpt_fn)
@@ -538,10 +552,11 @@ def convert_stars_table(T, zp_fid=None,pixscale=0.262):
     extname=[ccdname for _,ccdname in np.char.split(T.expid,'-')]
     T.set('extname', np.array(extname))
     # AB mag of stars using fiducial ZP to convert
+    T.set('exptime', lookup_exptime(T.expnum, expnum2exptime))
     T.set('ccd_mag',-2.5 * np.log10(T.apflux / T.exptime) +  \
-                        kwargs['zp_fid'])
+                        zp_fid)
     # ADU per pixel from sky aperture 
-    area= np.pi*3.5**2/kwargs['pixscale']**2
+    area= np.pi*3.5**2/pixscale**2
     T.set('ccd_sky', T.apskyflux / area / T.gain)
     # Arjuns ccd_sky is ADUs in 7-10 arcsec sky aperture
     # e.g. sky (total e/pix/sec)= ccd_sky (ADU) * gain / exptime

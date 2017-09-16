@@ -90,9 +90,17 @@ class LegacyZpts(object):
     
     Has additional info get fiducial values
 
+    Args:
+        zpt_list: list of -zpt or -star.fits file
+        camera: decam,mosaic,90prime
+        savedir: where to write temptable
+        temptablename: unique suffix for temptable
+
     Attributes:
         zpt_list: list of -zpt or -star.fits file
         camera: decam,mosaic,90prime
+        savedir: where to write temptable
+        temptablename: unique suffix for temptable
         fid: get_fiducial dict
         data: merged fits table of zpt_list 
 
@@ -104,11 +112,14 @@ class LegacyZpts(object):
         Z.load_data() 
     """
 
-    def __init__(self,zpt_list=None,camera=None,savedir='./'):
+    def __init__(self,zpt_list=None,camera=None,
+                 savedir='./', temptable_name=None):
         '''
         '''
+        assert(len(zpt_list) > 0)
         self.zpt_list= zpt_list
         self.camera= camera
+        self.temptable_name= temptable_name
         if savedir:
             self.savedir= savedir
         else:
@@ -118,7 +129,12 @@ class LegacyZpts(object):
         self.fid= params.get_fiducial(camera=self.camera)
 
     def get_merge_fn(self):
-        return os.path.join(self.savedir,'merged_tables.fits')
+        suff=''
+        if self.temptable_name:
+            suff= '_%s' % self.temptable_name
+        return os.path.join(self.savedir,
+                            'temptable_%s%s.fits' % 
+                               (self.camera,suff))
 
     def load_data(self):
         '''merge the fits_tables in zpt_list 

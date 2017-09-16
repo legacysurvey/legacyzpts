@@ -13,6 +13,7 @@ import matplotlib.pyplot as plt
 import os
 import numpy as np
 import pickle
+import json
 #from sklearn.neighbors import KernelDensity
 from collections import defaultdict
 from scipy.stats import sigmaclip
@@ -26,8 +27,9 @@ from tractor.sfd import SFDMap
 from tractor.brightness import NanoMaggies
 
 from legacyzpts.qa import params
-from legacyzpts.qa.paper_plots import LegacyZpts
-from legacyzpts.legacy_zeropoints import legacy2idl_zpts
+from legacyzpts.qa.paper_plots import LegacyZpts, myscatter
+from legacyzpts.legacy_zeropoints import convert_zeropoints_table
+from legacyzpts.legacy_zeropoints import convert_stars_table
 
 mygray='0.6'
 
@@ -187,7 +189,7 @@ class Legacy_vs_IDL(object):
     def __init__(self,camera='decam',savedir='./',
                  zpts_or_stars='zpts',
                  leg_list=[],
-                 idl_list=[])
+                 idl_list=[]):
         assert(zpts_or_stars in ['zpts','stars'])
         self.camera= camera
         self.zpts_or_stars= zpts_or_stars
@@ -353,19 +355,21 @@ class Residuals(object):
 
     def __init__(self,camera='decam',savedir='./',
                  leg_list=[],
-                 idl_list=[])
+                 idl_list=[]):
         self.camera= camera
         self.savedir= savedir
-        self.idl= LegacyZpts(zpt_list=idl_list, camera=camera, savedir=savedir)
-        self.legacy= LegacyZpts(zpt_list=leg_list, camera=camera,savedir=savedir)
+        self.idl= LegacyZpts(zpt_list=idl_list, temptable_name='idl',
+                             camera=camera, savedir=savedir)
+        self.legacy= LegacyZpts(zpt_list=leg_list, temptable_name='legacy',
+                                camera=camera,savedir=savedir)
 
     def load_data(self):
         """Add zeropoints data to LegacyZpts objects"""
-        self.idl.load()
-        self.legacy.load()
+        self.idl.load_data()
+        self.legacy.load_data()
 
 
-    def match(self,ra_key='ccdra',dec_key='ccdec'):
+    def match(self,ra_key='ccdra',dec_key='ccddec'):
         """Cut data to matching ccd centers"""
         m1, m2, d12 = match_radec(self.legacy.data.get(ra_key),self.legacy.data.get(dec_key),
                                   self.idl.data.get(ra_key),self.idl.data.get(dec_key),
@@ -395,19 +399,30 @@ class ZptResiduals(Residuals):
                           idl_list=idl_list)
         zpt.load_data()
         zpt.convert_legacy()
-        zpt.match(ra_key='ccdra',dec_key='ccdec')
+        zpt.match(ra_key='ccdra',dec_key='ccddec')
         zpt.plot_residuals(doplot='diff') 
     """
 
     def __init__(self,camera='decam',savedir='./',
                  leg_list=[],
                  idl_list=[]):
-        super(ZptResiduals, self).__init__(camera,savidir,
+        super(ZptResiduals, self).__init__(camera,savedir,
                                            leg_list,idl_list)
     
+    def write_json_expnum2var(self, var,json_fn):
+        """writes dict mapping 'expnum' to some variable like 'exptime'"""
+        expnums= set(self.legacy.data.expnum)
+        d= {str(expnum): float(self.legacy.data.get(var)[
+                            self.legacy.data.expnum == expnum
+                         ][0]) 
+            for expnum in expnums}
+        json.dump(d, open(json_fn,'w'))
+        print('Wrote %s' % json_fn)
+
     def convert_legacy(self):
         # Converts to idl names, units
         self.legacy.data= convert_zeropoints_table(self.legacy.data)
+
 
     def get_numeric_keys(self):
         idl_keys= \
@@ -460,7 +475,7 @@ class ZptResiduals(Residuals):
         FS=25
         eFS=FS+5
         tickFS=FS
-        bands= set(self.legacy.data.filter)
+        bands= np.sort(list(set(self.legacy.data.filter)))
         ccdnums= set(self.legacy.data.ccdnum)
         for cnt,col in enumerate(cols):
             if use_keys:
@@ -488,30 +503,37 @@ class ZptResiduals(Residuals):
                             ylabel= 'Legacy / IDL'
                         myscatter(ax[row],x,y,color=color,m='o',s=ms,alpha=0.75) 
                         ax[row].axhline(y_horiz,color='k',linestyle='dashed',linewidth=1)
-                        #ax[row].text(0.025,0.88,idl_key,\
+                        #ax[row].text(0.025,0.88,idl_key,
                         #             va='center',ha='left',transform=ax[cnt].transAxes,fontsize=20)
                         ylab= ax[row].set_ylabel(ylabel,fontsize=FS)
+                # Label grz
+                ax[row].text(0.9,0.9,band, 
+                             transform=ax[row].transAxes,
+                             fontsize=FS)
             xlab = ax[row].set_xlabel(xlabel,fontsize=FS)
+            supti= ax[0].set_title(col,fontsize=FS)
             for row in range(3):
                 ax[row].tick_params(axis='both', labelsize=tickFS)
                 if ylim[col]:
                     ax[row].set_ylim(ylim[col])
                 if xlim[col]:
                     ax[row].set_xlim(xlim[col])
-            savefn="zeropointresiduals_%s_%s.png" % (doplot,col)
+            savefn=os.path.join(self.savedir,
+                                "zeropointresiduals_%s_%s.png" % 
+                                    (doplot,col))
             plt.savefig(savefn, bbox_extra_artists=[xlab,ylab], bbox_inches='tight')
             plt.close() 
             print "wrote %s" % savefn 
 
 
-class StarResiduals(object):    
+class StarResiduals(Residuals): 
     """Matches star data to idl and plots residuals
     
     Attributes:
         camera: decam,mosaic,90prime
-        savedir: has to write merged star file somewhere
-        leg_list: list of legacy star files
-        idl_list: list of idl star files
+        savedir: has to write merged zpts file somewhere
+        leg_list: list of legacy zpt files
+        idl_list: list of idl zpt files
 
     Example:
         leg_fns= glob(os.path.join(os.getenv['CSCRATCH'],
@@ -520,29 +542,49 @@ class StarResiduals(object):
         idl_fns= glob(os.path.join(os.getenv['CSCRATCH'],
                                    'arjundey_Test/AD_exact_skymed',
                                    'matches*.fits')
-        star= StarResiduals(camera='decam',savedir='.',
-                            leg_list=leg_list,
-                            idl_list=idl_list)
+        zpt= ZptResiduals(camera='decam',savedir='.',
+                          leg_list=leg_list,
+                          idl_list=idl_list)
         star.load_data()
         star.convert_legacy()
         star.match(ra_key='ccd_ra',dec_key='ccd_dec')
-        star.plot_residuals(doplot='diff') 
+        star.plot_residuals(doplot='diff')
     """
 
     def __init__(self,camera='decam',savedir='./',
                  leg_list=[],
                  idl_list=[]):
-        super(StarResiduals, self).__init__(camera,savidir,
-                                            leg_list,idl_list)
+        super(StarResiduals, self).__init__(camera,savedir,
+                                            leg_list,idl_list)    
     
-    def convert_legacy(self):
-        # Converts to idl names, units
-        band= list( set(self.legacy.data.filter) )
-        assert(len(band) == 1)
-        self.legacy.data= convert_stars_table(self.legacy.data,
-                                              zp_fid=self.legacy.fid.zp0[band],
-                                              pixscale=self.legacy.fid.pixscale)
+    def read_json(self, json_fn):
+        """return dict"""
+        f= open(json_fn, 'r')
+        print('Read %s' % json_fn)
+        return json.loads(f.read())
 
+    def add_legacy_field(self,name,json_fn):
+        """adds field 'name' to the legacy table"""
+        assert(name in ['exptime','gain'])
+        d= self.read_json(json_fn)
+        new_data= np.zeros(len(self.legacy.data)) - 1
+        for expnum in set(self.legacy.data.expnum):
+            isExp= self.legacy.data.expnum == expnum
+            new_data[isExp]= d[str(expnum)]
+        self.legacy.data.set(name, new_data)
+
+
+    def convert_legacy(self):
+        """Converts legay star table to to idl names, units"""
+        band= list( set(self.legacy.data.filter) )
+        pix= self.legacy.fid.pixscale 
+        for band in set(self.legacy.data.filter):
+            #assert(band) == 1)
+            isBand= self.legacy.data.filter == band
+            zp0= self.legacy.fid.zp0[band]
+            self.legacy.data[isBand]= convert_stars_table(
+                                            self.legacy.data[isBand],
+                                            zp_fid=zp0, pixscale=pix)
 
     def get_numeric_keys(self):
         idl_keys= \
