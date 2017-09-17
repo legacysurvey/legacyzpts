@@ -26,7 +26,7 @@ from tractor.sfd import SFDMap
 from tractor.brightness import NanoMaggies
 
 from legacyzpts.qa.params import get_fiducial, band2color, col2plotname
- 
+from legacyzpts.common import fits2pandas,save_png
 from legacyzpts.qa.paper_plots import myerrorbar
 mygray='0.6'
 
@@ -292,7 +292,6 @@ class LoadDB(object):
 
     def scatter_plots(self,data,camera='decam'):
         """data is fits_table of legacy obsdb matched values"""
-        from obiwan.common import fits2pandas,save_png
         dat= fits2pandas(data)
         val_cnts= dat['db_band'].value_counts().to_frame()
         val_cnts.plot.bar()

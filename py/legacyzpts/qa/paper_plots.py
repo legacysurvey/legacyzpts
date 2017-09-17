@@ -23,12 +23,11 @@ import fitsio
 from astrometry.util.fits import fits_table, merge_tables
 from astrometry.libkd.spherematch import match_radec
 from tractor.sfd import SFDMap
-from tractor.brightness import NanoMaggies
-
-from obiwan.theValidator.catalogues import CatalogueFuncs             
+from tractor.brightness import NanoMaggies             
 
 from legacyzpts.qa import params 
 from legacyzpts.qa.params import band2color,col2plotname
+from legacyzpts.common import merge_tables_fns
 
 mygray='0.6'
 
@@ -143,7 +142,7 @@ class LegacyZpts(object):
             # Read merged fits
             self.data= fits_table( self.get_merge_fn() )
         else: 
-            self.data= CatalogueFuncs().stack(self.zpt_list,textfile=False)
+            self.data= merge_tables_fns(self.zpt_list,textfile=False)
             self.save_data()
         print('Merged zpt data: zpts=%d' % self.num_zpts())
 
