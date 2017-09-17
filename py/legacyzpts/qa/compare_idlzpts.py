@@ -563,28 +563,33 @@ class StarResiduals(Residuals):
         print('Read %s' % json_fn)
         return json.loads(f.read())
 
-    def add_legacy_field(self,name,json_fn):
-        """adds field 'name' to the legacy table"""
-        assert(name in ['exptime','gain'])
-        d= self.read_json(json_fn)
-        new_data= np.zeros(len(self.legacy.data)) - 1
-        for expnum in set(self.legacy.data.expnum):
-            isExp= self.legacy.data.expnum == expnum
-            new_data[isExp]= d[str(expnum)]
+    def add_legacy_field(self,name,json_fn=None):
+        """adds field 'name' to the legacy table
+
+        Args:
+            name: field name to add
+            json_fn: if info not in stars table, read from json 
+        """
+        if json_fn:
+            assert(name in ['exptime','gain'])
+            d= self.read_json(json_fn)
+            new_data= np.zeros(len(self.legacy.data)) - 1
+            for expnum in set(self.legacy.data.expnum):
+                isExp= self.legacy.data.expnum == expnum
+                new_data[isExp]= d[str(expnum)]
+        else:
+            if name == 'dmagall':
+                new_data= (self.legacy.data.ps1_mag -
+                            self.legacy.data.apmag)
+            else: 
+                raise ValueError('name=%s not supported' % name)
         self.legacy.data.set(name, new_data)
 
 
     def convert_legacy(self):
         """Converts legay star table to to idl names, units"""
-        band= list( set(self.legacy.data.filter) )
-        pix= self.legacy.fid.pixscale 
-        for band in set(self.legacy.data.filter):
-            #assert(band) == 1)
-            isBand= self.legacy.data.filter == band
-            zp0= self.legacy.fid.zp0[band]
-            self.legacy.data[isBand]= convert_stars_table(
-                                            self.legacy.data[isBand],
-                                            zp_fid=zp0, pixscale=pix)
+        self.legacy.data= convert_stars_table(self.legacy.data,
+                                              camera=self.legacy.camera)
 
     def get_numeric_keys(self):
         idl_keys= \
@@ -635,7 +640,7 @@ class StarResiduals(Residuals):
         eFS=FS+5
         tickFS=FS
         bands= set(self.legacy.data.filter)
-        ccdnums= set(self.legacy.data.image_hdu)
+        ccdnames= set(np.char.strip(self.legacy.data.extname))
         for cnt,col in enumerate(cols):
             if use_keys:
                 if not col in use_keys:
@@ -644,11 +649,12 @@ class StarResiduals(Residuals):
             # Plot
             fig,ax= plt.subplots(3,1,figsize=(10,15))
             plt.subplots_adjust(hspace=0.2,wspace=0.)
-            # Loop over bands, hdus
+            # Color by prim_id = bands + ccdname
             for row,band in zip( range(3), bands ):
-                for ccdnum,color in zip(ccdnums,['g','r','m','b','k','y']*12):
-                    keep= (self.legacy.data.filter == band)*\
-                          (self.legacy.data.ccdnum == ccdnum)
+                for ccdname,color in zip(ccdnames,['g','r','m','b','k','y']*12):
+                    keep= ((self.legacy.data.filter == band) &
+                           (np.char.strip(self.legacy.data.extname) == ccdname)
+                          )
                     if np.where(keep)[0].size > 0:
                         x= self.idl.data.get( col )[keep]
                         xlabel= 'IDL'
@@ -672,7 +678,9 @@ class StarResiduals(Residuals):
                     ax[row].set_ylim(ylim[col])
                 if xlim[col]:
                     ax[row].set_xlim(xlim[col])
-            savefn="matchesresiduals_%s_%s.png" % (doplot,col)
+            savefn=os.path.join(self.savedir,
+                                "matchesresiduals_%s_%s.png" % 
+                                 (doplot,col))
             plt.savefig(savefn, bbox_extra_artists=[xlab,ylab], bbox_inches='tight')
             plt.close() 
             print "wrote %s" % savefn 

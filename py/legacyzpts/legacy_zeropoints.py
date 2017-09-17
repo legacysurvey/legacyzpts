@@ -512,20 +512,30 @@ def create_matches_table(stars_fn, zp_fid=None,pixscale=0.262):
     T.writeto(outfn) #, columns=cols, header=hdr, primheader=primhdr, units=units)
     print('Wrote %s' % outfn)
 
-def lookup_exptime(expnum_arr, num2time_dic):
-    """return arr of exposure times given list of expnums and mapping dict
+
+def convert_stars_table(T, camera=None): #zp_fid=None,pixscale=0.262):
+    """converges legacy stars to idl matches table
+
+    Note, unlike converte_zeropoints_table, must treat each band 
+      separately so loop over the bands
 
     Args:
-        expnum_arr: list like of exposure numbers
-        num2time_dic: mapping from exposure numbers to exposure times
+      T: legacy stars fits_table, can be a single stars table or a merge
+        of many stars tables
     """
-    time_arr= np.zeros(len(expnum_arr))-1 
-    for expnum in num2time_dic.keys():
-        time_arr[expnum_arr == expnum]= num2time_dic[expnum]
-    return time_arr
+    from legacyzpts.qa.params import get_fiducial
+    fid= get_fiducial(camera=camera)
+    new_T= [] 
+    for band in set(T.filter):
+        isBand= T.filter == band
+        zp0= fid.zp0[band]
+        new_T.append(
+            convert_stars_table_one_band(T[isBand],
+                            zp_fid=fid.zp0[band], 
+                            pixscale=fid.pixscale))
+    return merge_tables(new_T)
 
-def convert_stars_table(T, zp_fid=None,pixscale=0.262,
-                        expnum2exptime={}):
+def convert_stars_table_one_band(T, zp_fid=None,pixscale=0.262):
     """Converts legacy star fits table (T) to idl names and units
 
     Attributes:
@@ -540,6 +550,7 @@ def convert_stars_table(T, zp_fid=None,pixscale=0.262,
         newT= convert_stars_table(T, zp_fid=kwargs['zp_fid'],
                                      pixscale=kwargs['pixscale'])
     """ 
+    assert(len(set(T.filter)) == 1)
     need_arjuns_keys= ['filename','expnum','extname',
                        'ccd_x','ccd_y','ccd_ra','ccd_dec',
                        'ccd_mag','ccd_sky',
@@ -552,7 +563,7 @@ def convert_stars_table(T, zp_fid=None,pixscale=0.262,
     extname=[ccdname for _,ccdname in np.char.split(T.expid,'-')]
     T.set('extname', np.array(extname))
     # AB mag of stars using fiducial ZP to convert
-    T.set('exptime', lookup_exptime(T.expnum, expnum2exptime))
+    #T.set('exptime', lookup_exptime(T.expnum, expnum2exptime))
     T.set('ccd_mag',-2.5 * np.log10(T.apflux / T.exptime) +  \
                         zp_fid)
     # ADU per pixel from sky aperture 

@@ -25,7 +25,8 @@ def get_data_dir():
   return os.path.join(os.path.dirname(__file__),
                       'testdata')
 
-def test_zpts_decam():
+def test_zpts_decam(plot=False):
+  print("test_zpts_decam")
   fetch_targz(os.path.join(DOWNLOAD_DIR,
                            'idl_legacy_data.tar.gz'), 
               get_data_dir())
@@ -51,10 +52,13 @@ def test_zpts_decam():
 
   zpt.convert_legacy()
   zpt.match(ra_key='ccdra',dec_key='ccddec')
-  #zpt.plot_residuals(doplot='diff') 
+  assert(len(zpt.legacy.data) == len(zpt.idl.data) )
+  if plot:
+    zpt.plot_residuals(doplot='diff') 
 
     
-def test_stars_decam():
+def test_stars_decam(plot=False):
+  print("test_stars_decam")
   fetch_targz(os.path.join(DOWNLOAD_DIR,
                            'idl_legacy_data.tar.gz'), 
               get_data_dir())
@@ -76,10 +80,13 @@ def test_stars_decam():
   star.add_legacy_field('gain', 
             os.path.join(get_output_dir('shared'),
                          'expnum2gain.json'))
+  star.add_legacy_field('dmagall')
   star.convert_legacy()
   star.match(ra_key='ccd_ra',dec_key='ccd_dec')
-  star.plot_residuals(doplot='diff') 
+  assert(len(star.legacy.data) == len(star.idl.data) )
+  if plot:
+    star.plot_residuals(doplot='diff') 
 
 if __name__ == "__main__":
-  test_zpts_decam()
-  test_stars_decam()
+  test_zpts_decam(plot=False)
+  test_stars_decam(plot=True)
