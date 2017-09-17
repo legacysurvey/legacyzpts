@@ -54,7 +54,8 @@ def test_zpts_decam(plot=False):
   zpt.match(ra_key='ccdra',dec_key='ccddec')
   assert(len(zpt.legacy.data) == len(zpt.idl.data) )
   if plot:
-    zpt.plot_residuals(doplot='diff') 
+    zpt.plot_residuals(doplot='diff')
+  return zpt 
 
     
 def test_stars_decam(plot=False):
@@ -86,7 +87,8 @@ def test_stars_decam(plot=False):
   assert(len(star.legacy.data) == len(star.idl.data) )
   if plot:
     star.plot_residuals(doplot='diff') 
+  return star
 
 if __name__ == "__main__":
-  test_zpts_decam(plot=False)
-  test_stars_decam(plot=True)
+  zpt= test_zpts_decam(plot=False)
+  star= test_stars_decam(plot=True)

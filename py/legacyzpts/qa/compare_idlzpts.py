@@ -521,7 +521,8 @@ class ZptResiduals(Residuals):
             savefn=os.path.join(self.savedir,
                                 "zeropointresiduals_%s_%s.png" % 
                                     (doplot,col))
-            plt.savefig(savefn, bbox_extra_artists=[xlab,ylab], bbox_inches='tight')
+            plt.savefig(savefn, bbox_extra_artists=[supti,xlab,ylab], 
+                        bbox_inches='tight')
             plt.close() 
             print "wrote %s" % savefn 
 
@@ -604,7 +605,7 @@ class StarResiduals(Residuals):
     def get_defaultdict_ylim(self,doplot,ylim=None):
         ylim_dict=defaultdict(lambda: ylim)
         if doplot == 'diff':
-            ylim_dict['ccd_ra']= (-1e-8,1e-8)
+            ylim_dict['ccd_ra']= None #(-1e-8,1e-8)
             ylim_dict['ccd_dec']= ylim_dict['ra']
         elif doplot == 'div':
             pass
@@ -639,7 +640,7 @@ class StarResiduals(Residuals):
         FS=25
         eFS=FS+5
         tickFS=FS
-        bands= set(self.legacy.data.filter)
+        bands= np.sort(list(set(self.legacy.data.filter)))
         ccdnames= set(np.char.strip(self.legacy.data.extname))
         for cnt,col in enumerate(cols):
             if use_keys:
@@ -671,7 +672,12 @@ class StarResiduals(Residuals):
                         #ax[row].text(0.025,0.88,idl_key,\
                         #             va='center',ha='left',transform=ax[cnt].transAxes,fontsize=20)
                         ylab= ax[row].set_ylabel(ylabel,fontsize=FS)
-            xlab = ax[row].set_xlabel(xlabel,fontsize=FS)
+                # Label grz
+                ax[row].text(0.9,0.9,band, 
+                             transform=ax[row].transAxes,
+                             fontsize=FS)
+            xlab = ax[2].set_xlabel(xlabel,fontsize=FS)
+            supti= ax[0].set_title(col,fontsize=FS)
             for row in range(3):
                 ax[row].tick_params(axis='both', labelsize=tickFS)
                 if ylim[col]:
@@ -681,7 +687,8 @@ class StarResiduals(Residuals):
             savefn=os.path.join(self.savedir,
                                 "matchesresiduals_%s_%s.png" % 
                                  (doplot,col))
-            plt.savefig(savefn, bbox_extra_artists=[xlab,ylab], bbox_inches='tight')
+            plt.savefig(savefn, bbox_extra_artists=[supti,xlab,ylab], 
+                        bbox_inches='tight')
             plt.close() 
             print "wrote %s" % savefn 
 
