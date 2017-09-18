@@ -111,16 +111,13 @@ before_script:
     - export PYTHONPATH=$HOME/legacyzpts/py:$PYTHONPATH
 
 script:
-  #- cd $HOME/obiwan
-  #- pytest --cov --ignore py/obiwan/test/end_to_end
-  cd $HOME/legacyzpts/py/legacyzpts/test
-  pytest test_compare_legacy_idl.py
+  - cd $HOME/legacyzpts
+  - pytest tests/
+  - coverage run --source py/legacyzpts tests/test_*.py
 
 after_success:
-  echo TODO
-#  - coveralls
-#- (cd py && coveralls debug)
-#    - (cd py && coveralls)
+  - coverage report
+  - coveralls
 
 
 
