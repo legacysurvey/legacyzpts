@@ -32,6 +32,6 @@ export threads=1
 cd $zpts_code/legacyzpts/py
 python legacyzpts/legacy_zeropoints.py \
 	--camera ${camera} --image ${image_fn} --outdir ${scr_dir} \
-    >> $log 2>&1
+    >> $log 2>&1d
 
 
