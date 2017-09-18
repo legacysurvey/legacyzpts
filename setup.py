@@ -9,26 +9,22 @@ import os
 import sys
 from setuptools import setup, find_packages
 #
-# DESI support code.
-#
-from desiutil.setup import DesiTest, DesiVersion, get_version
-#
 # Begin setup
 #
 setup_keywords = dict()
 #
 # THESE SETTINGS NEED TO BE CHANGED FOR EVERY PRODUCT.
 #
-setup_keywords['name'] = 'obiwan'
-setup_keywords['description'] = 'DESI template package'
-setup_keywords['author'] = 'DESI Collaboration'
-setup_keywords['author_email'] = 'desi-data@desi.lbl.gov'
+setup_keywords['name'] = 'legacyzpts'
+setup_keywords['description'] = 'astrometric and photometric calibration'
+setup_keywords['author'] = 'K. Burleigh, J. Moustakas'
+setup_keywords['author_email'] = 'kburleigh@lbl.gov'
 setup_keywords['license'] = 'BSD'
-setup_keywords['url'] = 'https://github.com/desihub/obiwan'
+setup_keywords['url'] = 'https://github.com/legacysurvey/legacyzpts'
 #
 # END OF SETTINGS THAT NEED TO BE CHANGED.
 #
-setup_keywords['version'] = get_version(setup_keywords['name'])
+setup_keywords['version'] = '0.1.0'
 #
 # Use README.rst as long_description.
 #
@@ -46,16 +42,32 @@ if os.path.isdir('bin'):
     setup_keywords['scripts'] = [fname for fname in glob.glob(os.path.join('bin', '*'))
         if not os.path.basename(fname).endswith('.rst')]
 setup_keywords['provides'] = [setup_keywords['name']]
-setup_keywords['requires'] = ['Python (>2.7.0)']
-# setup_keywords['install_requires'] = ['Python (>2.7.0)']
+#setup_keywords['requires'] = ['Python (>2.7.0)']
+setup_keywords['install_requires'] = [
+	'Python (>2.7.0)',
+	'astropy',
+	'Cython',
+	'healpy',
+	'h5py',
+	'ipython',
+	'jupyter',
+	'matplotlib',
+	'pandas',
+	'psycopg2',
+	'six',
+	'Sphinx']
+setup_keywords['dependency_links'] = [
+	'https://github.com/legacysurvey/legacypipe.git@dr5.0#egg=legacypipe',
+	'https://github.com/dstndstn/tractor/archive/dr5.2.tar.gz',
+	'https://github.com/dstndstn/astrometry.net/releases/download/0.72/astrometry.net-0.72.tar.gz',
+	]
+#setup_keywords=['setup_requires']= ['setup.cfg','pytest-runner']
+#setup_keywords['setup_cfg']=True
+#setup_keywords['tests_require']= ['pytest']
 setup_keywords['zip_safe'] = False
 setup_keywords['use_2to3'] = False
 setup_keywords['packages'] = find_packages('py')
 setup_keywords['package_dir'] = {'':'py'}
-setup_keywords['cmdclass'] = {'version': DesiVersion,'test': DesiTest}
-setup_keywords['test_suite']='{name}.test.{name}_test_suite.{name}_test_suite'.format(**setup_keywords)
-#
-# Autogenerate command-line scripts.
 #
 # setup_keywords['entry_points'] = {'console_scripts':['desiInstall = desiutil.install.main:main']}
 #
