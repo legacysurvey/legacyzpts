@@ -1,39 +1,25 @@
 =========================================
-Welcome to obiwan's documentation!
+Welcome to legacyzptss's documentation!
 =========================================
 
 Introduction
 ============
 
-This is the documentation for obiwan.
+This is the documentation for legacyzpts.
 
 Contents
 ========
 
+The ``toctree`` directive can be used to link to other files in this
+directory and even display their sections.  See `the toctree documentation`_.
+
 .. _`the toctree documentation`: http://sphinx-doc.org/markup/toctree.html
 
 .. toctree::
-   :maxdepth: 1
+   :maxdepth: 2
 
-   priors.rst
-   draw_radec_color_z.rst
-   kenobi.rst
+   api.rst
    changes.rst
-
-The obiwan package/API
-=========================
-
-.. automodule:: obiwan
-    :members:
-
-.. automodule:: obiwan.kenobi
-    :members:
-
-.. automodule:: obiwan.priors
-    :members:
-
-.. automodule:: obiwan.draw_radec_color_z
-    :members:
 
 Indices and tables
 ==================

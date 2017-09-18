@@ -2,6 +2,11 @@
 Change Log
 ==========
 
+1.2.1 (unreleased)
+------------------
+
+* No changes yet.
+
 1.2.0 (2017-05-11)
 ------------------
 
@@ -43,7 +48,7 @@ Change Log
 ------------------
 
 * Changes to support GitHub migration.
-* Rename to desitemplate.
+* Rename to legacyzpts.
 
 0.3.2 (2015-01-16)
 ------------------
@@ -58,7 +63,7 @@ Change Log
 0.3.0 (2014-10-13)
 ------------------
 
-* Rename to desiTemplate.
+* Rename to legacyzpts.
 * More careful version checks and operators.
 
 0.2.5 (2014-06-23)
