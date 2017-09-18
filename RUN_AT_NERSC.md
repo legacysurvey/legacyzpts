@@ -26,95 +26,42 @@ find /project/projectdirs/cosmo/staging/mosaicz/MZLS_CP/CP*v2/k4m*ooi*.fits.fz >
 
 
 ### Code and Data
-Git clone the repos to a directory "obiwan_code"
+Git clone the repos to a directory "zpts_code"
 ```sh
-export obiwan_code=$CSCRATCH/obiwan_code
-mkdir $obiwan_code
-cd $obiwan_code
-git clone https://github.com/legacysurvey/obiwan.git
-git clone https://github.com/legacysurvey/theValidator.git
+export zpts_code=$CSCRATCH/zpts_code
+mkdir $zpts_code
+cd $zpts_code
+git clone https://github.com/legacysurvey/legacyzpts.git
 git clone https://github.com/legacysurvey/legacypipe.git
 cd legacypipe
 git fetch
-git checkout dr5_wobiwan 
-```
-
-Wget dataset files
-```sh
-export obiwan_data=$CSCRATCH/obiwan_data
-mkdir $obiwan_data
-cd $obiwan_data
-wget http://portal.nersc.gov/project/desi/users/kburleigh/obiwan/legacysurveydirs.tar.gz
-tar -xzvf legacysurveydirs.tar.gz
-```
-
-Dust map files
-```sh
-mkdir -p $obiwan_data/dust/maps
-cd $obiwan_data/dust/maps
-wget -c http://portal.nersc.gov/project/cosmo/temp/dstn/travis-ci/maps/SFD_dust_4096_ngp.fits
-wget -c http://portal.nersc.gov/project/cosmo/temp/dstn/travis-ci/maps/SFD_dust_4096_sgp.fits
+git checkout dr5_wobiwan
+git checkout 5134bc49240ba py/legacpipe/legacyanalysis/ps1cat.py
 ```
 
 ### Python environment
-I created a conda environment for Obiwan using Ted Kisner's [desiconda](https://github.com/desihub/desiconda.git) package for the imaging pipeline. You activate it with a NERSC "module load" command, after which you have the usual conda functionality, like "conda info -e". I put the module load command and setting additional env vars in https://github.com/legacysurvey/obiwan/blob/master/bin/run_atnersc/bashrc_obiwan, so once you git clone obiwan you simply source this file. From a clean environment on Cori,
+I created a conda environment for legacyzpts using Ted Kisner's [desiconda](https://github.com/desihub/desiconda.git) package for the imaging pipeline and then adding a few extras like pytest. You activate it with a NERSC "module load" command, after which you have the usual conda functionality, like "conda info -e". I put the module load command and setting additional env vars in https://github.com/legacysurvey/legacyzpts/blob/production/etc/modulefiles/bashrc_nersc, so once you git clone legacyzpts you simply source this file.
 ```
-source $obiwan_code/obiwan/bin/run_atnersc/bashrc_obiwan
-```
-alternatively you can copy the file to your $HOME 
-```sh
-cp $obiwan_code/obiwan/bin/run_atnersc/bashrc_obiwan
-```
-then all you have to do is login to Cori and
-```sh
-source ~/bashrc_obiwan
+source $obiwan_code/legacyzpts/etc/modulefiles/bashrc_nersc
 ```
 
-### Run unit tests
-It is a good idea to pull master before running anything
+Now run the unit tests
 ```sh
-cd $obiwan_code/obiwan
+cd $obiwan_code/legacyzpts
 git pull origin master
+pytest tests/
+coverage run --source py/legacyzpts tests/test_*.py
 ```
-
-Now run the first suite of unit tests
-```sh
-cd $obiwan_code/obiwan/py/obiwan
-pytest --cov=test/ --cov-config=test/.coveragerc --ignore=test/end_to_end test/
-```
-which should print "3 passed in ..." some number of seconds.
-
-
-If the first suite works, run the second suite. 
-```sh
-pytest --cov=test/end_to_end/test_datasets.py test/end_to_end/test_datasets.py
-```
-which should print "2 passed" and possibly some "warnings" and "ERROR: Failed to generate report: No data to report." As long as you see "2 passed" it worked! 
-
-The second suite does "end to end" tests, currently for datasets DR3 and DR5. Each injects 2 simulated ELGs into a 100x100 pixel cutout of a DECam CCD and runs the imaging pipeline on it. The outpurs are the usual imaging pipeline outputs (tractor catalogues, coadds, etc.) and obiwan metadata. 
-
-If the second test suite printed "2 passed" then you can try some production runs.
-
-### Login to the PostgreSQL DB
-The psql db at NERSC is called "desi". It's hosted at scidb2.nersc.gov and you sign in with user "desi_user. You'll need the ".pgpass" config/password file (email Kaylan for it). Then put the ".pgass" file in $HOME/ on Cori. 
-
-Make sure the bashrc_obiwan loaded the "postresql" module. Then do
-```sh
-psql -U desi_user -d desi -h scidb2.nersc.gov
-```
-It worked if that brings you to a "desi=>" prompt
+which should print "2 passed in ..." some number of seconds.
 
 ### Production Runs
 
-There are two basic ways of doing the production runs
- 1) submit a slurm job script for every brick you want to run 
- 2) automatically submit jobs with qdo
+We use "qdo" to manage are thousands of production jobs. There are two options for
+setting up the environment on compute nodes. 
+ * A) use conda: source the bashrc_nersc file in the slurm script
+ * B) use Docker: (coming soon)
 
-And two options telling the compute nodes about your python environment for obiwan
- * A) use the obiwan conda environment: source "prodenv_obiwan"
- * B) use a Docker image (coming soon)
-
-#### 1A)
+#### A)
 See https://github.com/legacysurvey/obiwan/blob/master/bin/slurm_job.sh
 
 Edit these lines:
