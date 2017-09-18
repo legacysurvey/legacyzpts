@@ -331,26 +331,33 @@ class Legacy_vs_IDL(object):
 class Residuals(object):
     """Base class for plotting legacy idl matched zpt and star residuals
 
-    Loads and matches the data, ZptResiduals and StarResiduals do the plotting
+    Loads and matches the data, ZptResiduals and StarResiduals do the 
+    plotting
     
+    Args:
+      camera: decam,mosaic,90prime
+      savedir: has to write merged zpts file somewhere
+      leg_list: list of legacy zpt files
+      idl_list: list of idl zpt files
+
     Attributes:
-        camera: decam,mosaic,90prime
-        savedir: has to write merged zpts file somewhere
-        leg_list: list of legacy zpt files
-        idl_list: list of idl zpt files
+      camera: decam,mosaic,90prime
+      savedir: has to write merged zpts file somewhere
+      leg: LegacyZpt object for legacy table
+      idl: ditto for idl table
 
     Example:
-        leg_fns= glob(os.path.join(os.getenv['CSCRATCH'],
-                                   'dr5_zpts/decam',
-                                   'c4d*-zpt.fits')
-        idl_fns= glob(os.path.join(os.getenv['CSCRATCH'],
-                                   'arjundey_Test/AD_exact_skymed',
-                                   'zeropoint*.fits')
-        zpt= Residuals(camera='decam',savedir='.',
-                       leg_list=leg_list,
-                       idl_list=idl_list)
-        zpt.load_data()
-        zpt.match() 
+    leg_fns= glob(os.path.join(os.getenv['CSCRATCH'],
+    'dr5_zpts/decam',
+    'c4d*-zpt.fits')
+    idl_fns= glob(os.path.join(os.getenv['CSCRATCH'],
+    'arjundey_Test/AD_exact_skymed',
+    'zeropoint*.fits')
+    zpt= Residuals(camera='decam',savedir='.',
+    leg_list=leg_list,
+    idl_list=idl_list)
+    zpt.load_data()
+    zpt.match() 
     """
 
     def __init__(self,camera='decam',savedir='./',
@@ -380,27 +387,33 @@ class Residuals(object):
 
 class ZptResiduals(Residuals):
     """Matches zeropoint data to idl and plots residuals
-    
+
+    Args:
+      camera: decam,mosaic,90prime
+      savedir: has to write merged zpts file somewhere
+      leg_list: list of legacy zpt files
+      idl_list: list of idl zpt files
+
     Attributes:
-        camera: decam,mosaic,90prime
-        savedir: has to write merged zpts file somewhere
-        leg_list: list of legacy zpt files
-        idl_list: list of idl zpt files
+      camera: decam,mosaic,90prime
+      savedir: has to write merged zpts file somewhere
+      leg: LegacyZpt object for legacy table
+      idl: ditto for idl table
 
     Example:
-        leg_fns= glob(os.path.join(os.getenv['CSCRATCH'],
-                                   'dr5_zpts/decam',
-                                   'c4d*-zpt.fits')
-        idl_fns= glob(os.path.join(os.getenv['CSCRATCH'],
-                                   'arjundey_Test/AD_exact_skymed',
-                                   'zeropoint*.fits')
-        zpt= ZptResiduals(camera='decam',savedir='.',
-                          leg_list=leg_list,
-                          idl_list=idl_list)
-        zpt.load_data()
-        zpt.convert_legacy()
-        zpt.match(ra_key='ccdra',dec_key='ccddec')
-        zpt.plot_residuals(doplot='diff') 
+    leg_fns= glob(os.path.join(os.getenv['CSCRATCH'],
+    'dr5_zpts/decam',
+    'c4d*-zpt.fits')
+    idl_fns= glob(os.path.join(os.getenv['CSCRATCH'],
+    'arjundey_Test/AD_exact_skymed',
+    'zeropoint*.fits')
+    zpt= ZptResiduals(camera='decam',savedir='.',
+    leg_list=leg_list,
+    idl_list=idl_list)
+    zpt.load_data()
+    zpt.convert_legacy()
+    zpt.match(ra_key='ccdra',dec_key='ccddec')
+    zpt.plot_residuals(doplot='diff') 
     """
 
     def __init__(self,camera='decam',savedir='./',
@@ -529,27 +542,33 @@ class ZptResiduals(Residuals):
 
 class StarResiduals(Residuals): 
     """Matches star data to idl and plots residuals
-    
+
+    Args:
+      camera: decam,mosaic,90prime
+      savedir: has to write merged zpts file somewhere
+      leg_list: list of legacy zpt files
+      idl_list: list of idl zpt files
+
     Attributes:
-        camera: decam,mosaic,90prime
-        savedir: has to write merged zpts file somewhere
-        leg_list: list of legacy zpt files
-        idl_list: list of idl zpt files
+      camera: decam,mosaic,90prime
+      savedir: has to write merged zpts file somewhere
+      leg: LegacyZpt object for legacy table
+      idl: ditto for idl table
 
     Example:
-        leg_fns= glob(os.path.join(os.getenv['CSCRATCH'],
-                                   'dr5_zpts/decam',
-                                   'c4d*-star.fits')
-        idl_fns= glob(os.path.join(os.getenv['CSCRATCH'],
-                                   'arjundey_Test/AD_exact_skymed',
-                                   'matches*.fits')
-        zpt= ZptResiduals(camera='decam',savedir='.',
-                          leg_list=leg_list,
-                          idl_list=idl_list)
-        star.load_data()
-        star.convert_legacy()
-        star.match(ra_key='ccd_ra',dec_key='ccd_dec')
-        star.plot_residuals(doplot='diff')
+    leg_fns= glob(os.path.join(os.getenv['CSCRATCH'],
+    'dr5_zpts/decam',
+    'c4d*-star.fits')
+    idl_fns= glob(os.path.join(os.getenv['CSCRATCH'],
+    'arjundey_Test/AD_exact_skymed',
+    'matches*.fits')
+    zpt= ZptResiduals(camera='decam',savedir='.',
+    leg_list=leg_list,
+    idl_list=idl_list)
+    star.load_data()
+    star.convert_legacy()
+    star.match(ra_key='ccd_ra',dec_key='ccd_dec')
+    star.plot_residuals(doplot='diff')
     """
 
     def __init__(self,camera='decam',savedir='./',

@@ -1,4 +1,29 @@
-# Running Obiwan @ NERSC
+# Run legacyzpts @ NERSC
+
+### Procedure
+
+1 generate file list of cpimages, e.g. for everything mzls. For example,
+```
+find /project/projectdirs/cosmo/staging/mosaicz/MZLS_CP/CP*v2/k4m*ooi*.fits.fz > mosaic_allcp.txt
+```
+2 use batch script "submit_zpts.sh" to run legacy-zeropoints.py
+ * scaling is good with 10,000+ cores
+ * key is Yu Feng's bcast, we made tar.gz files for all the NERSC HPCPorts modules and Yu's bcast efficiently copies them to ram on every compute node for fast python startup
+ * the directory containing the tar.gz files is /global/homes/k/kaylanb/repos/yu-bcase
+ * also on kaylans tape: bcast_hpcp.tar
+3 queus
+ * debug queue gets all zeropoints done < 30 min
+ * set SBATCH -N to be as many nodes as will give you mpi tasks = nodes*cores_per_nodes ~ number of cp images
+ * ouput ALL plots with --verboseplots, ie Moffat PSF fits to 20 brightest stars for FWHM
+ 4 Make a file (e.g. zpt_files.txt) listing all the zeropoint files you just made (not includeing the -star.fits ones), then 
+  * compare legacy zeropoints to Arjuns 
+  ```
+  python legacy-zeropoints.py --image_list zpt_files.txt --compare2arjun
+  ```
+  * gather all zeropoint files into one fits table
+  ```python legacy-zeropoints-gather.py --file_list zpt_files.txt --nproc 1 --outname gathered_zpts.fits
+  ```
+
 
 ### Code and Data
 Git clone the repos to a directory "obiwan_code"

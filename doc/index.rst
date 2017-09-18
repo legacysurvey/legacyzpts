@@ -1,5 +1,5 @@
 =========================================
-Welcome to legacyzptss's documentation!
+Welcome to legacyzpts's documentation!
 =========================================
 
 Introduction
@@ -10,16 +10,26 @@ This is the documentation for legacyzpts.
 Contents
 ========
 
-The ``toctree`` directive can be used to link to other files in this
-directory and even display their sections.  See `the toctree documentation`_.
-
 .. _`the toctree documentation`: http://sphinx-doc.org/markup/toctree.html
 
 .. toctree::
-   :maxdepth: 2
+   :maxdepth: 1
 
-   api.rst
+   legacy_zeropoints.rst
+   qa.compare_idlzpts.rst
    changes.rst
+
+The legacyzpts package/API
+==========================
+
+.. automodule:: legacyzpts
+    :members:
+
+.. automodule:: legacyzpts.legacy_zeropoints
+    :members:
+
+.. automodule:: legacyzpts.qa.compare_idlzpts
+    :members:
 
 Indices and tables
 ==================

@@ -1,77 +1,3 @@
-#!/usr/bin/env python
-
-"""
-RUN
-=== 
-1) generate file list of cpimages, e.g. for everything mzls
-find /project/projectdirs/cosmo/staging/mosaicz/MZLS_CP/CP*v2/k4m*ooi*.fits.fz > mosaic_allcp.txt
-2) use batch script "submit_zpts.sh" to run legacy-zeropoints.py
--- scaling is good with 10,000+ cores
-   -- key is Yu Feng's bcast, we made tar.gz files for all the NERSC HPCPorts modules and Yu's bcast efficiently copies them to ram on every compute node for fast python startup
-   -- the directory containing the tar.gz files is /global/homes/k/kaylanb/repos/yu-bcase
-      also on kaylans tape: bcast_hpcp.tar
--- debug queue gets all zeropoints done < 30 min
--- set SBATCH -N to be as many nodes as will give you mpi tasks = nodes*cores_per_nodes ~ number of cp images
--- ouput ALL plots with --verboseplots, ie Moffat PSF fits to 20 brightest stars for FWHM
-3) Make a file (e.g. zpt_files.txt) listing all the zeropoint files you just made (not includeing the -star.fits ones), then 
-    a) compare legacy zeropoints to Arjuns 
-        run from loggin node: 
-        python legacy-zeropoints.py --image_list zpt_files.txt --compare2arjun
-    b) gather all zeropoint files into one fits table
-        run from loggin node
-            python legacy-zeropoints-gather.py --file_list zpt_files.txt --nproc 1 --outname gathered_zpts.fits
-        OR if that takes too long, runs out of memory, etc, run with mpi tasks
-            uncomment relavent lines of submit_zpts.sh, comment out running legacy-zeropoints.py
-            <= 50 mpi tasks is fine
-            sbatch submit_zpts.sh 
-
-UNITS
-=====
-match Arjun's decstat,moststat,bokstat.pro 
-
-DOC
-===
-Generate a legacypipe-compatible CCD-level zeropoints file for a given set of
-(reduced) BASS, MzLS, or DECaLS imaging.
-
-This script borrows liberally from code written by Ian, Kaylan, Dustin, David
-S. and Arjun, including rapala.survey.bass_ccds, legacypipe.simple-bok-ccds,
-obsbot.measure_raw, and the IDL codes decstat and mosstat.
-
-Although the script was developed to run on the temporarily repackaged BASS data
-created by the script legacyccds/repackage-bass.py (which writes out
-multi-extension FITS files with a different naming convention relative to what
-NAOC delivers), it is largely camera-agnostic, and should therefore eventually
-be able to be used to derive zeropoints for all the Legacy Survey imaging.
-
-On edison the repackaged BASS data are located in
-/scratch2/scratchdirs/ioannis/bok-reduced with the correct permissions.
-
-Proposed changes to the -ccds.fits file used by legacypipe:
- * Rename arawgain --> gain to be camera-agnostic.
- * The quantities ccdzpta and ccdzptb are specific to DECam, while for 90prime
-   these quantities are ccdzpt1, ccdzpt2, ccdzpt3, and ccdzpt4.  These columns
-   can be kept in the -zeropoints.fits file but should be removed from the final
-   -ccds.fits file.
- * The pipeline uses the SE-measured FWHM (FWHM, pixels) to do source detection
-   and to estimate the depth, instead of SEEING (FWHM, arcsec), which is
-   measured by decstat in the case of DECam.  We should remove our dependence on
-   SExtractor and simply use the seeing/fwhm estimate measured by us (e.g., this
-   code).
- * The pixel scale should be added to the output file, although it can be gotten
-   from the CD matrix.
- * AVSKY should be converted to electron or electron/s, to account for
-   the varying gain of the amplifiers.  It's actually not even clear
-   we need this header keyword.
- * We probably shouldn't cross-match against the tiles file in this code (but
-   instead in something like merge-zeropoints), but what else from the annotated
-   CCDs file should be directly calculated and stored here?
- * Are ccdnum and image_hdu redundant?
-
-REVISION HISTORY:
-    13-Sept-2016 J. Moustakas
-    15-Dec-2016  K. Burleigh
-"""
 from __future__ import division, print_function
 if __name__ == '__main__':
     import matplotlib
@@ -119,12 +45,15 @@ from contextlib import contextmanager
 
 @contextmanager
 def stdouterr_redirected(to=os.devnull, comm=None):
-    '''
+    '''assign unique log file to each mpi task
+
     Based on http://stackoverflow.com/questions/5081657
+    
+    Example:
     import os
     with stdouterr_redirected(to=filename):
-        print("from Python")
-        os.system("echo non-Python applications are also supported")
+    print("from Python")
+    os.system("echo non-Python applications are also supported")
     '''
     sys.stdout.flush()
     sys.stderr.flush()
@@ -493,16 +422,15 @@ def create_legacypipe_table(ccds_fn):
 def create_matches_table(stars_fn, zp_fid=None,pixscale=0.262):
     """Takes legacy star table fn, reads, write out converted to idl names and units
 
-    Attributes:
+    Args:
       stars_fn: legacy star file, ends with -star.fits
       zp_fid: fiducial zeropoint for the band
       pixscale: pixscale
 
     Example:
-        kwargs= primary_hdr(zpt_fn)
-        create_matches_table(stars_fn, 
-                             zp_fid=kwargs['zp_fid'],
-                             pixscale=kwargs['pixscale'])
+    kwargs= primary_hdr(zpt_fn)
+    create_matches_table(stars_fn, zp_fid=kwargs['zp_fid'],
+    pixscale=kwargs['pixscale'])
     """
     assert('-star.fits' in stars_fn)
     T = fits_table(stars_fn)
@@ -537,18 +465,18 @@ def convert_stars_table(T, camera=None): #zp_fid=None,pixscale=0.262):
 
 def convert_stars_table_one_band(T, zp_fid=None,pixscale=0.262):
     """Converts legacy star fits table (T) to idl names and units
-
+    
     Attributes:
       T: legacy star fits table
       zp_fid: fiducial zeropoint for the band
       pixscale: pixscale
       expnum2exptime: dict mapping expnum to exptime
-
+    
     Example:
-        kwargs= primary_hdr(zpt_fn)
-        T= fits_table(stars_fn)
-        newT= convert_stars_table(T, zp_fid=kwargs['zp_fid'],
-                                     pixscale=kwargs['pixscale'])
+    kwargs= primary_hdr(zpt_fn)
+    T= fits_table(stars_fn)
+    newT= convert_stars_table(T, zp_fid=kwargs['zp_fid'],
+    pixscale=kwargs['pixscale'])
     """ 
     assert(len(set(T.filter)) == 1)
     need_arjuns_keys= ['filename','expnum','extname',
@@ -565,7 +493,7 @@ def convert_stars_table_one_band(T, zp_fid=None,pixscale=0.262):
     # AB mag of stars using fiducial ZP to convert
     #T.set('exptime', lookup_exptime(T.expnum, expnum2exptime))
     T.set('ccd_mag',-2.5 * np.log10(T.apflux / T.exptime) +  \
-                        zp_fid)
+          zp_fid)
     # ADU per pixel from sky aperture 
     area= np.pi*3.5**2/pixscale**2
     T.set('ccd_sky', T.apskyflux / area / T.gain)
@@ -599,9 +527,11 @@ def create_zeropoints_table(zpt_fn):
     print('Wrote %s' % outfn)
 
 def convert_zeropoints_table(T):
-    '''Arjun's "zeropoint-*.fits" zpts table
-    input _ccds_table fn
-    output same thing but with Arjun's column names and units'''
+    """Make column names and units of -zpt.fits identical to IDL zeropoints
+
+    Args:
+      T: fits_table of some -zpt.fits like fits file
+    """
     # HACK! need func to put in appropriate units e.g. compare to survey-ccds file for decam,mosaic, and bass
     need_arjuns_keys= \
         ['filename', 'object', 'expnum', 'exptime', 'filter', 'seeing', 'ra', 'dec', 
