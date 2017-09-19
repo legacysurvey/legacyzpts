@@ -1,0 +1,35 @@
+# Following what Nick Hand did for https://github.com/bccp/nbodykit
+# environment.yml
+# Configuration file for creating a Conda Environment with dependencies needed for legacyzpts.
+# Create the environment by running the following command (after installing Miniconda):
+#   $ conda env create --name legacyzpts-docs -f environment.yml
+
+name: legacyzpts-docs
+
+channels:
+- defaults
+- bccp
+- astropy
+- conda-forge
+
+dependencies:
+- python=3.5
+- numpy
+- scipy
+- astropy
+- Cython
+- mpi4py
+- pandas
+- fitsio
+- photutils
+- IPython
+- sphinx<1.6
+- matplotlib
+- psycopg2
+- scikit-image
+- scikit-learn
+- pip
+- pip:
+  - nbsphinx
+  - sphinx_bootstrap_theme
+

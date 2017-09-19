@@ -1,53 +1,57 @@
-#!/usr/bin/env python
-# Licensed under a 3-clause BSD style license - see LICENSE.rst
-from __future__ import absolute_import, division, print_function
-from glob import glob
+# Following Nick Hand's https://github.com/bccp/nbodykit
+from distutils.core import setup
+from distutils.util import convert_path
 import os
-import sys
-import subprocess
-from setuptools import setup, find_packages
-from setuptools.command.install import install
 
-class MyInstall(install):
-    def run(self):
-        print('MyInstall.run: calling "make -k"')
-        subprocess.call(['make', '-k'])
-        print('MyInstall.run: calling "make -k py"')
-        subprocess.call(['make', '-k', 'py'])
+NAME='legacyzpts'
 
-        for cmd in ['make -k pyinstall',
-                    'make -k install']:
-	        dirnm = self.install_base
-	        if dirnm is not None:
-	            cmd += ' INSTALL_DIR="%s"' % dirnm
-	        pybase = self.install_platlib
-	        if pybase is not None:
-	            pybase = os.path.join(pybase, 'astrometry')
-	            cmd += ' PY_BASE_INSTALL_DIR="%s"' % pybase
-	        py = sys.executable
-	        if py is not None:
-	            cmd += ' PYTHON="%s"' % py
-	        print('Running:', cmd)
-	        subprocess.call(cmd, shell=True)
-	        install.run(self)
+def find_version(path):
+    import re
+    # path shall be a plain ascii text file.
+    s = open(path, 'rt').read()
+    version_match = re.search(r"^__version__ = ['\"]([^'\"]*)['\"]",
+                              s, re.M)
+    if version_match:
+        return version_match.group(1)
+    raise RuntimeError("Version not found")
 
-#
-#
-long_description = ''
-if os.path.exists('README.rst'):
-    with open('README.rst') as readme:
-        long_description = readme.read()
-#
-# Run setup command.
-#
-setup(name= 'legacyzpts',
-	  description='astrometric and photometric calibration',
-	  long_description= long_description,
-	  author='K. Burleigh, J. Moustakas',
-	  author_email= 'kburleigh@lbl.gov',
-	  license= 'BSD',
-	  url= 'https://github.com/legacysurvey/legacyzpts',
-	  version='0.1.0',
-	  packages= find_packages('py'),
-	  package_dir= {'':'py'})
-	  #cmdclass={'install': MyInstall},)
+def find_packages(base_path):
+    base_path = convert_path(base_path)
+    found = []
+    for root, dirs, files in os.walk(base_path, followlinks=True):
+        dirs[:] = [d for d in dirs if d[0] != '.' and d not in ('ez_setup', '__pycache__')]
+        relpath = os.path.relpath(root, base_path)
+        parent = relpath.replace(os.sep, '.').lstrip('.')
+        if relpath != '.' and parent not in found:
+            # foo.bar package but no foo package, skip
+            continue
+        for dir in dirs:
+            if os.path.isfile(os.path.join(root, dir, '__init__.py')):
+                package = '.'.join((parent, dir)) if parent else dir
+                found.append(package)
+    return found
+
+# the base dependencies
+with open('requirements.txt', 'r') as fh:
+    dependencies = [l.strip() for l in fh]
+
+# extra dependencies
+extras = {}
+with open('requirements-extras.txt', 'r') as fh:
+    extras['extras'] = [l.strip() for l in fh][1:]
+    extras['full'] = extras['extras'] #
+
+setup(name=NAME,
+      version=find_version("py/legacyzpts/version.py"),
+      author="Kaylan Burleigh, John Mustakas, et al",
+      maintainer="Kaylan Burleigh",
+      maintainer_email="kburleigh@lbl.gov",
+      description="blah",
+      url="http://github.com/legacysurvey/legacyzpts",
+      zip_safe=False,
+      packages = find_packages('py'),
+      package_dir = {'':'py'},
+      license='BSD',
+      install_requires=dependencies,
+      extras_require=extras
+)

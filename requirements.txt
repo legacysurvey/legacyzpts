@@ -1,15 +1,14 @@
-astropy==2.0.1
-Cython==0.26
-matplotlib==2.0.2
-numpy==1.13.1
-pandas==0.20.3
-photutils==0.4.dev2656
-psycopg2==2.7.3
-scikit-image==0.13.0
-scikit-learn==0.18.2
-scipy==0.19.1
--e git+https://github.com/astropy/photutils.git@egg=photutils
--e git+https://github.com/esheldon/fitsio.git#egg=fitsio
--e git+https://github.com/dstndstn/astrometry.net.git@0.72#egg=astrometry
--e git+https://github.com/dstndstn/tractor.git@dr5.2#egg=tractor
--e git+https://github.com/legacysurvey/legacypipe.git@dr5.0#egg=legacypipe
+numpy
+scipy
+astropy
+Cython
+mpi4py
+pandas
+fitsio
+photutils
+matplotlib
+psycopg2
+scikit-image
+scikit-learn
+six
+
