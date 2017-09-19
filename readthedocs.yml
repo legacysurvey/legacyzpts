@@ -2,7 +2,7 @@ name: legacyzpts-docs
 type: sphinx
 
 conda:
-    file: doc/environment.yml
+    file: readthedocs_environment.yml
 
 python:
    version: 3
