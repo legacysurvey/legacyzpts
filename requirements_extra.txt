@@ -1,0 +1,3 @@
+-e git+https://github.com/dstndstn/astrometry.net.git@0.72#egg=astrometry
+-e git+https://github.com/dstndstn/tractor.git@dr5.2#egg=tractor
+-e git+https://github.com/legacysurvey/legacypipe.git@dr5.0#egg=legacypipe
