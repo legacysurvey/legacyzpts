@@ -9,7 +9,8 @@ from glob import glob
 import datetime
 import sys
 
-from astrometry.util.ttime import Time
+if __name__ == '__main__':
+    from astrometry.util.ttime import Time
 from legacyccds.legacy_zeropoints import get_parser,ptime,read_lines,try_mkdir,outputFns
 from legacyccds.legacy_zeropoints import main as legacy_main
 

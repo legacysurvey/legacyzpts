@@ -4,8 +4,6 @@ type: sphinx
 conda:
     file: readthedocs_environment.yml
 
-requirements_file: requirements_extra.txt
-
 python:
    version: 3
    setup_py_install: true

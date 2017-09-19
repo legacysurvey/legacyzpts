@@ -10,7 +10,8 @@ import numpy as np
 import fitsio
 from glob import glob
 
-from astrometry.util.fits import fits_table, merge_tables
+if __name__ == '__main__':
+    from astrometry.util.fits import fits_table, merge_tables
 
 
 def inJupyter():

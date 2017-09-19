@@ -24,7 +24,7 @@ from astrometry.util.fits import fits_table, merge_tables
 if __name__ == '__main__':
     from astrometry.libkd.spherematch import match_radec
     from tractor.sfd import SFDMap
-from tractor.brightness import NanoMaggies             
+    from tractor.brightness import NanoMaggies             
 
 from legacyzpts.qa import params 
 from legacyzpts.qa.params import band2color,col2plotname

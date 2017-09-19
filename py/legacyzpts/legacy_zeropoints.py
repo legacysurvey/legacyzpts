@@ -20,8 +20,6 @@ from astropy.io import fits as fits_astropy
 from astropy.table import Table, vstack
 from astropy import units
 from astropy.coordinates import SkyCoord
-from astrometry.util.starutil_numpy import hmsstring2ra, dmsstring2dec
-from astrometry.util.ttime import Time
 import datetime
 import sys
 
@@ -30,13 +28,17 @@ from photutils import (CircularAperture, CircularAnnulus,
 
 # Sphinx build would crash
 if __name__ == '__main__':
+    from astrometry.util.starutil_numpy import hmsstring2ra, dmsstring2dec
+    from astrometry.util.ttime import Time
     from astrometry.util.fits import fits_table, merge_tables
     from astrometry.libkd.spherematch import match_radec
     from astrometry.libkd.spherematch import match_xy
 
-from tractor.splinesky import SplineSky
+    from tractor.splinesky import SplineSky
 
-from legacyanalysis.ps1cat import ps1cat
+    from legacyanalysis.ps1cat import ps1cat
+
+
 
 ######## 
 # stdouterr_redirected() is from Ted Kisner

@@ -4,13 +4,14 @@ import matplotlib.pyplot as plt
 
 import fitsio
 
-from astrometry.util.fits import fits_table, merge_tables
 if __name__ == '__main__':
+  from astrometry.util.fits import fits_table, merge_tables
   from astrometry.util.util import wcs_pv2sip_hdr
   from astrometry.libkd.spherematch import match_radec
+  from legacypipe.survey import LegacySurveyData, wcs_for_brick
 
 from legacyanalysis.ps1cat import ps1cat, ps1_to_decam
-from legacypipe.survey import LegacySurveyData, wcs_for_brick
+
 
 from legacyzpt.qa.paper_plots import myscatter
 
