@@ -21,8 +21,9 @@ from scipy.stats import sigmaclip
 import fitsio
 
 from astrometry.util.fits import fits_table, merge_tables
-from astrometry.libkd.spherematch import match_radec
-from tractor.sfd import SFDMap
+if __name__ == '__main__':
+    from astrometry.libkd.spherematch import match_radec
+    from tractor.sfd import SFDMap
 from tractor.brightness import NanoMaggies             
 
 from legacyzpts.qa import params 
@@ -511,7 +512,7 @@ class ZeropointHistograms(object):
             savefn='hist_1d_%s.png' % key
             plt.savefig(savefn, bbox_extra_artists=[leg,xlab,ylab], bbox_inches='tight')
             plt.close() 
-            print "wrote %s" % savefn 
+            print("wrote %s" % savefn)
 
     def plot_hist_depth(self,legend=True):
         # All keys and any ylims to use
@@ -620,7 +621,7 @@ class ZeropointHistograms(object):
             bbox.append(leg)
         plt.savefig(savefn, bbox_extra_artists=bbox, bbox_inches='tight')
         plt.close() 
-        print "wrote %s" % savefn 
+        print("wrote %s" % savefn)
 
 
     def get_lim(self,col):
@@ -680,7 +681,7 @@ class ZeropointHistograms(object):
             savefn='rms_2panel_%s_%s.png' % (x_key,y_key)
             plt.savefig(savefn, bbox_extra_artists=[xlab,ylab], bbox_inches='tight')
             plt.close() 
-            print "wrote %s" % savefn 
+            print("wrote %s" % savefn)
 
     def plot_astro_photo_scatter(self,prefix=''):
         # Plot
@@ -736,7 +737,7 @@ class ZeropointHistograms(object):
         savefn='astro_photo_error.png'
         plt.savefig(savefn, bbox_extra_artists=[xlab,ylab], bbox_inches='tight')
         plt.close() 
-        print "wrote %s" % savefn 
+        print("wrote %s" % savefn)
 
     def col2name(self,col):
         d=dict(skycounts='Sky Level',

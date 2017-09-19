@@ -21,8 +21,9 @@ from scipy.stats import sigmaclip
 import fitsio
 
 from astrometry.util.fits import fits_table, merge_tables
-from astrometry.libkd.spherematch import match_radec
-from tractor.sfd import SFDMap
+if __name__ == '__main__':
+    from astrometry.libkd.spherematch import match_radec
+    from tractor.sfd import SFDMap
 from tractor.brightness import NanoMaggies
 
 from legacyzpts.qa.paper_plots import Depth

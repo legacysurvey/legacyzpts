@@ -14,6 +14,7 @@ import os
 import numpy as np
 import pickle
 import json
+from glob import glob
 #from sklearn.neighbors import KernelDensity
 from collections import defaultdict
 from scipy.stats import sigmaclip
@@ -22,8 +23,9 @@ from scipy.stats import sigmaclip
 import fitsio
 
 from astrometry.util.fits import fits_table, merge_tables
-from astrometry.libkd.spherematch import match_radec
-from tractor.sfd import SFDMap
+if __name__ == '__main__':
+    from astrometry.libkd.spherematch import match_radec
+    from tractor.sfd import SFDMap
 from tractor.brightness import NanoMaggies
 
 from legacyzpts.qa import params
@@ -60,8 +62,6 @@ def sn_not_matched_by_arjun(extra_search,arjun_fn):
 
 
 def number_matches_by_cut(extra_search,arjun_fn):
-    from glob import glob 
-    from astrometry.libkd.spherematch import match_radec
     # Load arjun's stars
     arj=fits_table(arjun_fn)
     hdu_to_ccdname= {'35':'N4 ','28':'S4 ','50':'N19','10':'S22'}
@@ -325,7 +325,7 @@ class Legacy_vs_IDL(object):
                 savefn="like_arjuns_%s_%s.png" % (base_image_fn,ccdname)
                 plt.savefig(savefn, bbox_extra_artists=[xlab,ylab], bbox_inches='tight')
                 plt.close() 
-                print "wrote %s" % savefn 
+                print("wrote %s" % savefn) 
 
 
 class Residuals(object):
@@ -537,7 +537,7 @@ class ZptResiduals(Residuals):
             plt.savefig(savefn, bbox_extra_artists=[supti,xlab,ylab], 
                         bbox_inches='tight')
             plt.close() 
-            print "wrote %s" % savefn 
+            print("wrote %s" % savefn)
 
 
 class StarResiduals(Residuals): 
@@ -709,7 +709,7 @@ class StarResiduals(Residuals):
             plt.savefig(savefn, bbox_extra_artists=[supti,xlab,ylab], 
                         bbox_inches='tight')
             plt.close() 
-            print "wrote %s" % savefn 
+            print("wrote %s" % savefn)
 
 
 

@@ -28,10 +28,11 @@ import sys
 from photutils import (CircularAperture, CircularAnnulus,
                        aperture_photometry, DAOStarFinder)
 
-from astrometry.util.fits import fits_table, merge_tables
-from astrometry.util.util import wcs_pv2sip_hdr
-from astrometry.libkd.spherematch import match_radec
-from astrometry.libkd.spherematch import match_xy
+# Sphinx build would crash
+if __name__ == '__main__':
+    from astrometry.util.fits import fits_table, merge_tables
+    from astrometry.libkd.spherematch import match_radec
+    from astrometry.libkd.spherematch import match_xy
 
 from tractor.splinesky import SplineSky
 
