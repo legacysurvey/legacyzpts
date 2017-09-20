@@ -52,7 +52,7 @@ def fits2pandas(tab,attrs=None):
     df= df.apply(lambda x: x.values.byteswap().newbyteorder())
     return df
 
-def merge_tables_fns(self,fn_list,textfile=True,
+def merge_tables_fns(fn_list,textfile=True,
                      shuffle=None):
     """concatenates fits tables
     shuffle: set to an integer to randomly reads up to the 
@@ -72,7 +72,7 @@ def merge_tables_fns(self,fn_list,textfile=True,
         inds= np.arange(len(fns)) 
         np.random.shuffle(inds) 
         fns= fns[inds]
-        cats= []
+    cats= []
     for i,fn in enumerate(fns):
         print('reading %s %d/%d' % (fn,i+1,len(fns)))
         if shuffle and i >= shuffle: 
