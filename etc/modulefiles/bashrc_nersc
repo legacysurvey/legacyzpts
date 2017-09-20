@@ -1,0 +1,16 @@
+## ~/.bashrc file portion for 'desiproc' user @ NERSC.
+
+module use /global/common/${NERSC_HOST}/contrib/desi/desiconda/20170818-1.1.12-img/modulefiles
+module load desiconda/20170818-1.1.12-img
+export zpts_code=$CSCRATCH/zpts_code
+export PYTHONPATH=$zpts_code/legacypipe/py:${PYTHONPATH}
+export PYTHONPATH=$zpts_code/legacyzpts/py:${PYTHONPATH}
+
+PS1='[$USER:$PWD]'
+
+# DR5 
+module use /global/cscratch1/sd/desiproc/modulefiles
+module load legacypipe/legacysurvey
+module load legacypipe/unwise_coadds
+module load legacypipe/unwise_coadds_timeresolved
+module load legacypipe/dust
