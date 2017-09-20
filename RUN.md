@@ -26,7 +26,7 @@ find /project/projectdirs/cosmo/staging/mosaicz/MZLS_CP/CP*v2/k4m*ooi*.fits.fz >
 
 
 ### Code and Data
-Git clone the repos to a directory "zpts_code"
+The code runs with the same python environment on either Cori or Edison, so install it to one place. Git clone the repos to a directory "zpts_code"
 ```sh
 export zpts_code=$CSCRATCH/zpts_code
 mkdir $zpts_code
@@ -36,11 +36,11 @@ git clone https://github.com/legacysurvey/legacypipe.git
 cd legacypipe
 git fetch
 git checkout dr5_wobiwan
-git checkout 5134bc49240ba py/legacpipe/legacyanalysis/ps1cat.py
+git checkout 5134bc49240ba py/legacyanalysis/ps1cat.py
 ```
 
 ### Python environment
-I created a conda environment for legacyzpts using Ted Kisner's [desiconda](https://github.com/desihub/desiconda.git) package for the imaging pipeline and then adding a few extras like pytest. You activate it with a NERSC "module load" command, after which you have the usual conda functionality, like "conda info -e". I put the module load command and setting additional env vars in https://github.com/legacysurvey/legacyzpts/blob/production/etc/modulefiles/bashrc_nersc, so once you git clone legacyzpts you simply source this file.
+The code runs using Ted Kisners [desiconda](https://github.com/desihub/desiconda.git) package for the imaging pipeline. A few extra env variables are useful, so you can simply source this bashrc to load everything
 ```
 source $zpts_code/legacyzpts/etc/modulefiles/bashrc_nersc
 ```
@@ -50,9 +50,8 @@ Now run the unit tests
 cd $obiwan_code/legacyzpts
 git pull origin master
 pytest tests/
-coverage run --source py/legacyzpts tests/test_*.py
 ```
-which should print "2 passed in ..." some number of seconds.
+which should print "3 passed in <blah> seconds"
 
 ### Production Runs
 
