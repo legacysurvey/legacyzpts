@@ -27,7 +27,7 @@ from photutils import (CircularAperture, CircularAnnulus,
                        aperture_photometry, DAOStarFinder)
 
 # Sphinx build would crash
-if __name__ == '__main__':
+try:
     from astrometry.util.starutil_numpy import hmsstring2ra, dmsstring2dec
     from astrometry.util.ttime import Time
     from astrometry.util.fits import fits_table, merge_tables
@@ -37,6 +37,8 @@ if __name__ == '__main__':
     from tractor.splinesky import SplineSky
 
     from legacyanalysis.ps1cat import ps1cat
+except ImportError:
+    pass
 
 
 

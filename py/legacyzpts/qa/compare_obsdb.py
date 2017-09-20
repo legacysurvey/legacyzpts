@@ -25,6 +25,8 @@ if __name__ == '__main__':
     from astrometry.libkd.spherematch import match_radec
     from tractor.sfd import SFDMap
     from tractor.brightness import NanoMaggies
+except ImportError:
+    pass
 
 from legacyzpts.qa.params import get_fiducial, band2color, col2plotname
 from legacyzpts.common import fits2pandas,save_png

@@ -10,9 +10,10 @@ import numpy as np
 import fitsio
 from glob import glob
 
-if __name__ == '__main__':
+try:
     from astrometry.util.fits import fits_table, merge_tables
-
+except ImportError:
+    pass
 
 def inJupyter():
     return 'inline' in matplotlib.get_backend()

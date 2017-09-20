@@ -19,12 +19,13 @@ from scipy.stats import sigmaclip
 
 #from PIL import Image, ImageDraw
 import fitsio
-
-from astrometry.util.fits import fits_table, merge_tables
-if __name__ == '__main__':
+try:
+    from astrometry.util.fits import fits_table, merge_tables
     from astrometry.libkd.spherematch import match_radec
     from tractor.sfd import SFDMap
-    from tractor.brightness import NanoMaggies             
+    from tractor.brightness import NanoMaggies 
+except ImportError:
+    pass            
 
 from legacyzpts.qa import params 
 from legacyzpts.qa.params import band2color,col2plotname

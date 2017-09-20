@@ -6,6 +6,7 @@ from scipy.stats import sigmaclip
 from legacyzpts.qa.compare_idlzpts import ZptResiduals, StarResiduals
 from legacyzpts.fetch import fetch_targz
 
+
 DOWNLOAD_DIR='http://portal.nersc.gov/project/desi/users/kburleigh/legacyzpts'
 CAMERAS= ['decam','mosaic','bok']
 

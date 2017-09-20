@@ -10,8 +10,10 @@ import argparse
 import numpy as np
 import pickle
 from collections import defaultdict
-if __name__ == '__main__':
+try:
     from astrometry.util.fits import fits_table, merge_tables
+except ImportError:
+    pass
 
 def read_lines(fn):
     fin=open(fn,'r')
