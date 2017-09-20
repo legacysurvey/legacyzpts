@@ -24,7 +24,6 @@ find /project/projectdirs/cosmo/staging/mosaicz/MZLS_CP/CP*v2/k4m*ooi*.fits.fz >
   ```python legacy-zeropoints-gather.py --file_list zpt_files.txt --nproc 1 --outname gathered_zpts.fits
   ```
 
-
 ### Code and Data
 The code runs with the same python environment on either Cori or Edison, so install it to one place. Git clone the repos to a directory "zpts_code"
 ```sh
@@ -40,15 +39,42 @@ git checkout 5134bc49240ba py/legacyanalysis/ps1cat.py
 ```
 
 ### Python environment
-The code runs using Ted Kisners [desiconda](https://github.com/desihub/desiconda.git) package for the imaging pipeline. A few extra env variables are useful, so you can simply source this bashrc to load everything
-```
+The code runs using Ted Kisners [desiconda](https://github.com/desihub/desiconda.git) package for the imaging pipeline. We also need `qdo` for production runs. First create a duplicate conda environment of Teds build, then install qdo. You can either 
+
+1)
+source this bash script to use the environment on my scratch space
+```sh
 source $zpts_code/legacyzpts/etc/modulefiles/bashrc_nersc
+qdo list
+```
+you should now see a list of the qdo queues
+
+Or 
+
+2)
+install to your own scratch
+```sh
+module use /global/common/${NERSC_HOST}/contrib/desi/desiconda/20170818-1.1.12-img/modulefiles
+module load desiconda/20170818-1.1.12-img
+conda create --prefix $zpts_code/conda_envs/legacyzpts --file $DESICONDA/pkg_list.txt
 ```
 
-Now run the unit tests
+Go get a coffee, this will take a few mins. When it finishes, install qdo
 ```sh
-cd $obiwan_code/legacyzpts
-git pull origin master
+source activate $zpts_code/conda_envs/legacyzpts
+cd $zpts_code
+git clone https://bitbucket.org/berkeleylab/qdo.git
+cd qdo
+python setup.py install
+cd ../
+qdo list
+```
+you should now see a list of the qdo queues
+
+### Unit tests
+Run the tests with
+```sh
+cd $zpts_code/legacyzpts
 pytest tests/
 ```
 which should print "3 passed in <blah> seconds"

@@ -1,6 +1,5 @@
 #!/bin/bash
 
-PS1='[$USER:$PWD]'
 # Two key directories
 export zpts_code=$CSCRATCH/zpts_code
 export zpts_out=$CSCRATCH/zpts_out
@@ -8,10 +7,14 @@ export zpts_out=$CSCRATCH/zpts_out
 # Python environment, Ted Kisner's desiconda for imaging  
 module use /global/common/${NERSC_HOST}/contrib/desi/desiconda/20170818-1.1.12-img/modulefiles
 module load desiconda/20170818-1.1.12-img
+source activate $zpts_code/conda_envs/legacyzpts
+PS1='[$USER:$PWD]'
 
 # Obiwan and imaging pipeline repos
 export PYTHONPATH=$zpts_code/legacypipe/py:${PYTHONPATH}
 export PYTHONPATH=$zpts_code/legacyzpts/py:${PYTHONPATH}
+# directory from "which qdo" but without the trailing /bin/qdo, eg which qdo should give
+export QDO_DIR=$zpts_code/conda_envs/legacyzpts
 
 # QDO (for Obiwan production runs)
 export QDO_BATCH_PROFILE=$NERSC_HOST
@@ -19,7 +22,4 @@ export QDO_BACKEND=postgres
 export QDO_DB_NAME=desirun
 export QDO_DB_HOST=scidb2.nersc.gov
 export QDO_DB_USER=desirun_admin
-# directory from "which qdo" but without the trailing /bin/qdo, eg which qdo should give
-export QDO_DIR=$CSCRATCH/obiwan_desiconda_add_pytest/conda
-# get db pass
 export QDO_DB_PASS="$(cat $HOME/.qdo_db_pass)"
