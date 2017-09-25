@@ -43,7 +43,9 @@ except ImportError:
 
 
 CAMERAS=['decam','mosaic','90prime']
-STAGING_DIRS=['decam','mosaicz','bok']
+STAGING_CAMERAS={'decam':'decam',
+                 'mosaic':'mosaicz',
+                 '90prime':'bok'}
 
 
 ######## 
@@ -228,7 +230,7 @@ def _ccds_table(camera='decam'):
 
     '''
     cols = [
-        ('image_filename', 'S65'), # image filename, including the subdirectory
+        ('image_filename', 'S100'), # image filename, including the subdirectory
         ('image_hdu', '>i2'),      # integer extension number
         ('camera', 'S7'),          # camera name
         ('expnum', '>i4'),         # unique exposure number
@@ -308,7 +310,7 @@ def _stars_table(nstars=1):
        detected on the CCD, including the PS1 photometry.
 
     '''
-    cols = [('image_filename', 'S65'),('image_hdu', '>i2'),
+    cols = [('image_filename', 'S100'),('image_hdu', '>i2'),
             ('expid', 'S16'), ('filter', 'S1'),('nmatch', '>i2'), 
             ('amplifier', 'i2'), ('x', 'f4'), ('y', 'f4'),('expnum', '>i4'),
             ('gain', 'f4'),
@@ -908,7 +910,12 @@ class Measurer(object):
         # Initialize and begin populating the output CCDs table.
         ccds = _ccds_table(self.camera)
         # starts with the decam/ mosaic/ or 90prime/ dir
-        ccds['image_filename'] = self.fn[self.fn.rfind('/%s/' % self.camera)+1:]
+        if STAGING_CAMERAS[self.camera] in self.fn:
+          ccds['image_filename'] = self.fn[self.fn.rfind('/%s/' % \
+                                           STAGING_CAMERAS[self.camera])+1:]
+        else:
+          # img not on proj
+          ccds['image_filename'] = os.path.basename(self.fn)
         ccds['image_hdu'] = self.image_hdu 
         ccds['ccdnum'] = self.ccdnum 
         ccds['camera'] = self.camera
@@ -952,6 +959,8 @@ class Measurer(object):
                 if hkey == 'avsky':
                     print('CP image does not have avsky in hdr: %s' % ccds['image_filename'])
                     ccds[hkey]= -1
+                elif hkey in ['znaxis1','znaxis2']:
+                  print('%s not in header, but not huge deal' % hkey)
                 else:
                     raise NameError('key not in header: %s' % hkey)
             
@@ -1640,7 +1649,7 @@ def get_extlist(camera,fn,debug=False):
         hdu= fitsio.FITS(fn)
         extlist= [hdu[i].get_extname() for i in range(1,len(hdu))]
         if debug:
-          extlist = ['N4','S4', 'S22','N19']
+          extlist = ['N4'] #,'S4', 'S22','N19']
         #extlist = ['S29', 'S31', 'S25', 'S26', 'S27', 'S28', 'S20', 'S21', 'S22',
         #           'S23', 'S24', 'S14', 'S15', 'S16', 'S17', 'S18', 'S19', 'S8',
         #           'S9', 'S10', 'S11', 'S12', 'S13', 'S1', 'S2', 'S3', 'S4', 'S5',
@@ -1686,6 +1695,7 @@ def measure_image(img_fn, **measureargs):
 
     # Fitsio can throw error: ValueError: CONTINUE not supported
     try:
+        print('img_fn=%s' % img_fn)
         primhdr = fitsio.read_header(img_fn, ext=0)
     except ValueError:
         # astropy can handle it
@@ -1748,17 +1758,16 @@ def measure_image(img_fn, **measureargs):
 
 
 class outputFns(object):
-    def __init__(self,imgfn,outdir,camera=None,debug=False,
-                 img_on_proj=True,copy_from_proj=False):
-        """Copies images to project if necessary and stores all relevant fns
+    def __init__(self,imgfn,outdir, not_on_proj=False,
+                 copy_from_proj=False, debug=False):
+        """Assigns filename, makes needed dirs, and copies images to scratch if needed
 
         Args:
           imgfn: abs path to image, should be a ooi or oki file
           outdir: root dir for outptus
-          camera: CAMERAS
-          debug: 4 ccds only if true
+          not_on_proj: True if image not stored on project or projecta
           copy_from_proj: True if want to copy all image files from project to scratch
-          img_on_proj: True if image stored on project
+          debug: 4 ccds only if true
 
         Attributes:
           imgfn: image that will be read
@@ -1771,7 +1780,12 @@ class outputFns(object):
         outdir/decam/DECam_CP/CP20151226/img_fn-star%s.fits
         """
         # img fns
-        if img_on_proj:
+        if not_on_proj:
+          # Don't worry about mirroring path, just get image's fn
+          self.imgfn= imgfn
+          dirname='' 
+          basename= os.path.basename(imgfn) 
+        else:
           # Mirror path to image but write to scratch
           proj_dir= '/project/projectdirs/cosmo/staging/'
           proja_dir= '/global/projecta/projectdirs/cosmo/staging/'
@@ -1785,21 +1799,19 @@ class outputFns(object):
             self.imgfn= os.path.join(outdir,dirname,basename)
           else:
             self.imgfn= imgfn
-        else:
-          # Don't worry about mirroring path, just get image's fn
-          self.imgfn= imgfn
-          dirname='' 
-          basename= os.path.basename(imgfn) 
         # zpt,star fns
         self.zptfn= os.path.join(outdir,dirname,
                                  basename.replace('.fits.fz','-zpt.fits')) 
         self.starfn= os.path.join(outdir,dirname,
                                  basename.replace('.fits.fz','-star.fits')) 
         if debug:
-          self.zptfn= self.zptfn.replace('-zpt.fits','-zpt-debug.fits')
-          self.starfn= self.starfn.replace('-star.fits','-star-debug.fits')
+          self.zptfn= self.zptfn.replace('-zpt.fits','debug-zpt.fits')
+          self.starfn= self.starfn.replace('-star.fits','debug-star.fits')
         # Makedirs
-        os.makedirs(os.path.join(outdir,dirname))
+        try:
+          os.makedirs(os.path.join(outdir,dirname))
+        except FileExistsError: 
+          print('Directory already exists: %s' % os.path.join(outdir,dirname))
         # Copy if need
         if copy_from_proj:
           if not os.path.exists(self.imgfn): 
@@ -1808,23 +1820,21 @@ class outputFns(object):
             dobash("cp %s %s" % ( get_bitmask_fn(imgfn), get_bitmask_fn(self.imgfn)))
 
             
-def success(ccds, **measureargs):
+def success(ccds,imgfn, debug=False):
     num_ccds= dict(decam=60,mosaic=4)
     num_ccds['90prime']=4
-    camera= measureargs.get('camera')
-    scr_fn= measureargs.get('imgfn_scr')
-    hdu= fitsio.FITS(scr_fn)
+    hdu= fitsio.FITS(imgfn)
     #if len(ccds) >= num_ccds.get(camera,0):
     if len(ccds) == len(hdu)-1:
         return True
-    elif measureargs.get('debug') and len(ccds) >= 1:
+    elif debug and len(ccds) >= 1:
         # only 1 ccds needs to be done if debuggin
         return True
     else:
         return False
 
 
-def runit(imgfn,zptfn,starnf,**measureargs):
+def runit(imgfn,zptfn,starfn,**measureargs):
     '''Generate a legacypipe-compatible CCDs file for a given image.
     '''
     #zptfn= measureargs.get('zptfn')
@@ -1836,7 +1846,7 @@ def runit(imgfn,zptfn,starnf,**measureargs):
     t0= ptime('measure_image',t0)
 
     # Only write if all CCDs are done
-    if success(ccds,**measureargs):
+    if success(ccds,imgfn, debug=measureargs['debug']):
         # Write out.
         ccds.write(zptfn)
         # Header <-- fiducial zp,sky,ext, also exptime, pixscale
@@ -1855,7 +1865,7 @@ def runit(imgfn,zptfn,starnf,**measureargs):
         t0= ptime('write-results-to-fits',t0)
     else:
         print('FAILED, only %d CCDs, %s' % (len(ccds),imgfn_proj))
-    if measureargs['copy_to_proj'] & os.path.exists(imgfn): 
+    if measureargs['copy_from_proj'] & os.path.exists(imgfn): 
         # Safegaurd against removing stuff on /project
         assert(not 'project' in imgfn)
         #dobash("rm %s" % imgfn_scr)
@@ -1883,6 +1893,7 @@ def get_parser():
     parser.add_argument('--image',action='store',default=None,help='relative path to image starting from decam,bok,mosaicz dir',required=False)
     parser.add_argument('--image_list',action='store',default=None,help='text file listing multiples images in same was as --image',required=False)
     parser.add_argument('--outdir', type=str, default='.', help='Where to write zpts/,images/,logs/')
+    parser.add_argument('--not_on_proj', action='store_true', default=False, help='set when the image is not on project or projecta')
     parser.add_argument('--copy_from_proj', action='store_true', default=False, help='copy image data from proj to scratch before analyzing')
     parser.add_argument('--debug', action='store_true', default=False, help='Write additional files and plots for debugging')
     parser.add_argument('--det_thresh', type=float, default=10., help='source detection, 10x sky sigma')
@@ -1923,10 +1934,13 @@ def main(image_list=None,args=None):
     outdir = measureargs.pop('outdir')
     try_mkdir(outdir)
     t0=ptime('parse-args',t0)
-    for imgfn_proj in image_list:
+    for imgfn in image_list:
         # Check if zpt already written
-        F= outputFns(imgfn_proj,outdir, 
-                     camera=measureargs['camera'],debug=measureargs['debug'])
+        F= outputFns(imgfn, outdir,
+                     not_on_proj= measureargs['not_on_proj'],
+                     copy_from_proj= measureargs['copy_from_proj'],
+                     debug=measureargs['debug'])
+        print(F.imgfn,F.zptfn,F.starfn)
         if os.path.exists(F.zptfn) and os.path.exists(F.starfn):
             print('Already finished: %s' % F.zptfn)
             continue
