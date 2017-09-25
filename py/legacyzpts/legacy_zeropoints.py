@@ -29,6 +29,7 @@ from photutils import (CircularAperture, CircularAnnulus,
 # Sphinx build would crash
 try:
     from astrometry.util.starutil_numpy import hmsstring2ra, dmsstring2dec
+    from astrometry.util.util import wcs_pv2sip_hdr
     from astrometry.util.ttime import Time
     from astrometry.util.fits import fits_table, merge_tables
     from astrometry.libkd.spherematch import match_radec
@@ -41,83 +42,85 @@ except ImportError:
     pass
 
 
+CAMERAS=['decam','mosaic','90prime']
+
 
 ######## 
 # stdouterr_redirected() is from Ted Kisner
 # Every mpi task (zeropoint file) gets its own stdout file
-import time
-from contextlib import contextmanager
-
-@contextmanager
-def stdouterr_redirected(to=os.devnull, comm=None):
-    '''assign unique log file to each mpi task
-
-    Based on http://stackoverflow.com/questions/5081657
-    
-    Example:
-    import os
-    with stdouterr_redirected(to=filename):
-    print("from Python")
-    os.system("echo non-Python applications are also supported")
-    '''
-    sys.stdout.flush()
-    sys.stderr.flush()
-    fd = sys.stdout.fileno()
-    fde = sys.stderr.fileno()
-
-    ##### assert that Python and C stdio write using the same file descriptor
-    ####assert libc.fileno(ctypes.c_void_p.in_dll(libc, "stdout")) == fd == 1
-
-    def _redirect_stdout(to):
-        sys.stdout.close() # + implicit flush()
-        os.dup2(to.fileno(), fd) # fd writes to 'to' file
-        sys.stdout = os.fdopen(fd, 'w') # Python writes to fd
-        sys.stderr.close() # + implicit flush()
-        os.dup2(to.fileno(), fde) # fd writes to 'to' file
-        sys.stderr = os.fdopen(fde, 'w') # Python writes to fd
-        
-    with os.fdopen(os.dup(fd), 'w') as old_stdout:
-        if (comm is None) or (comm.rank == 0):
-            print("Begin log redirection to {} at {}".format(to, time.asctime()))
-        sys.stdout.flush()
-        sys.stderr.flush()
-        pto = to
-        if comm is None:
-            if not os.path.exists(os.path.dirname(pto)):
-                os.makedirs(os.path.dirname(pto))
-            with open(pto, 'w') as file:
-                _redirect_stdout(to=file)
-        else:
-            pto = "{}_{}".format(to, comm.rank)
-            with open(pto, 'w') as file:
-                _redirect_stdout(to=file)
-        try:
-            yield # allow code to be run with the redirected stdout
-        finally:
-            sys.stdout.flush()
-            sys.stderr.flush()
-            _redirect_stdout(to=old_stdout) # restore stdout.
-                                            # buffering and flags such as
-                                            # CLOEXEC may be different
-            if comm is not None:
-                # concatenate per-process files
-                comm.barrier()
-                if comm.rank == 0:
-                    with open(to, 'w') as outfile:
-                        for p in range(comm.size):
-                            outfile.write("================= Process {} =================\n".format(p))
-                            fname = "{}_{}".format(to, p)
-                            with open(fname) as infile:
-                                outfile.write(infile.read())
-                            os.remove(fname)
-                comm.barrier()
-
-            if (comm is None) or (comm.rank == 0):
-                print("End log redirection to {} at {}".format(to, time.asctime()))
-            sys.stdout.flush()
-            sys.stderr.flush()
-            
-    return
+#import time
+#from contextlib import contextmanager
+#
+#@contextmanager
+#def stdouterr_redirected(to=os.devnull, comm=None):
+#    '''assign unique log file to each mpi task
+#
+#    Based on http://stackoverflow.com/questions/5081657
+#    
+#    Example:
+#    import os
+#    with stdouterr_redirected(to=filename):
+#    print("from Python")
+#    os.system("echo non-Python applications are also supported")
+#    '''
+#    sys.stdout.flush()
+#    sys.stderr.flush()
+#    fd = sys.stdout.fileno()
+#    fde = sys.stderr.fileno()
+#
+#    ##### assert that Python and C stdio write using the same file descriptor
+#    ####assert libc.fileno(ctypes.c_void_p.in_dll(libc, "stdout")) == fd == 1
+#
+#    def _redirect_stdout(to):
+#        sys.stdout.close() # + implicit flush()
+#        os.dup2(to.fileno(), fd) # fd writes to 'to' file
+#        sys.stdout = os.fdopen(fd, 'w') # Python writes to fd
+#        sys.stderr.close() # + implicit flush()
+#        os.dup2(to.fileno(), fde) # fd writes to 'to' file
+#        sys.stderr = os.fdopen(fde, 'w') # Python writes to fd
+#        
+#    with os.fdopen(os.dup(fd), 'w') as old_stdout:
+#        if (comm is None) or (comm.rank == 0):
+#            print("Begin log redirection to {} at {}".format(to, time.asctime()))
+#        sys.stdout.flush()
+#        sys.stderr.flush()
+#        pto = to
+#        if comm is None:
+#            if not os.path.exists(os.path.dirname(pto)):
+#                os.makedirs(os.path.dirname(pto))
+#            with open(pto, 'w') as file:
+#                _redirect_stdout(to=file)
+#        else:
+#            pto = "{}_{}".format(to, comm.rank)
+#            with open(pto, 'w') as file:
+#                _redirect_stdout(to=file)
+#        try:
+#            yield # allow code to be run with the redirected stdout
+#        finally:
+#            sys.stdout.flush()
+#            sys.stderr.flush()
+#            _redirect_stdout(to=old_stdout) # restore stdout.
+#                                            # buffering and flags such as
+#                                            # CLOEXEC may be different
+#            if comm is not None:
+#                # concatenate per-process files
+#                comm.barrier()
+#                if comm.rank == 0:
+#                    with open(to, 'w') as outfile:
+#                        for p in range(comm.size):
+#                            outfile.write("================= Process {} =================\n".format(p))
+#                            fname = "{}_{}".format(to, p)
+#                            with open(fname) as infile:
+#                                outfile.write(infile.read())
+#                            os.remove(fname)
+#                comm.barrier()
+#
+#            if (comm is None) or (comm.rank == 0):
+#                print("End log redirection to {} at {}".format(to, time.asctime()))
+#            sys.stdout.flush()
+#            sys.stderr.flush()
+#            
+#    return
 
 def try_mkdir(dir):
     try:
@@ -820,10 +823,10 @@ class Measurer(object):
             #print('Fitting source', i, 'of', len(Jf))
             ix = int(np.round(xi))
             iy = int(np.round(yi))
-            xlo = max(0, ix-radius_pix)
-            xhi = min(W, ix+radius_pix+1)
-            ylo = max(0, iy-radius_pix)
-            yhi = min(H, iy+radius_pix+1)
+            xlo = int( max(0, ix-radius_pix) )
+            xhi = int( min(W, ix+radius_pix+1) )
+            ylo = int( max(0, iy-radius_pix) )
+            yhi = int( min(H, iy+radius_pix+1) )
             xx, yy = np.meshgrid(np.arange(xlo, xhi), np.arange(ylo, yhi))
             r2 = (xx - xi)**2 + (yy - yi)**2
             keep = (r2 < radius_pix**2)
@@ -1002,7 +1005,7 @@ class Measurer(object):
         if self.debug:
             extra= {}
             extra['proj_fn']= os.path.join('/project/projectdirs/cosmo/staging',
-                                           ccds['image_filename'].data[0])
+                                           str(ccds['image_filename'].data[0]))
             extra['hdu']= ccds['image_hdu'].data[0]
 
         # Detect stars on the image.  
@@ -1360,11 +1363,15 @@ class Measurer(object):
        
         if self.debug:
             # Save extra
-            extra_fn= os.path.basename(ccds['image_filename'].data[0]).replace('.fits.fz','') + \
-                      '-%s-' % extra['hdu'] + 'extra.pkl'
+            extra_fn= (os.path
+                         .basename(str(ccds['image_filename'].data[0]))
+                         .replace(".fits.fz","")
+                         .strip("'")
+                      )
+            extra_fn += '-%s-extra.pkl' % extra['hdu']
             extra_fn= os.path.join(os.path.dirname(self.fn),
                                    extra_fn)
-            with open(extra_fn,'w') as foo:
+            with open(extra_fn,'wb') as foo:
                 dump(extra,foo)
             print('Wrote %s' % extra_fn)
  
@@ -1620,7 +1627,7 @@ class NinetyPrimeMeasurer(Measurer):
         return wcs_pv2sip_hdr(self.hdr) # PV distortion
 
 
-def get_extlist(camera,fn):
+def get_extlist(camera,fn,debug=False):
     '''
     Returns 'mosaic', 'decam', or '90prime'
     '''
@@ -1631,6 +1638,8 @@ def get_extlist(camera,fn):
     elif camera == 'decam':
         hdu= fitsio.FITS(fn)
         extlist= [hdu[i].get_extname() for i in range(1,len(hdu))]
+        if debug:
+          extlist = ['N4','S4', 'S22','N19']
         #extlist = ['S29', 'S31', 'S25', 'S26', 'S27', 'S28', 'S20', 'S21', 'S22',
         #           'S23', 'S24', 'S14', 'S15', 'S16', 'S17', 'S18', 'S19', 'S8',
         #           'S9', 'S10', 'S11', 'S12', 'S13', 'S1', 'S2', 'S3', 'S4', 'S5',
@@ -1638,8 +1647,6 @@ def get_extlist(camera,fn):
         #           'N10', 'N11', 'N12', 'N13', 'N14', 'N15', 'N16', 'N17', 'N18',
         #           'N19', 'N20', 'N21', 'N22', 'N23', 'N24', 'N25', 'N26', 'N27',
         #           'N28', 'N29', 'N31']
-        # Testing only!
-        #extlist = ['N4','S4', 'S22','N19']
     else:
         print('Camera {} not recognized!'.format(camera))
         pdb.set_trace() 
@@ -1705,7 +1712,8 @@ def measure_image(img_fn, **measureargs):
     # mosaic listed as mosaic3 in hearder, other combos maybe
     assert(camera in camera_check or camera_check in camera)
     
-    extlist = get_extlist(camera,img_fn)
+    extlist = get_extlist(camera,img_fn, 
+                          debug=measureargs['debug'])
     nnext = len(extlist)
 
     if camera == 'decam':
@@ -1739,19 +1747,16 @@ def measure_image(img_fn, **measureargs):
 
 
 class outputFns(object):
-    def __init__(self,imgfn_proj,outdir,prefix='',**kwargs):
+    def __init__(self,imgfn_proj,outdir,camera=None,debug=False):
         '''
         outdir/decam/DECam_CP/CP20151226/img_fn.fits.fz
         outdir/decam/DECam_CP/CP20151226/img_fn-zpt%s.fits
         outdir/decam/DECam_CP/CP20151226/img_fn-star%s.fits
         '''
-        camera= kwargs.get('camera')
-        if camera == 'decam':
-            proj_name= camera
-        elif camera == 'mosaic':
-            proj_name= camera+'z'
-        elif camera == '90prime': 
-            proj_name= 'bok'
+        assert(camera in CAMERAS)
+        proj_name= {'decam':'decam',
+                    'mosiac':'mosaicz',
+                    '90prime':'bok'}[camera]
         proj_dir= '/project/projectdirs/cosmo/staging/%s/' % proj_name
         proja_dir= '/global/projecta/projectdirs/cosmo/staging/%s/' % proj_name
         root= imgfn_proj.replace(proj_dir,'').replace(proja_dir,'')
@@ -1763,6 +1768,10 @@ class outputFns(object):
         base= dr.replace('.fits.fz','')
         self.zptfn= base + '-zpt.fits' #os.path.join(dr,'%s-zpt%s.fits' % (base,prefix))
         self.starfn= base + '-star.fits' #os.path.join(dr,'%s-star%s.fits' % (base,prefix))
+        if debug:
+          self.zptfn= base + '-debug-zpt.fits'
+          self.starfn= base + '-debug-star.fits' 
+
 
 def success(ccds, **measureargs):
     num_ccds= dict(decam=60,mosaic=4)
@@ -1899,7 +1908,8 @@ def main(image_list=None,args=None):
     t0=ptime('parse-args',t0)
     for imgfn_proj in image_list:
         # Check if zpt already written
-        F= outputFns(imgfn_proj,outdir,**measureargs)
+        F= outputFns(imgfn_proj,outdir, 
+                     camera=measureargs['camera'],debug=measureargs['debug'])
         if os.path.exists(F.zptfn) and os.path.exists(F.starfn):
             print('Already finished: %s' % F.zptfn)
             continue

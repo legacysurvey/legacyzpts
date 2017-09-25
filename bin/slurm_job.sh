@@ -2,19 +2,20 @@
 
 #SBATCH -p debug
 #SBATCH -N 1
-#SBATCH -t 00:05:00
+#SBATCH -t 00:10:00
 #SBATCH --account=desi
 #SBATCH -J zpts
 #SBATCH -L SCRATCH,project
 #SBATCH -C haswell
 
 export camera=decam
-export name_for_run=dr6
+export name_for_run=ebossDR5
 export proj_dir=/project/projectdirs/cosmo/staging
 export scr_dir=/global/cscratch1/sd/kaylanb/zpts_out/${name_for_run}
-export image_fn=${proj_dir}/decam/DECam_CP/CP20170326/c4d_170326_233934_oki_z_v1.fits.fz
+export image_list=$scr_dir/image_list.txt
 
 usecores=1
+export image_fn=`head ${image_list} -n 1`
 
 # Load production env and env vars
 source $CSCRATCH/zpts_code/legacyzpts/etc/modulefiles/bashrc_nersc
