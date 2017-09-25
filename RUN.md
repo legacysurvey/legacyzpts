@@ -90,25 +90,38 @@ We use "qdo" to manage the thousands of production jobs, but for testing it is u
  * B) Docker image
 
 #### 1A)
+Make a text file listing all the absolute paths to the CP image filenames you want to run on
+e.g.
+```
+find /project/projectdirs/cosmo/staging/mosaicz/MZLS_CP/CP*v2/k4m*ooi*.fits.fz > image_list.txt
+```
+
 Run a `Serial job`, see
 https://github.com/legacysurvey/legacyzpts/blob/master/bin/slurm_job.sh
 
-(Optional) Edit these lines:
+```sh
+export name_for_run=dr6
+export outdir=$zpts_out/$name_for_run
+mkdir -p $outdir
+cd $outdir
+cp $zpts_code/legacyzpts/bin/slurm_job.sh ./
+```
+
+Edit these lines for your run:
 ```sh
 export camera=decam
 export name_for_run=dr6
 export proj_dir=/project/projectdirs/cosmo/staging
 export scr_dir=/global/cscratch1/sd/kaylanb/zpts_out/${name_for_run}
-export image_fn=${proj_dir}/decam/DECam_CP/CP20170326/c4d_170326_233934_oki_z_v1.fits.fz
+export image_list=$scr_dir/image_list.txt
 ```
 
-Submit with
+then Submit the job
 ```sh
-cd $zpts_out/$name_for_run
-sbatch $zpts_code/legacyzpts/bin/slurm_job.sh
+sbatch slurm_job.sh
 ```
 
-or run an `MPI job`, see 
+Once that works, run the MPI version, see 
 https://github.com/legacysurvey/legacyzpts/blob/master/bin/slurm_job_mpi.sh
 
 Submit for all exposures, say from night CP20160225
