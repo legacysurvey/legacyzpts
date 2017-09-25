@@ -43,6 +43,7 @@ except ImportError:
 
 
 CAMERAS=['decam','mosaic','90prime']
+STAGING_DIRS=['decam','mosaicz','bok']
 
 
 ######## 
@@ -1747,32 +1748,66 @@ def measure_image(img_fn, **measureargs):
 
 
 class outputFns(object):
-    def __init__(self,imgfn_proj,outdir,camera=None,debug=False):
-        '''
+    def __init__(self,imgfn,outdir,camera=None,debug=False,
+                 img_on_proj=True,copy_from_proj=False):
+        """Copies images to project if necessary and stores all relevant fns
+
+        Args:
+          imgfn: abs path to image, should be a ooi or oki file
+          outdir: root dir for outptus
+          camera: CAMERAS
+          debug: 4 ccds only if true
+          copy_from_proj: True if want to copy all image files from project to scratch
+          img_on_proj: True if image stored on project
+
+        Attributes:
+          imgfn: image that will be read
+          zptfn: zeropoints file
+          starfn: stars file
+
+        Example:
         outdir/decam/DECam_CP/CP20151226/img_fn.fits.fz
         outdir/decam/DECam_CP/CP20151226/img_fn-zpt%s.fits
         outdir/decam/DECam_CP/CP20151226/img_fn-star%s.fits
-        '''
-        assert(camera in CAMERAS)
-        proj_name= {'decam':'decam',
-                    'mosiac':'mosaicz',
-                    '90prime':'bok'}[camera]
-        proj_dir= '/project/projectdirs/cosmo/staging/%s/' % proj_name
-        proja_dir= '/global/projecta/projectdirs/cosmo/staging/%s/' % proj_name
-        root= imgfn_proj.replace(proj_dir,'').replace(proja_dir,'')
-        # Names
-        dr= os.path.join(outdir,camera,root)
-        # Image fn that will be on SCRATCH
-        self.imgfn_scr= dr #os.path.join(dr,'%s.fits.fz' % base)
-        # zpt filenames
-        base= dr.replace('.fits.fz','')
-        self.zptfn= base + '-zpt.fits' #os.path.join(dr,'%s-zpt%s.fits' % (base,prefix))
-        self.starfn= base + '-star.fits' #os.path.join(dr,'%s-star%s.fits' % (base,prefix))
+        """
+        # img fns
+        if img_on_proj:
+          # Mirror path to image but write to scratch
+          proj_dir= '/project/projectdirs/cosmo/staging/'
+          proja_dir= '/global/projecta/projectdirs/cosmo/staging/'
+          assert( (proj_dir in imgfn) |
+                  (proja_dir in imgfn))
+          relative_fn= imgfn.replace(proj_dir,'').replace(proja_dir,'')
+          dirname= os.path.dirname(relative_fn) 
+          basename= os.path.basename(relative_fn) 
+          if copy_from_proj:
+            # somwhere on scratch
+            self.imgfn= os.path.join(outdir,dirname,basename)
+          else:
+            self.imgfn= imgfn
+        else:
+          # Don't worry about mirroring path, just get image's fn
+          self.imgfn= imgfn
+          dirname='' 
+          basename= os.path.basename(imgfn) 
+        # zpt,star fns
+        self.zptfn= os.path.join(outdir,dirname,
+                                 basename.replace('.fits.fz','-zpt.fits')) 
+        self.starfn= os.path.join(outdir,dirname,
+                                 basename.replace('.fits.fz','-star.fits')) 
         if debug:
-          self.zptfn= base + '-debug-zpt.fits'
-          self.starfn= base + '-debug-star.fits' 
+          self.zptfn= self.zptfn.replace('-zpt.fits','-zpt-debug.fits')
+          self.starfn= self.starfn.replace('-star.fits','-star-debug.fits')
+        # Makedirs
+        os.makedirs(os.path.join(outdir,dirname))
+        # Copy if need
+        if copy_from_proj:
+          if not os.path.exists(self.imgfn): 
+            dobash("cp %s %s" % (imgfn,self.imgfn))
+          if not os.path.exists( get_bitmask_fn(self.imgfn)): 
+            dobash("cp %s %s" % ( get_bitmask_fn(imgfn), get_bitmask_fn(self.imgfn)))
 
-
+            
 def success(ccds, **measureargs):
     num_ccds= dict(decam=60,mosaic=4)
     num_ccds['90prime']=4
@@ -1789,29 +1824,15 @@ def success(ccds, **measureargs):
         return False
 
 
-def runit(imgfn_proj, **measureargs):
+def runit(imgfn,zptfn,starnf,**measureargs):
     '''Generate a legacypipe-compatible CCDs file for a given image.
     '''
-    zptfn= measureargs.get('zptfn')
-    starfn= measureargs.get('starfn')
-    imgfn_scr= measureargs.get('imgfn_scr')
-    # mask fn
-    dqfn_proj= get_bitmask_fn(imgfn_proj)
-    dqfn_scr= get_bitmask_fn(imgfn_scr)
-
+    #zptfn= measureargs.get('zptfn')
+    #starfn= measureargs.get('starfn')
+    #imgfn= measureargs.get('imgfn')
+    
     t0 = Time()
-    for mydir in [os.path.dirname(zptfn),\
-                  os.path.dirname(imgfn_scr)]:
-        try_mkdir(mydir)
-
-    # Copy to SCRATCH for improved I/O
-    if not os.path.exists(imgfn_scr): 
-        dobash("cp %s %s" % (imgfn_proj,imgfn_scr))
-    if not os.path.exists(dqfn_scr): 
-        dobash("cp %s %s" % (dqfn_proj, dqfn_scr))
-    t0= ptime('copy-to-scratch',t0)
-
-    ccds, stars, extra_info= measure_image(imgfn_scr, **measureargs)
+    ccds, stars, extra_info= measure_image(imgfn, **measureargs)
     t0= ptime('measure_image',t0)
 
     # Only write if all CCDs are done
@@ -1834,11 +1855,13 @@ def runit(imgfn_proj, **measureargs):
         t0= ptime('write-results-to-fits',t0)
     else:
         print('FAILED, only %d CCDs, %s' % (len(ccds),imgfn_proj))
-    if os.path.exists(imgfn_scr): 
+    if measureargs['copy_to_proj'] & os.path.exists(imgfn): 
         # Safegaurd against removing stuff on /project
-        assert(not 'project' in imgfn_scr)
-        dobash("rm %s" % imgfn_scr)
-        dobash("rm %s" % dqfn_scr)
+        assert(not 'project' in imgfn)
+        #dobash("rm %s" % imgfn_scr)
+        #dobash("rm %s" % dqfn_scr)
+        dobash("SOFT rm %s" % imgfn_scr)
+        dobash("SOFT rm %s" % dqfn_scr)
         t0= ptime('removed-cp-from-scratch',t0)
     
 def parse_coords(s):
@@ -1857,9 +1880,10 @@ def get_parser():
                                      description='Generate a legacypipe-compatible CCDs file \
                                                   from a set of reduced imaging.')
     parser.add_argument('--camera',choices=['decam','mosaic','90prime'],action='store',required=True)
-    parser.add_argument('--image',action='store',default=None,help='if want to run a single image',required=False)
-    parser.add_argument('--image_list',action='store',default=None,help='if want to run all images in a text file, Note:if compare2arjun = True then list of legacy zeropoint files',required=False)
+    parser.add_argument('--image',action='store',default=None,help='relative path to image starting from decam,bok,mosaicz dir',required=False)
+    parser.add_argument('--image_list',action='store',default=None,help='text file listing multiples images in same was as --image',required=False)
     parser.add_argument('--outdir', type=str, default='.', help='Where to write zpts/,images/,logs/')
+    parser.add_argument('--copy_from_proj', action='store_true', default=False, help='copy image data from proj to scratch before analyzing')
     parser.add_argument('--debug', action='store_true', default=False, help='Write additional files and plots for debugging')
     parser.add_argument('--det_thresh', type=float, default=10., help='source detection, 10x sky sigma')
     parser.add_argument('--match_radius', type=float, default=1., help='arcsec, matching to gaia/ps1, 1 arcsec better astrometry than 3 arcsec as used by IDL codes')
@@ -1870,7 +1894,6 @@ def get_parser():
     parser.add_argument('--logdir', type=str, default='.', help='Where to write zpts/,images/,logs/')
     parser.add_argument('--prefix', type=str, default='', help='Prefix to prepend to the output files.')
     parser.add_argument('--verboseplots', action='store_true', default=False, help='use to plot FWHM Moffat PSF fits to the 20 brightest stars')
-    parser.add_argument('--compare2arjun', action='store_true', default=False, help='turn this on and give --image-list a list of legacy zeropoint files instead of cp images')
     parser.add_argument('--aprad', type=float, default=3.5, help='Aperture photometry radius (arcsec).')
     parser.add_argument('--skyrad_inner', type=float, default=7.0, help='Radius of inner sky annulus (arcsec).')
     parser.add_argument('--skyrad_outer', type=float, default=10.0, help='Radius of outer sky annulus (arcsec).')
@@ -1890,14 +1913,8 @@ def main(image_list=None,args=None):
     t0 = Time()
     tbegin=t0
     
-    if args.compare2arjun:
-        comp= Compare2Arjuns(args.image_list)
-        sys.exit("Finished compaison to Arjun's zeropoints")
-
     # Build a dictionary with the optional inputs.
     measureargs = vars(args)
-    if not args.compare2arjun:
-        measureargs.pop('compare2arjun')
     measureargs.pop('image_list')
     measureargs.pop('image')
     # Add user specified camera, useful check against primhdr
@@ -1913,12 +1930,12 @@ def main(image_list=None,args=None):
         if os.path.exists(F.zptfn) and os.path.exists(F.starfn):
             print('Already finished: %s' % F.zptfn)
             continue
-        measureargs.update(dict(zptfn= F.zptfn,\
-                                starfn= F.starfn,\
-                                imgfn_scr= F.imgfn_scr))
+        #measureargs.update(dict(zptfn= F.zptfn,\
+        #                        starfn= F.starfn,\
+        #                        imgfn= F.imgfn))
         # Create the file
         t0=ptime('b4-run',t0)
-        runit(imgfn_proj, **measureargs)
+        runit(F.imgfn,F.zptfn,F.starfn, **measureargs)
         #try: 
         #    runit(imgfn_proj, **measureargs)
         #except:
