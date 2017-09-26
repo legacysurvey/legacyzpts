@@ -658,6 +658,7 @@ class Measurer(object):
         
         self.fn = fn
         self.debug= kwargs.get('debug')
+        self.outdir= kwargs.get('outdir')
 
         self.aper_sky_sub = aper_sky_sub
         self.calibrate = calibrate
@@ -1016,7 +1017,7 @@ class Measurer(object):
             extra= {}
             extra['proj_fn']= os.path.join('/project/projectdirs/cosmo/staging',
                                            str(ccds['image_filename'].data[0]))
-            extra['hdu']= ccds['image_hdu'].data[0]
+            extra['extname']= ext #ccds['image_hdu'].data[0]
 
         # Detect stars on the image.  
         # 10 sigma, sharpness, roundness all same as IDL zeropoints (also the defaults)
@@ -1371,19 +1372,21 @@ class Measurer(object):
             t0= ptime('made-plots',t0)
 
        
-        if self.debug:
+        #if self.debug:
             # Save extra
-            extra_fn= (os.path
-                         .basename(str(ccds['image_filename'].data[0]))
-                         .replace(".fits.fz","")
-                         .strip("'")
-                      )
-            extra_fn += '-%s-extra.pkl' % extra['hdu']
-            extra_fn= os.path.join(os.path.dirname(self.fn),
-                                   extra_fn)
-            with open(extra_fn,'wb') as foo:
-                dump(extra,foo)
-            print('Wrote %s' % extra_fn)
+            #extra_fn= (os.path
+            #             .basename(str(ccds['image_filename'].data[0]))
+            #             .replace(".fits.fz","")
+            #             .strip("'")
+            #          )
+            #extra_fn += '-%s-extra.pkl' % extra['hdu']
+            #extra_fn= os.path.join(self.outdir,
+            #                       "extra-%s.pkl" % extra['extname']) 
+                      #os.path.join(os.path.dirname(zptfn),
+                      #             '')
+            #with open(extra_fn,'wb') as foo:
+            #    dump(extra,foo)
+            #print('Wrote %s' % extra_fn)
  
         return ccds, stars
     
@@ -1649,7 +1652,7 @@ def get_extlist(camera,fn,debug=False):
         hdu= fitsio.FITS(fn)
         extlist= [hdu[i].get_extname() for i in range(1,len(hdu))]
         if debug:
-          extlist = ['N4'] #,'S4', 'S22','N19']
+          extlist = ['N4','S4'] #, 'S22','N19']
         #extlist = ['S29', 'S31', 'S25', 'S26', 'S27', 'S28', 'S20', 'S21', 'S22',
         #           'S23', 'S24', 'S14', 'S15', 'S16', 'S17', 'S18', 'S19', 'S8',
         #           'S9', 'S10', 'S11', 'S12', 'S13', 'S1', 'S2', 'S3', 'S4', 'S5',
@@ -1805,8 +1808,8 @@ class outputFns(object):
         self.starfn= os.path.join(outdir,dirname,
                                  basename.replace('.fits.fz','-star.fits')) 
         if debug:
-          self.zptfn= self.zptfn.replace('-zpt.fits','debug-zpt.fits')
-          self.starfn= self.starfn.replace('-star.fits','debug-star.fits')
+          self.zptfn= self.zptfn.replace('-zpt.fits','-debug-zpt.fits')
+          self.starfn= self.starfn.replace('-star.fits','-debug-star.fits')
         # Makedirs
         try:
           os.makedirs(os.path.join(outdir,dirname))

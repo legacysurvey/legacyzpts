@@ -112,8 +112,9 @@ before_script:
 
 script:
   - cd $HOME/legacyzpts
-  - pytest tests/
-  - coverage run --source py/legacyzpts tests/test_*.py
+  - pytest tests/test_legacyzpts.py 
+  - pytest tests/test_against_idl.py
+  - coverage run --source py/legacyzpts tests/test_legacyzpts.py
 
 after_success:
   - coverage report

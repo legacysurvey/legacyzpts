@@ -95,7 +95,7 @@ class LegacyZpts(object):
         zpt_list: list of -zpt or -star.fits file
         camera: decam,mosaic,90prime
         savedir: where to write temptable
-        temptablename: unique suffix for temptable
+        loadable: False to force merging fits tables every time
 
     Attributes:
         zpt_list: list of -zpt or -star.fits file
@@ -114,12 +114,14 @@ class LegacyZpts(object):
     """
 
     def __init__(self,zpt_list=None,camera=None,
-                 savedir='./', temptable_name=None):
+                 savedir='./', 
+                 loadable=True,temptable_name=None):
         '''
         '''
         assert(len(zpt_list) > 0)
         self.zpt_list= zpt_list
         self.camera= camera
+        self.loadable= loadable
         self.temptable_name= temptable_name
         if savedir:
             self.savedir= savedir
@@ -140,10 +142,11 @@ class LegacyZpts(object):
     def load_data(self):
         '''merge the fits_tables in zpt_list 
         '''
-        if os.path.exists( self.get_merge_fn() ):
-            # Read merged fits
+        if self.loadable & os.path.exists( self.get_merge_fn() ):
+            print('Loading saved merged fits')
             self.data= fits_table( self.get_merge_fn() )
         else: 
+            print('Merging tables')
             self.data= merge_tables_fns(self.zpt_list,textfile=False)
             self.save_data()
         print('Merged zpt data: zpts=%d' % self.num_zpts())
