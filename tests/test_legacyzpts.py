@@ -31,7 +31,7 @@ def run_and_check_outputs(image_list,cmd_line,outdir):
   download_ccds()
   parser= get_parser()
   args = parser.parse_args(args=cmd_line)
-  main(image_list=images_list, args=args)
+  main(image_list=image_list, args=args)
   # check output files exits
   for fn in image_list:
     base= os.path.basename(fn).replace(".fits.fz","")
@@ -49,13 +49,13 @@ def run_and_check_outputs(image_list,cmd_line,outdir):
                              base+"-debug-legacypipe.fits")))
 
 
-def test_decam():
+def test_decam_ps1_gaia():
     """Runs at least 1 CCD per band
     """
     print('RUNNING LEGACYZPTS: default settings')
     outdir = os.path.join(os.path.dirname(__file__),
                           'testoutput','new_legacyzpts_data',
-                          'default_settings')
+                          'ps1_gaia')
     fns= glob( os.path.join(os.path.dirname(__file__),
                             'testdata','ccds',
                             'small_c4d_*oki_*_v1.fits.fz'))
@@ -63,6 +63,8 @@ def test_decam():
               '--not_on_proj', '--debug']
     run_and_check_outputs(image_list=fns, cmd_line=cmd_line,
                           outdir=outdir)
+    #run_and_check_outputs(image_list=[fns[0]], cmd_line=cmd_line,
+    #                      outdir=outdir)
 
 def test_decam_ps1_only():
     """Runs at least 1 CCD per band
@@ -78,11 +80,13 @@ def test_decam_ps1_only():
               '--not_on_proj', '--debug', '--ps1_only']
     run_and_check_outputs(image_list=fns, cmd_line=cmd_line,
                           outdir=outdir)
+    #run_and_check_outputs(image_list=[fns[0]], cmd_line=cmd_line,
+    #                      outdir=outdir)
 
 
 
 
 if __name__ == "__main__":
-  test_decam()
-  #test_decam_ps1_only()
+  test_decam_ps1_gaia()
+  test_decam_ps1_only()
 

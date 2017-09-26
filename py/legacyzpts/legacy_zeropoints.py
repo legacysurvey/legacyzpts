@@ -573,7 +573,6 @@ def convert_zeropoints_table(T):
     app_ccd= ['skycounts','skyrms','skymag',
               'phoff','raoff','decoff',
               'phrms','rarms','decrms',
-              'nmatch',
               'transp'] 
     for ad_ccd in app_ccd:
         T.rename(ad_ccd,'ccd'+ad_ccd)
@@ -583,7 +582,8 @@ def convert_zeropoints_table(T):
                   ('fwhm','seeing'),('fwhm_cp','fwhm'),
                   ('zpt','ccdzpt'),('zptavg','zpt'),
                   ('width','naxis1'),('height','naxis2'),
-                  ('image_filename','filename')]
+                  ('image_filename','filename'),
+                  ('nmatch_photom','ccdnmatch')]
     for old,new in rename_keys:
         T.rename(old,new)
     # New columns
@@ -1176,20 +1176,21 @@ class Measurer(object):
             return ccds, _stars_table()
 
         # Put useful info in one place
-        info_for_stars= {"exptime":exptime,
+        info_for_stars= {"zp0":zp0,
+                         "exptime":exptime,
                          "obj":obj,
-                         "objdec":objra,
+                         "objra":objra,
                          "objdec":objdec,
                          "apflux":apflux,
                          "apskyflux":apskyflux,
-                         "apskyfluxi_perpix":apskyflux_perpix}
+                         "apskyflux_perpix":apskyflux_perpix}
 
         # Matching
         os.environ["PS1CAT_DIR"]=PS1
         os.environ["GAIACAT_DIR"]= PS1_GAIA_MATCHES
         ps1 = ps1cat(ccdwcs=self.wcs).get_stars(gaia_ps1=False)
         ps1_gaia = ps1cat(ccdwcs=self.wcs).get_stars(gaia_ps1=True)
-        raise ValueError('add assert that number cols are different')
+        assert(len(ps1_gaia.columns()) > len(ps1.columns()))
         #except IOError:
         #    # The gaia file does not exist:
         #    with open('zpts_bad_nogaiachunk.txt','a') as foo:
@@ -1231,7 +1232,12 @@ class Measurer(object):
               (ccds['nmatch_photom'], self.match_radius))
         t0= ptime('photometry match',t0)
 
+        # Initialize 
         stars_photom = _stars_table(nstars= ccds['nmatch_photom'])
+        self.add_info_to_stars_table(stars_photom,ccds,m1,
+                                     **info_for_stars)
+        for ps1_band,ps1_index in zip(['g','r','i','z'],[0,1,2,3]):
+            stars_photom['ps1_%s' % ps1_band]= ps1.median[m2, ps1_index]       
         # Color term: PS1 --> DECam
         colorterm = self.colorterm_ps1_to_observed(ps1.median[m2, :], self.band)
         ps1band = ps1cat.ps1band[self.band]
@@ -1248,16 +1254,11 @@ class Measurer(object):
         ccds['zpt'] = zptmed
         ccds['transp'] = transp       
 
-        self.add_info_to_stars_table(stars_photom,ccds,m1,
-                                     **info_for_stars)
-        for ps1_band,ps1_index in zip(['g','r','i','z'],[0,1,2,3]):
-            stars_photom['ps1_%s' % ps1_band]= ps1.median[m2, ps1_index]       
-
         # Astrometry
         if self.ps1_only: 
           ref_ra, ref_dec= ps1.ra_ok, ps1.dec_ok
         else:
-          ref_ra, ref_dec= ps1_gaia.gaia_ra, ps1_gai.gaia_dec
+          ref_ra, ref_dec= ps1_gaia.gaia_ra, ps1_gaia.gaia_dec
         m1, m2, d12 = match_radec(objra, objdec, ref_ra, ref_dec, 
                                   self.match_radius/3600.0,
                                   nearest=True)
@@ -1266,7 +1267,11 @@ class Measurer(object):
               (ccds['nmatch_astrom'], self.match_radius))
         t0= ptime('astrometry match',t0)
         
+        # Initialize
         stars_astrom = _stars_table(nstars= ccds['nmatch_astrom'])
+        self.add_info_to_stars_table(stars_astrom,ccds,m1,
+                                     **info_for_stars)
+        # Fill
         stars_astrom['radiff'] = (ref_ra[m2] - objra[m1]) * \
                                   np.cos(np.deg2rad( objdec[m1] )) * 3600.0
         stars_astrom['decdiff'] = (ref_dec[m2] - objdec[m1]) * 3600.0
@@ -1280,8 +1285,6 @@ class Measurer(object):
         dec_clip, _, _ = sigmaclip(stars_astrom['decdiff'], low=3., high=3.)
         ccds['decrms'] = getrms(dec_clip)
 
-        self.add_info_to_stars_table(stars_astrom,ccds,m1,
-                                     **info_for_stars)
         
         # FWHM from Tractor
         # SN from sky_img aperture photometry
@@ -1328,7 +1331,7 @@ class Measurer(object):
         return ccds, stars_photom, stars_astrom
 
     def add_info_to_stars_table(self,stars,ccds,m1,
-                                exptime,obj,objra,objdec,
+                                zp0,exptime,obj,objra,objdec,
                                 apflux,apskyflux,apskyflux_perpix):
       """Adds useful info to any stars table
       
@@ -1840,7 +1843,7 @@ def runit(imgfn,zptfn,starfn_photom,starfn_astrom,
         stars_photom.write(starfn_photom)
         stars_astrom.write(starfn_astrom)
         print('Wrote 2 stars tables\n%s\n%s' % 
-              (starfn_photom,starfn_astrom)
+              (starfn_photom,starfn_astrom))
         # Clean up
         t0= ptime('write-results-to-fits',t0)
     else:
@@ -1921,8 +1924,9 @@ def main(image_list=None,args=None):
                      not_on_proj= measureargs['not_on_proj'],
                      copy_from_proj= measureargs['copy_from_proj'],
                      debug=measureargs['debug'])
-        print(F.imgfn,F.zptfn,F.starfn)
-        if os.path.exists(F.zptfn) and os.path.exists(F.starfn):
+        if (os.path.exists(F.zptfn) & 
+            os.path.exists(F.starfn_photom) & 
+            os.path.exists(F.starfn_astrom) ):
             print('Already finished: %s' % F.zptfn)
             continue
         #measureargs.update(dict(zptfn= F.zptfn,\
@@ -1930,7 +1934,8 @@ def main(image_list=None,args=None):
         #                        imgfn= F.imgfn))
         # Create the file
         t0=ptime('b4-run',t0)
-        runit(F.imgfn,F.zptfn,F.starfn, **measureargs)
+        runit(F.imgfn,F.zptfn,F.starfn_photom,F.starfn_astrom, 
+              **measureargs)
         #try: 
         #    runit(imgfn_proj, **measureargs)
         #except:

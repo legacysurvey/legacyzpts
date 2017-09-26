@@ -43,12 +43,12 @@ class LoadData(object):
                              'good_legacyzpts_data.tar.gz'), 
                 get_data_dir())
 
-  def zpts_good_but_old(self,camera=None):
+  def zpts_old_but_good(self,camera=None):
     assert(camera in CAMERAS)
 
     leg_fns= glob(os.path.join(get_data_dir(),
                                'good_legacyzpts_data',
-                               '%s*-zpt.fits' % 
+                               'small_%s*-zpt.fits' % 
                                   FN_SUFFIX[camera]))
                                
     idl_fns= glob(os.path.join(get_data_dir(),
@@ -74,11 +74,17 @@ class LoadData(object):
     assert(len(zpt.legacy.data) == len(zpt.idl.data) )
     return zpt 
 
-  def zpts_new(self,camera=None):
+  def zpts_new(self,camera=None,indir='ps1_gaia'):
+    """
+    Args:
+      indir: the testoutput directory to read from
+    """
     assert(camera in CAMERAS)
+    assert(indir in ['ps1_gaia','ps1_only'])
 
     leg_dir= os.path.join(os.path.dirname(__file__),
-                          'testoutput','new_legacyzpts_data')
+                          'testoutput','new_legacyzpts_data',
+                          indir)
     leg_fns= glob(os.path.join(leg_dir,
                                'small_%s*-zpt.fits' % 
                                   FN_SUFFIX[camera]))
@@ -98,8 +104,7 @@ class LoadData(object):
     assert(len(zpt.legacy.data) == len(zpt.idl.data) )
     return zpt 
 
- 
-  def stars_old_but_good(camera=None):
+  def stars_old_but_good(self,camera=None):
     assert(camera in CAMERAS)
     leg_fns= glob(os.path.join(get_data_dir(),
                                'good_legacyzpts_data',
@@ -128,13 +133,19 @@ class LoadData(object):
     assert(len(star.legacy.data) == len(star.idl.data) )
     return star
 
-  def stars_new(camera=None,which='photom'):
+  def stars_new(self,camera=None,which='photom',indir='ps1_gaia'):
     """Two tables are possible, photom and astrom
+
+    Args:
+      which: which stars table to read
+      indir: the testoutput directory to read from
     """
     assert(camera in CAMERAS)
     assert(which in ['photom','astrom'])
+    assert(indir in ['ps1_gaia','ps1_only'])
     leg_dir= os.path.join(os.path.dirname(__file__),
-                          'testoutput','new_legacyzpts_data')
+                          'testoutput','new_legacyzpts_data',
+                           indir)
     leg_fns= glob(os.path.join(leg_dir,
                                'small_c4d_*oki*-star-%s.fits' % which))
     
@@ -161,20 +172,23 @@ class DecamEqualsIDL(object):
   Note: supports zpts and stars tables
   """
 
-  def zeropoints(self,zpts):
+  def zeropoints(self,zpts, full_ps1_cat=True):
     """Sanity check how close legacy values are to idl
 
     Args:
       zpts: ZptResidual object as returned by LoadData().zpts_*()
+      full_ps1_cat: all ps1 sources, not just those with gaia matches, were used
     """
     print("zpts: decam_vs_idl".upper())
 
     # Tolerances
-    tol= {'ccdzpt':0.004,
+    tol= {'ccdzpt':0.008,
           'ccdnmatch':20,
           'ccdskycounts':0.1}
     ylim_dict= {key: (-tol[key],tol[key])
                 for key in tol.keys()}
+    if full_ps1_cat:
+      ylim_dict['ccdnmatch']= None
     zpts.plot_residuals(doplot='diff',
                         use_keys=['ccdzpt','ccdnmatch',
                                   'ccdskycounts'],
@@ -187,13 +201,17 @@ class DecamEqualsIDL(object):
             stats.describe( np.abs(diff) ))
       assert(np.all( np.abs(diff) < tol[col]))
 
-    diff= np.abs(zpts.legacy.data.ccdnmatch -
-                 zpts.idl.data.ccdnmatch)
-    print('require %s < %g, stats=' % ('ccdnmatch',tol['ccdnmatch']), 
-          stats.describe(diff ))
-    assert(np.all( np.abs(zpts.legacy.data.ccdnmatch - 
-                          zpts.idl.data.ccdnmatch) 
-                          < tol['ccdnmatch']))
+    if full_ps1_cat:
+      print('require idl < %s < 2*idl' % 'ccdnmatch')
+      print('leg=',zpts.legacy.data.ccdnmatch,
+            'idl=',zpts.idl.data.ccdnmatch)
+      assert(np.all( (zpts.legacy.data.ccdnmatch > zpts.idl.data.ccdnmatch) &
+                     (zpts.legacy.data.ccdnmatch < 2*zpts.idl.data.ccdnmatch)))
+    else:
+      diff= zpts.legacy.data.ccdnmatch - zpts.idl.data.ccdnmatch
+      print('require %s < %g, stats=' % ('ccdnmatch',tol['ccdnmatch']), 
+            stats.describe( np.abs(diff) ))
+      assert(np.all( np.abs(diff) < tol['ccdnmatch']))
     
     filt= np.char.strip(zpts.legacy.data.filter)
     isGR= ((filt == 'g') |
@@ -201,13 +219,15 @@ class DecamEqualsIDL(object):
     isZ= (filt == 'z')
     diff= np.abs(zpts.legacy.data.ccdskycounts - 
                  zpts.idl.data.ccdskycounts)
-    print('require gr %s < %g, stats=' % ('ccdskycounts', tol['ccdskycounts']/100.), 
-          stats.describe( diff[isGR] ))
-    assert(np.all( diff[isGR] < tol['ccdskycounts']/100.))
+    if np.where(isGR)[0].size > 0:
+      print('require gr %s < %g, stats=' % ('ccdskycounts', tol['ccdskycounts']/100.), 
+            stats.describe( diff[isGR] ))
+      assert(np.all( diff[isGR] < tol['ccdskycounts']/100.))
     
-    print('require z %s < %g, stats=' % ('ccdskycounts', tol['ccdskycounts']), 
-          stats.describe( diff[isZ] ))
-    assert(np.all( diff[isZ] < tol['ccdskycounts']))
+    if np.where(isZ)[0].size > 0:
+      print('require z %s < %g, stats=' % ('ccdskycounts', tol['ccdskycounts']), 
+            stats.describe( diff[isZ] ))
+      assert(np.all( diff[isZ] < tol['ccdskycounts']))
 
   def stars(self,stars):
     """Sanity check how close legacy values are to idl
@@ -244,11 +264,13 @@ def test_decam_zpts_old_but_good():
   DecamEqualsIDL().zeropoints(zpts)
   assert(True)
 
-def test_decam_zpts_new():
+def test_decam_zpts_new(indir='ps1_gaia'):
   print("NEW: decam zpts")
+  assert(indir in ['ps1_gaia','ps1_only'])
   # Load and Match legacyzpts to IDLzpts
-  zpts= LoadData().zpts_new(camera='decam')
-  DecamEqualsIDL().zeropoints(zpts)
+  zpts= LoadData().zpts_new(camera='decam',indir=indir)
+  #return zpts
+  DecamEqualsIDL().zeropoints(zpts, full_ps1_cat=True)
   assert(True)
 
 def test_decam_stars_old_but_good():
@@ -258,21 +280,29 @@ def test_decam_stars_old_but_good():
   DecamEqualsIDL().stars(stars)
   assert(True)
 
-def test_decam_stars_new():
+def test_decam_stars_new(indir='ps1_gaia'):
+  assert(indir in ['ps1_gaia','ps1_only'])
   print("NEW: decam stars")
   # Load and Match legacy to IDL
   print('PHOTOM table')
-  stars= LoadData().stars_new(camera='decam',which='photom')
+  stars= LoadData().stars_new(camera='decam',
+                              which='photom',
+                              indir=indir)
+  #return stars
   DecamEqualsIDL().stars(stars)
   print('ASRTROM table')
-  stars= LoadData().stars_new(camera='decam',which='astrom')
-  DecamEqualsIDL().stars(stars)
+  #stars= LoadData().stars_new(camera='decam',which='astrom')
+  #DecamEqualsIDL().stars(stars)
   assert(True)
 
 
 
 if __name__ == "__main__":
-  test_decam_zpts_old_but_good()
-  test_decam_star_old_but_good()
-  #test_decam_zpts_new()
-  #test_decam_stars_new()
+  #test_decam_zpts_old_but_good()
+  #test_decam_stars_old_but_good()
+  # Default settings
+  test_decam_zpts_new(indir='ps1_gaia')
+  test_decam_stars_new(indir='ps1_gaia')
+  # eBOSS DR5
+  test_decam_zpts_new(indir='ps1_only')
+  test_decam_stars_new(indir='ps1_only')
