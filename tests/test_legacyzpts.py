@@ -19,36 +19,70 @@ def download_ccds():
                              'ccds.tar.gz'), 
                 outdir)
 
+def run_and_check_outputs(image_list,cmd_line,outdir):
+  """Runs legacyzpts and checks that expected files were written
+  
+  Args:
+    image_list: list of small images to run on
+    cmd_line: like ['--camera','decam','--outdir'], etc.
+    outdir: where to write the zpts and stars tables
+  """
+  assert(len(image_list) > 0)
+  download_ccds()
+  parser= get_parser()
+  args = parser.parse_args(args=cmd_line)
+  main(image_list=images_list, args=args)
+  # check output files exits
+  for fn in image_list:
+    base= os.path.basename(fn).replace(".fits.fz","")
+    assert( os.path.exists(
+                os.path.join(outdir,
+                             base+"-debug-zpt.fits")))
+    assert( os.path.exists(
+                os.path.join(outdir,
+                             base+"-debug-star-photom.fits")))
+    assert( os.path.exists(
+                os.path.join(outdir,
+                             base+"-debug-star-astrom.fits")))
+    assert( os.path.exists(
+                os.path.join(outdir,
+                             base+"-debug-legacypipe.fits")))
+
+
 def test_decam():
-    """Runs a test image for each band of a given camera
+    """Runs at least 1 CCD per band
     """
-    print('Zeropoints for DECam')
-    download_ccds()
+    print('RUNNING LEGACYZPTS: default settings')
     outdir = os.path.join(os.path.dirname(__file__),
-                          'testoutput','ccds')
+                          'testoutput','new_legacyzpts_data',
+                          'default_settings')
     fns= glob( os.path.join(os.path.dirname(__file__),
                             'testdata','ccds',
                             'small_c4d_*oki_*_v1.fits.fz'))
-    assert(len(fns) > 0)
     cmd_line=['--camera', 'decam','--outdir', outdir, 
               '--not_on_proj', '--debug']
-    parser= get_parser()
-    args = parser.parse_args(args=cmd_line)
-    main(image_list=fns, args=args)
-    # check output files exits
-    for fn in fns:
-      base= os.path.basename(fn).replace(".fits.fz","")
-      assert( os.path.exists(
-                  os.path.join(outdir,
-                               base+"-debug-zpt.fits")))
-      assert( os.path.exists(
-                  os.path.join(outdir,
-                               base+"-debug-star.fits")))
-      assert( os.path.exists(
-                  os.path.join(outdir,
-                               base+"-debug-legacypipe.fits")))
+    run_and_check_outputs(image_list=fns, cmd_line=cmd_line,
+                          outdir=outdir)
+
+def test_decam_ps1_only():
+    """Runs at least 1 CCD per band
+    """
+    print('RUNNING LEGACYZPTS: ps1_only')
+    outdir = os.path.join(os.path.dirname(__file__),
+                          'testoutput','new_legacyzpts_data',
+                          'ps1_only')
+    fns= glob( os.path.join(os.path.dirname(__file__),
+                            'testdata','ccds',
+                            'small_c4d_*oki_*_v1.fits.fz'))
+    cmd_line=['--camera', 'decam','--outdir', outdir, 
+              '--not_on_proj', '--debug', '--ps1_only']
+    run_and_check_outputs(image_list=fns, cmd_line=cmd_line,
+                          outdir=outdir)
+
+
 
 
 if __name__ == "__main__":
   test_decam()
+  #test_decam_ps1_only()
 
