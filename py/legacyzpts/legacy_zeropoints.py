@@ -1255,6 +1255,7 @@ class Measurer(object):
         ccds['transp'] = transp       
 
         # Astrometry
+        # Either Gaia or PS1
         if self.ps1_only: 
           ref_ra, ref_dec= ps1.ra_ok, ps1.dec_ok
         else:
@@ -1262,6 +1263,14 @@ class Measurer(object):
         m1, m2, d12 = match_radec(objra, objdec, ref_ra, ref_dec, 
                                   self.match_radius/3600.0,
                                   nearest=True)
+        # Gaia pot-holes!
+        if (len(m1) < 20) & (not self.ps1_only):
+          # Fallback to PS1 
+          ref_ra, ref_dec= ps1.ra_ok, ps1.dec_ok
+          m1, m2, d12 = match_radec(objra, objdec, ref_ra, ref_dec, 
+                                    self.match_radius/3600.0,
+                                    nearest=True)
+        # Proceed with ra,decoff
         ccds['nmatch_astrom'] = len(m1)
         print('Astrometry: matched %s sources within %.1f arcsec' % 
               (ccds['nmatch_astrom'], self.match_radius))
