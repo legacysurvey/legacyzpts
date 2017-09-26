@@ -118,7 +118,6 @@ class LegacyZpts(object):
                  loadable=True,temptable_name=None):
         '''
         '''
-        assert(len(zpt_list) > 0)
         self.zpt_list= zpt_list
         self.camera= camera
         self.loadable= loadable
