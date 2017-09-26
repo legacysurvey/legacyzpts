@@ -401,7 +401,7 @@ def create_legacypipe_table(ccds_fn):
     # Rename
     rename_keys= [('zpt','ccdzpt'),('zptavg','zpt'),
                   ('raoff','ccdraoff'),('decoff','ccddecoff'),
-                  ('nmatch','ccdnmatch')]
+                  ('nmatch_photom','ccdnmatch')]
     for old,new in rename_keys:
         T.rename(old,new)
         #units[new]= units.pop(old)
