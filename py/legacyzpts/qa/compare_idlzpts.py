@@ -400,12 +400,14 @@ class ZptResiduals(Residuals):
       savedir: has to write merged zpts file somewhere
       leg_list: list of legacy zpt files
       idl_list: list of idl zpt files
+      loadable: False to merge fits tables each time
 
     Attributes:
       camera: decam,mosaic,90prime
       savedir: has to write merged zpts file somewhere
       leg: LegacyZpt object for legacy table
       idl: ditto for idl table
+      loadable: False to merge fits tables each time
 
     Example:
     leg_fns= glob(os.path.join(os.getenv['CSCRATCH'],
@@ -561,12 +563,14 @@ class StarResiduals(Residuals):
       savedir: has to write merged zpts file somewhere
       leg_list: list of legacy zpt files
       idl_list: list of idl zpt files
+      loadable: False to merge fits tables each time
 
     Attributes:
       camera: decam,mosaic,90prime
       savedir: has to write merged zpts file somewhere
       leg: LegacyZpt object for legacy table
       idl: ditto for idl table
+      loadable: False to merge fits tables each time
 
     Example:
     leg_fns= glob(os.path.join(os.getenv['CSCRATCH'],
