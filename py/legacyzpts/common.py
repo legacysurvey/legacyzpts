@@ -84,3 +84,40 @@ def merge_tables_fns(fn_list,textfile=True,
         except IOError:
             print('Fits file does not exist: %s' % fn)
     return merge_tables(cats, columns='fillzero')
+
+
+def _shrink_img(imgfn,imgfn_new, camera='decam'):
+  """reads in imgfn and writes it to imgfn_new after removing most of the hdus"""
+  assert(not 'project' in imgfn_new)
+  hdu= fitsio.FITS(imgfn,'r')
+  new= fitsio.FITS(imgfn_new,'rw')
+  
+  new.write(hdu[0].read(),header=hdu[0].read_header())
+  if camera == 'decam':
+    ccdnames= ['N4','S4', 'S22','N19']
+  for ccdname in ccdnames:
+     try: 
+       data= hdu[ccdname].read()
+       h= hdu[ccdname].read_header()
+       new.write(data, extname=ccdname, header=h)
+     except OSError:
+       pass
+  new.close()
+  print('wrote %s' % imgfn_new)
+
+def shrink_img(camera='decam'):
+  root='/project/projectdirs/cosmo/staging/decam'
+  images= ['DECam_CP/CP20170326/c4d_170327_042837_oki_g_v1.fits.fz',
+           'DECam_CP/CP20170326/c4d_170327_042342_oki_r_v1.fits.fz',
+           'DECam_CP/CP20170326/c4d_170326_233934_oki_z_v1.fits.fz']
+  for image in images:
+    fn= os.path.join(root,image)
+    # ooi
+    fn_new='small_'+os.path.basename(fn) #.replace('.fz','')
+    _shrink_img(fn, fn_new, camera=camera)
+    # ood
+    fn= fn.replace("oki","ood").replace('ooi','ood')
+    fn_new= fn_new.replace("oki","ood").replace('ooi','ood')
+    _shrink_img(fn, fn_new, camera=camera)
+    
+

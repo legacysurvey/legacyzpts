@@ -29,6 +29,7 @@ from photutils import (CircularAperture, CircularAnnulus,
 # Sphinx build would crash
 try:
     from astrometry.util.starutil_numpy import hmsstring2ra, dmsstring2dec
+    from astrometry.util.util import wcs_pv2sip_hdr
     from astrometry.util.ttime import Time
     from astrometry.util.fits import fits_table, merge_tables
     from astrometry.libkd.spherematch import match_radec
@@ -41,83 +42,88 @@ except ImportError:
     pass
 
 
+CAMERAS=['decam','mosaic','90prime']
+STAGING_CAMERAS={'decam':'decam',
+                 'mosaic':'mosaicz',
+                 '90prime':'bok'}
+
 
 ######## 
 # stdouterr_redirected() is from Ted Kisner
 # Every mpi task (zeropoint file) gets its own stdout file
-import time
-from contextlib import contextmanager
-
-@contextmanager
-def stdouterr_redirected(to=os.devnull, comm=None):
-    '''assign unique log file to each mpi task
-
-    Based on http://stackoverflow.com/questions/5081657
-    
-    Example:
-    import os
-    with stdouterr_redirected(to=filename):
-    print("from Python")
-    os.system("echo non-Python applications are also supported")
-    '''
-    sys.stdout.flush()
-    sys.stderr.flush()
-    fd = sys.stdout.fileno()
-    fde = sys.stderr.fileno()
-
-    ##### assert that Python and C stdio write using the same file descriptor
-    ####assert libc.fileno(ctypes.c_void_p.in_dll(libc, "stdout")) == fd == 1
-
-    def _redirect_stdout(to):
-        sys.stdout.close() # + implicit flush()
-        os.dup2(to.fileno(), fd) # fd writes to 'to' file
-        sys.stdout = os.fdopen(fd, 'w') # Python writes to fd
-        sys.stderr.close() # + implicit flush()
-        os.dup2(to.fileno(), fde) # fd writes to 'to' file
-        sys.stderr = os.fdopen(fde, 'w') # Python writes to fd
-        
-    with os.fdopen(os.dup(fd), 'w') as old_stdout:
-        if (comm is None) or (comm.rank == 0):
-            print("Begin log redirection to {} at {}".format(to, time.asctime()))
-        sys.stdout.flush()
-        sys.stderr.flush()
-        pto = to
-        if comm is None:
-            if not os.path.exists(os.path.dirname(pto)):
-                os.makedirs(os.path.dirname(pto))
-            with open(pto, 'w') as file:
-                _redirect_stdout(to=file)
-        else:
-            pto = "{}_{}".format(to, comm.rank)
-            with open(pto, 'w') as file:
-                _redirect_stdout(to=file)
-        try:
-            yield # allow code to be run with the redirected stdout
-        finally:
-            sys.stdout.flush()
-            sys.stderr.flush()
-            _redirect_stdout(to=old_stdout) # restore stdout.
-                                            # buffering and flags such as
-                                            # CLOEXEC may be different
-            if comm is not None:
-                # concatenate per-process files
-                comm.barrier()
-                if comm.rank == 0:
-                    with open(to, 'w') as outfile:
-                        for p in range(comm.size):
-                            outfile.write("================= Process {} =================\n".format(p))
-                            fname = "{}_{}".format(to, p)
-                            with open(fname) as infile:
-                                outfile.write(infile.read())
-                            os.remove(fname)
-                comm.barrier()
-
-            if (comm is None) or (comm.rank == 0):
-                print("End log redirection to {} at {}".format(to, time.asctime()))
-            sys.stdout.flush()
-            sys.stderr.flush()
-            
-    return
+#import time
+#from contextlib import contextmanager
+#
+#@contextmanager
+#def stdouterr_redirected(to=os.devnull, comm=None):
+#    '''assign unique log file to each mpi task
+#
+#    Based on http://stackoverflow.com/questions/5081657
+#    
+#    Example:
+#    import os
+#    with stdouterr_redirected(to=filename):
+#    print("from Python")
+#    os.system("echo non-Python applications are also supported")
+#    '''
+#    sys.stdout.flush()
+#    sys.stderr.flush()
+#    fd = sys.stdout.fileno()
+#    fde = sys.stderr.fileno()
+#
+#    ##### assert that Python and C stdio write using the same file descriptor
+#    ####assert libc.fileno(ctypes.c_void_p.in_dll(libc, "stdout")) == fd == 1
+#
+#    def _redirect_stdout(to):
+#        sys.stdout.close() # + implicit flush()
+#        os.dup2(to.fileno(), fd) # fd writes to 'to' file
+#        sys.stdout = os.fdopen(fd, 'w') # Python writes to fd
+#        sys.stderr.close() # + implicit flush()
+#        os.dup2(to.fileno(), fde) # fd writes to 'to' file
+#        sys.stderr = os.fdopen(fde, 'w') # Python writes to fd
+#        
+#    with os.fdopen(os.dup(fd), 'w') as old_stdout:
+#        if (comm is None) or (comm.rank == 0):
+#            print("Begin log redirection to {} at {}".format(to, time.asctime()))
+#        sys.stdout.flush()
+#        sys.stderr.flush()
+#        pto = to
+#        if comm is None:
+#            if not os.path.exists(os.path.dirname(pto)):
+#                os.makedirs(os.path.dirname(pto))
+#            with open(pto, 'w') as file:
+#                _redirect_stdout(to=file)
+#        else:
+#            pto = "{}_{}".format(to, comm.rank)
+#            with open(pto, 'w') as file:
+#                _redirect_stdout(to=file)
+#        try:
+#            yield # allow code to be run with the redirected stdout
+#        finally:
+#            sys.stdout.flush()
+#            sys.stderr.flush()
+#            _redirect_stdout(to=old_stdout) # restore stdout.
+#                                            # buffering and flags such as
+#                                            # CLOEXEC may be different
+#            if comm is not None:
+#                # concatenate per-process files
+#                comm.barrier()
+#                if comm.rank == 0:
+#                    with open(to, 'w') as outfile:
+#                        for p in range(comm.size):
+#                            outfile.write("================= Process {} =================\n".format(p))
+#                            fname = "{}_{}".format(to, p)
+#                            with open(fname) as infile:
+#                                outfile.write(infile.read())
+#                            os.remove(fname)
+#                comm.barrier()
+#
+#            if (comm is None) or (comm.rank == 0):
+#                print("End log redirection to {} at {}".format(to, time.asctime()))
+#            sys.stdout.flush()
+#            sys.stderr.flush()
+#            
+#    return
 
 def try_mkdir(dir):
     try:
@@ -224,7 +230,7 @@ def _ccds_table(camera='decam'):
 
     '''
     cols = [
-        ('image_filename', 'S65'), # image filename, including the subdirectory
+        ('image_filename', 'S100'), # image filename, including the subdirectory
         ('image_hdu', '>i2'),      # integer extension number
         ('camera', 'S7'),          # camera name
         ('expnum', '>i4'),         # unique exposure number
@@ -304,7 +310,7 @@ def _stars_table(nstars=1):
        detected on the CCD, including the PS1 photometry.
 
     '''
-    cols = [('image_filename', 'S65'),('image_hdu', '>i2'),
+    cols = [('image_filename', 'S100'),('image_hdu', '>i2'),
             ('expid', 'S16'), ('filter', 'S1'),('nmatch', '>i2'), 
             ('amplifier', 'i2'), ('x', 'f4'), ('y', 'f4'),('expnum', '>i4'),
             ('gain', 'f4'),
@@ -652,6 +658,7 @@ class Measurer(object):
         
         self.fn = fn
         self.debug= kwargs.get('debug')
+        self.outdir= kwargs.get('outdir')
 
         self.aper_sky_sub = aper_sky_sub
         self.calibrate = calibrate
@@ -820,10 +827,10 @@ class Measurer(object):
             #print('Fitting source', i, 'of', len(Jf))
             ix = int(np.round(xi))
             iy = int(np.round(yi))
-            xlo = max(0, ix-radius_pix)
-            xhi = min(W, ix+radius_pix+1)
-            ylo = max(0, iy-radius_pix)
-            yhi = min(H, iy+radius_pix+1)
+            xlo = int( max(0, ix-radius_pix) )
+            xhi = int( min(W, ix+radius_pix+1) )
+            ylo = int( max(0, iy-radius_pix) )
+            yhi = int( min(H, iy+radius_pix+1) )
             xx, yy = np.meshgrid(np.arange(xlo, xhi), np.arange(ylo, yhi))
             r2 = (xx - xi)**2 + (yy - yi)**2
             keep = (r2 < radius_pix**2)
@@ -904,7 +911,12 @@ class Measurer(object):
         # Initialize and begin populating the output CCDs table.
         ccds = _ccds_table(self.camera)
         # starts with the decam/ mosaic/ or 90prime/ dir
-        ccds['image_filename'] = self.fn[self.fn.rfind('/%s/' % self.camera)+1:]
+        if STAGING_CAMERAS[self.camera] in self.fn:
+          ccds['image_filename'] = self.fn[self.fn.rfind('/%s/' % \
+                                           STAGING_CAMERAS[self.camera])+1:]
+        else:
+          # img not on proj
+          ccds['image_filename'] = os.path.basename(self.fn)
         ccds['image_hdu'] = self.image_hdu 
         ccds['ccdnum'] = self.ccdnum 
         ccds['camera'] = self.camera
@@ -948,6 +960,8 @@ class Measurer(object):
                 if hkey == 'avsky':
                     print('CP image does not have avsky in hdr: %s' % ccds['image_filename'])
                     ccds[hkey]= -1
+                elif hkey in ['znaxis1','znaxis2']:
+                  print('%s not in header, but not huge deal' % hkey)
                 else:
                     raise NameError('key not in header: %s' % hkey)
             
@@ -1002,8 +1016,8 @@ class Measurer(object):
         if self.debug:
             extra= {}
             extra['proj_fn']= os.path.join('/project/projectdirs/cosmo/staging',
-                                           ccds['image_filename'].data[0])
-            extra['hdu']= ccds['image_hdu'].data[0]
+                                           str(ccds['image_filename'].data[0]))
+            extra['extname']= ext #ccds['image_hdu'].data[0]
 
         # Detect stars on the image.  
         # 10 sigma, sharpness, roundness all same as IDL zeropoints (also the defaults)
@@ -1358,15 +1372,21 @@ class Measurer(object):
             t0= ptime('made-plots',t0)
 
        
-        if self.debug:
+        #if self.debug:
             # Save extra
-            extra_fn= os.path.basename(ccds['image_filename'].data[0]).replace('.fits.fz','') + \
-                      '-%s-' % extra['hdu'] + 'extra.pkl'
-            extra_fn= os.path.join(os.path.dirname(self.fn),
-                                   extra_fn)
-            with open(extra_fn,'w') as foo:
-                dump(extra,foo)
-            print('Wrote %s' % extra_fn)
+            #extra_fn= (os.path
+            #             .basename(str(ccds['image_filename'].data[0]))
+            #             .replace(".fits.fz","")
+            #             .strip("'")
+            #          )
+            #extra_fn += '-%s-extra.pkl' % extra['hdu']
+            #extra_fn= os.path.join(self.outdir,
+            #                       "extra-%s.pkl" % extra['extname']) 
+                      #os.path.join(os.path.dirname(zptfn),
+                      #             '')
+            #with open(extra_fn,'wb') as foo:
+            #    dump(extra,foo)
+            #print('Wrote %s' % extra_fn)
  
         return ccds, stars
     
@@ -1620,7 +1640,7 @@ class NinetyPrimeMeasurer(Measurer):
         return wcs_pv2sip_hdr(self.hdr) # PV distortion
 
 
-def get_extlist(camera,fn):
+def get_extlist(camera,fn,debug=False):
     '''
     Returns 'mosaic', 'decam', or '90prime'
     '''
@@ -1631,6 +1651,8 @@ def get_extlist(camera,fn):
     elif camera == 'decam':
         hdu= fitsio.FITS(fn)
         extlist= [hdu[i].get_extname() for i in range(1,len(hdu))]
+        if debug:
+          extlist = ['N4','S4'] #, 'S22','N19']
         #extlist = ['S29', 'S31', 'S25', 'S26', 'S27', 'S28', 'S20', 'S21', 'S22',
         #           'S23', 'S24', 'S14', 'S15', 'S16', 'S17', 'S18', 'S19', 'S8',
         #           'S9', 'S10', 'S11', 'S12', 'S13', 'S1', 'S2', 'S3', 'S4', 'S5',
@@ -1638,8 +1660,6 @@ def get_extlist(camera,fn):
         #           'N10', 'N11', 'N12', 'N13', 'N14', 'N15', 'N16', 'N17', 'N18',
         #           'N19', 'N20', 'N21', 'N22', 'N23', 'N24', 'N25', 'N26', 'N27',
         #           'N28', 'N29', 'N31']
-        # Testing only!
-        #extlist = ['N4','S4', 'S22','N19']
     else:
         print('Camera {} not recognized!'.format(camera))
         pdb.set_trace() 
@@ -1678,6 +1698,7 @@ def measure_image(img_fn, **measureargs):
 
     # Fitsio can throw error: ValueError: CONTINUE not supported
     try:
+        print('img_fn=%s' % img_fn)
         primhdr = fitsio.read_header(img_fn, ext=0)
     except ValueError:
         # astropy can handle it
@@ -1705,7 +1726,8 @@ def measure_image(img_fn, **measureargs):
     # mosaic listed as mosaic3 in hearder, other combos maybe
     assert(camera in camera_check or camera_check in camera)
     
-    extlist = get_extlist(camera,img_fn)
+    extlist = get_extlist(camera,img_fn, 
+                          debug=measureargs['debug'])
     nnext = len(extlist)
 
     if camera == 'decam':
@@ -1739,74 +1761,95 @@ def measure_image(img_fn, **measureargs):
 
 
 class outputFns(object):
-    def __init__(self,imgfn_proj,outdir,prefix='',**kwargs):
-        '''
+    def __init__(self,imgfn,outdir, not_on_proj=False,
+                 copy_from_proj=False, debug=False):
+        """Assigns filename, makes needed dirs, and copies images to scratch if needed
+
+        Args:
+          imgfn: abs path to image, should be a ooi or oki file
+          outdir: root dir for outptus
+          not_on_proj: True if image not stored on project or projecta
+          copy_from_proj: True if want to copy all image files from project to scratch
+          debug: 4 ccds only if true
+
+        Attributes:
+          imgfn: image that will be read
+          zptfn: zeropoints file
+          starfn: stars file
+
+        Example:
         outdir/decam/DECam_CP/CP20151226/img_fn.fits.fz
         outdir/decam/DECam_CP/CP20151226/img_fn-zpt%s.fits
         outdir/decam/DECam_CP/CP20151226/img_fn-star%s.fits
-        '''
-        camera= kwargs.get('camera')
-        if camera == 'decam':
-            proj_name= camera
-        elif camera == 'mosaic':
-            proj_name= camera+'z'
-        elif camera == '90prime': 
-            proj_name= 'bok'
-        proj_dir= '/project/projectdirs/cosmo/staging/%s/' % proj_name
-        proja_dir= '/global/projecta/projectdirs/cosmo/staging/%s/' % proj_name
-        root= imgfn_proj.replace(proj_dir,'').replace(proja_dir,'')
-        # Names
-        dr= os.path.join(outdir,camera,root)
-        # Image fn that will be on SCRATCH
-        self.imgfn_scr= dr #os.path.join(dr,'%s.fits.fz' % base)
-        # zpt filenames
-        base= dr.replace('.fits.fz','')
-        self.zptfn= base + '-zpt.fits' #os.path.join(dr,'%s-zpt%s.fits' % (base,prefix))
-        self.starfn= base + '-star.fits' #os.path.join(dr,'%s-star%s.fits' % (base,prefix))
+        """
+        # img fns
+        if not_on_proj:
+          # Don't worry about mirroring path, just get image's fn
+          self.imgfn= imgfn
+          dirname='' 
+          basename= os.path.basename(imgfn) 
+        else:
+          # Mirror path to image but write to scratch
+          proj_dir= '/project/projectdirs/cosmo/staging/'
+          proja_dir= '/global/projecta/projectdirs/cosmo/staging/'
+          assert( (proj_dir in imgfn) |
+                  (proja_dir in imgfn))
+          relative_fn= imgfn.replace(proj_dir,'').replace(proja_dir,'')
+          dirname= os.path.dirname(relative_fn) 
+          basename= os.path.basename(relative_fn) 
+          if copy_from_proj:
+            # somwhere on scratch
+            self.imgfn= os.path.join(outdir,dirname,basename)
+          else:
+            self.imgfn= imgfn
+        # zpt,star fns
+        self.zptfn= os.path.join(outdir,dirname,
+                                 basename.replace('.fits.fz','-zpt.fits')) 
+        self.starfn= os.path.join(outdir,dirname,
+                                 basename.replace('.fits.fz','-star.fits')) 
+        if debug:
+          self.zptfn= self.zptfn.replace('-zpt.fits','-debug-zpt.fits')
+          self.starfn= self.starfn.replace('-star.fits','-debug-star.fits')
+        # Makedirs
+        try:
+          os.makedirs(os.path.join(outdir,dirname))
+        except FileExistsError: 
+          print('Directory already exists: %s' % os.path.join(outdir,dirname))
+        # Copy if need
+        if copy_from_proj:
+          if not os.path.exists(self.imgfn): 
+            dobash("cp %s %s" % (imgfn,self.imgfn))
+          if not os.path.exists( get_bitmask_fn(self.imgfn)): 
+            dobash("cp %s %s" % ( get_bitmask_fn(imgfn), get_bitmask_fn(self.imgfn)))
 
-def success(ccds, **measureargs):
+            
+def success(ccds,imgfn, debug=False):
     num_ccds= dict(decam=60,mosaic=4)
     num_ccds['90prime']=4
-    camera= measureargs.get('camera')
-    scr_fn= measureargs.get('imgfn_scr')
-    hdu= fitsio.FITS(scr_fn)
+    hdu= fitsio.FITS(imgfn)
     #if len(ccds) >= num_ccds.get(camera,0):
     if len(ccds) == len(hdu)-1:
         return True
-    elif measureargs.get('debug') and len(ccds) >= 1:
+    elif debug and len(ccds) >= 1:
         # only 1 ccds needs to be done if debuggin
         return True
     else:
         return False
 
 
-def runit(imgfn_proj, **measureargs):
+def runit(imgfn,zptfn,starfn,**measureargs):
     '''Generate a legacypipe-compatible CCDs file for a given image.
     '''
-    zptfn= measureargs.get('zptfn')
-    starfn= measureargs.get('starfn')
-    imgfn_scr= measureargs.get('imgfn_scr')
-    # mask fn
-    dqfn_proj= get_bitmask_fn(imgfn_proj)
-    dqfn_scr= get_bitmask_fn(imgfn_scr)
-
+    #zptfn= measureargs.get('zptfn')
+    #starfn= measureargs.get('starfn')
+    #imgfn= measureargs.get('imgfn')
+    
     t0 = Time()
-    for mydir in [os.path.dirname(zptfn),\
-                  os.path.dirname(imgfn_scr)]:
-        try_mkdir(mydir)
-
-    # Copy to SCRATCH for improved I/O
-    if not os.path.exists(imgfn_scr): 
-        dobash("cp %s %s" % (imgfn_proj,imgfn_scr))
-    if not os.path.exists(dqfn_scr): 
-        dobash("cp %s %s" % (dqfn_proj, dqfn_scr))
-    t0= ptime('copy-to-scratch',t0)
-
-    ccds, stars, extra_info= measure_image(imgfn_scr, **measureargs)
+    ccds, stars, extra_info= measure_image(imgfn, **measureargs)
     t0= ptime('measure_image',t0)
 
     # Only write if all CCDs are done
-    if success(ccds,**measureargs):
+    if success(ccds,imgfn, debug=measureargs['debug']):
         # Write out.
         ccds.write(zptfn)
         # Header <-- fiducial zp,sky,ext, also exptime, pixscale
@@ -1825,11 +1868,13 @@ def runit(imgfn_proj, **measureargs):
         t0= ptime('write-results-to-fits',t0)
     else:
         print('FAILED, only %d CCDs, %s' % (len(ccds),imgfn_proj))
-    if os.path.exists(imgfn_scr): 
+    if measureargs['copy_from_proj'] & os.path.exists(imgfn): 
         # Safegaurd against removing stuff on /project
-        assert(not 'project' in imgfn_scr)
-        dobash("rm %s" % imgfn_scr)
-        dobash("rm %s" % dqfn_scr)
+        assert(not 'project' in imgfn)
+        #dobash("rm %s" % imgfn_scr)
+        #dobash("rm %s" % dqfn_scr)
+        dobash("SOFT rm %s" % imgfn_scr)
+        dobash("SOFT rm %s" % dqfn_scr)
         t0= ptime('removed-cp-from-scratch',t0)
     
 def parse_coords(s):
@@ -1848,9 +1893,11 @@ def get_parser():
                                      description='Generate a legacypipe-compatible CCDs file \
                                                   from a set of reduced imaging.')
     parser.add_argument('--camera',choices=['decam','mosaic','90prime'],action='store',required=True)
-    parser.add_argument('--image',action='store',default=None,help='if want to run a single image',required=False)
-    parser.add_argument('--image_list',action='store',default=None,help='if want to run all images in a text file, Note:if compare2arjun = True then list of legacy zeropoint files',required=False)
+    parser.add_argument('--image',action='store',default=None,help='relative path to image starting from decam,bok,mosaicz dir',required=False)
+    parser.add_argument('--image_list',action='store',default=None,help='text file listing multiples images in same was as --image',required=False)
     parser.add_argument('--outdir', type=str, default='.', help='Where to write zpts/,images/,logs/')
+    parser.add_argument('--not_on_proj', action='store_true', default=False, help='set when the image is not on project or projecta')
+    parser.add_argument('--copy_from_proj', action='store_true', default=False, help='copy image data from proj to scratch before analyzing')
     parser.add_argument('--debug', action='store_true', default=False, help='Write additional files and plots for debugging')
     parser.add_argument('--det_thresh', type=float, default=10., help='source detection, 10x sky sigma')
     parser.add_argument('--match_radius', type=float, default=1., help='arcsec, matching to gaia/ps1, 1 arcsec better astrometry than 3 arcsec as used by IDL codes')
@@ -1861,7 +1908,6 @@ def get_parser():
     parser.add_argument('--logdir', type=str, default='.', help='Where to write zpts/,images/,logs/')
     parser.add_argument('--prefix', type=str, default='', help='Prefix to prepend to the output files.')
     parser.add_argument('--verboseplots', action='store_true', default=False, help='use to plot FWHM Moffat PSF fits to the 20 brightest stars')
-    parser.add_argument('--compare2arjun', action='store_true', default=False, help='turn this on and give --image-list a list of legacy zeropoint files instead of cp images')
     parser.add_argument('--aprad', type=float, default=3.5, help='Aperture photometry radius (arcsec).')
     parser.add_argument('--skyrad_inner', type=float, default=7.0, help='Radius of inner sky annulus (arcsec).')
     parser.add_argument('--skyrad_outer', type=float, default=10.0, help='Radius of outer sky annulus (arcsec).')
@@ -1881,14 +1927,8 @@ def main(image_list=None,args=None):
     t0 = Time()
     tbegin=t0
     
-    if args.compare2arjun:
-        comp= Compare2Arjuns(args.image_list)
-        sys.exit("Finished compaison to Arjun's zeropoints")
-
     # Build a dictionary with the optional inputs.
     measureargs = vars(args)
-    if not args.compare2arjun:
-        measureargs.pop('compare2arjun')
     measureargs.pop('image_list')
     measureargs.pop('image')
     # Add user specified camera, useful check against primhdr
@@ -1897,18 +1937,22 @@ def main(image_list=None,args=None):
     outdir = measureargs.pop('outdir')
     try_mkdir(outdir)
     t0=ptime('parse-args',t0)
-    for imgfn_proj in image_list:
+    for imgfn in image_list:
         # Check if zpt already written
-        F= outputFns(imgfn_proj,outdir,**measureargs)
+        F= outputFns(imgfn, outdir,
+                     not_on_proj= measureargs['not_on_proj'],
+                     copy_from_proj= measureargs['copy_from_proj'],
+                     debug=measureargs['debug'])
+        print(F.imgfn,F.zptfn,F.starfn)
         if os.path.exists(F.zptfn) and os.path.exists(F.starfn):
             print('Already finished: %s' % F.zptfn)
             continue
-        measureargs.update(dict(zptfn= F.zptfn,\
-                                starfn= F.starfn,\
-                                imgfn_scr= F.imgfn_scr))
+        #measureargs.update(dict(zptfn= F.zptfn,\
+        #                        starfn= F.starfn,\
+        #                        imgfn= F.imgfn))
         # Create the file
         t0=ptime('b4-run',t0)
-        runit(imgfn_proj, **measureargs)
+        runit(F.imgfn,F.zptfn,F.starfn, **measureargs)
         #try: 
         #    runit(imgfn_proj, **measureargs)
         #except:

@@ -341,12 +341,14 @@ class Residuals(object):
       savedir: has to write merged zpts file somewhere
       leg_list: list of legacy zpt files
       idl_list: list of idl zpt files
+      loadable: False to force merging fits file each time
 
     Attributes:
       camera: decam,mosaic,90prime
       savedir: has to write merged zpts file somewhere
       leg: LegacyZpt object for legacy table
       idl: ditto for idl table
+      loadable: False to force merging fits file each time
 
     Example:
     leg_fns= glob(os.path.join(os.getenv['CSCRATCH'],
@@ -357,20 +359,23 @@ class Residuals(object):
     'zeropoint*.fits')
     zpt= Residuals(camera='decam',savedir='.',
     leg_list=leg_list,
-    idl_list=idl_list)
+    idl_list=idl_list,loadable=True)
     zpt.load_data()
     zpt.match() 
     """
 
     def __init__(self,camera='decam',savedir='./',
                  leg_list=[],
-                 idl_list=[]):
+                 idl_list=[],
+                 loadable=True):
         self.camera= camera
         self.savedir= savedir
-        self.idl= LegacyZpts(zpt_list=idl_list, temptable_name='idl',
-                             camera=camera, savedir=savedir)
-        self.legacy= LegacyZpts(zpt_list=leg_list, temptable_name='legacy',
-                                camera=camera,savedir=savedir)
+        self.idl= LegacyZpts(zpt_list=idl_list,
+                             camera=camera, savedir=savedir, 
+                             temptable_name='idl', loadable=loadable)
+        self.legacy= LegacyZpts(zpt_list=leg_list,
+                                camera=camera,savedir=savedir,
+                                temptable_name='legacy',loadable=loadable)
 
     def load_data(self):
         """Add zeropoints data to LegacyZpts objects"""
@@ -420,9 +425,11 @@ class ZptResiduals(Residuals):
 
     def __init__(self,camera='decam',savedir='./',
                  leg_list=[],
-                 idl_list=[]):
+                 idl_list=[],
+                 loadable=True):
         super(ZptResiduals, self).__init__(camera,savedir,
-                                           leg_list,idl_list)
+                                           leg_list,idl_list,
+                                           loadable)
     
     def write_json_expnum2var(self, var,json_fn):
         """writes dict mapping 'expnum' to some variable like 'exptime'"""
@@ -450,42 +457,46 @@ class ZptResiduals(Residuals):
               'ccdnmatch']
         return idl_keys
 
-    def get_defaultdict_ylim(self,doplot,ylim=None):
-        ylim_dict=defaultdict(lambda: ylim)
-        if doplot == 'diff':
-            ylim_dict['ccdra']= (-1e-8,1e-8)
-            ylim_dict['ccddec']= ylim_dict['ra']
-            ylim_dict['ccdzpt']= (-0.005,0.005)
-        elif doplot == 'div':
-            ylim_dict['ccdzpt']= (0.995,1.005)
-            ylim_dict['ccdskycounts']= (0.99,1.01)
-        else:
-            pass
-        return ylim_dict
+    #def get_defaultdict_ylim(self,doplot,ylim=None):
+    #    ylim_dict=defaultdict(lambda: ylim)
+    #    if doplot == 'diff':
+    #        ylim_dict['ccdra']= (-1e-8,1e-8)
+    #        ylim_dict['ccddec']= ylim_dict['ra']
+    #        ylim_dict['ccdzpt']= (-0.005,0.005)
+    #    elif doplot == 'div':
+    #        ylim_dict['ccdzpt']= (0.995,1.005)
+    #        ylim_dict['ccdskycounts']= (0.99,1.01)
+    #    else:
+    #        pass
+    #    return ylim_dict
  
-    def get_defaultdict_xlim(self,doplot,xlim=None):
-        xlim_dict=defaultdict(lambda: xlim)
-        if doplot == 'diff':
-            pass
-        elif doplot == 'div':
-            pass
-        else:
-            pass
-        return xlim_dict      
+    #def get_defaultdict_xlim(self,doplot,xlim=None):
+    #    xlim_dict=defaultdict(lambda: xlim)
+    #    if doplot == 'diff':
+    #        pass
+    #    elif doplot == 'div':
+    #        pass
+    #    else:
+    #        pass
+    #    return xlim_dict      
 
     def plot_residuals(self,doplot=None,
-                       ms=100,use_keys=None,ylim=None,xlim=None):
+                       ms=100,
+                       use_keys=None,ylim_dict=None):
         '''two plots of everything numberic between legacy zeropoints and Arjun's
         1) x vs. y-x 
         2) x vs. y/x
-        use_keys= list of legacy_keys to use ONLY
+
+        Args:
+          use_keys= only plot these cols
+          ylim_dict: +/- ylim for each col
         '''
         #raise ValueError
         assert(doplot in ['diff','div'])
         # All keys and any ylims to use
         cols= self.get_numeric_keys()
-        ylim= self.get_defaultdict_ylim(doplot=doplot,ylim=ylim)
-        xlim= self.get_defaultdict_xlim(doplot=doplot,xlim=xlim)
+        #ylim= self.get_defaultdict_ylim(doplot=doplot,ylim=ylim)
+        #xlim= self.get_defaultdict_xlim(doplot=doplot,xlim=xlim)
         # Plot
         FS=25
         eFS=FS+5
@@ -529,10 +540,10 @@ class ZptResiduals(Residuals):
             supti= ax[0].set_title(col,fontsize=FS)
             for row in range(3):
                 ax[row].tick_params(axis='both', labelsize=tickFS)
-                if ylim[col]:
-                    ax[row].set_ylim(ylim[col])
-                if xlim[col]:
-                    ax[row].set_xlim(xlim[col])
+                if ylim_dict.get(col,None):
+                    ax[row].set_ylim(ylim_dict[col])
+                #if xlim[col]:
+                #    ax[row].set_xlim(xlim[col])
             savefn=os.path.join(self.savedir,
                                 "zeropointresiduals_%s_%s.png" % 
                                     (doplot,col))
@@ -575,9 +586,11 @@ class StarResiduals(Residuals):
 
     def __init__(self,camera='decam',savedir='./',
                  leg_list=[],
-                 idl_list=[]):
+                 idl_list=[],
+                 loadable=False):
         super(StarResiduals, self).__init__(camera,savedir,
-                                            leg_list,idl_list)    
+                                            leg_list,idl_list,
+                                            loadable)    
     
     def read_json(self, json_fn):
         """return dict"""
@@ -623,29 +636,29 @@ class StarResiduals(Residuals):
              'gmag','ps1_g','ps1_r','ps1_i','ps1_z']
         return idl_keys
 
-    def get_defaultdict_ylim(self,doplot,ylim=None):
-        ylim_dict=defaultdict(lambda: ylim)
-        if doplot == 'diff':
-            ylim_dict['ccd_ra']= None #(-1e-8,1e-8)
-            ylim_dict['ccd_dec']= ylim_dict['ra']
-        elif doplot == 'div':
-            pass
-        else:
-            pass
-        return ylim_dict
+    #def get_defaultdict_ylim(self,doplot,ylim=None):
+    #    ylim_dict=defaultdict(lambda: ylim)
+    #    if doplot == 'diff':
+    #        ylim_dict['ccd_ra']= None #(-1e-8,1e-8)
+    #        ylim_dict['ccd_dec']= ylim_dict['ra']
+    #    elif doplot == 'div':
+    #        pass
+    #    else:
+    #        pass
+    #    return ylim_dict
  
-    def get_defaultdict_xlim(self,doplot,xlim=None):
-        xlim_dict=defaultdict(lambda: xlim)
-        if doplot == 'diff':
-            pass
-        elif doplot == 'div':
-            pass
-        else:
-            pass
-        return xlim_dict      
+    #def get_defaultdict_xlim(self,doplot,xlim=None):
+    #    xlim_dict=defaultdict(lambda: xlim)
+    #    if doplot == 'diff':
+    #        pass
+    #    elif doplot == 'div':
+    #        pass
+    #    else:
+    #        pass
+    #    return xlim_dict      
 
-    def plot_residuals(self,doplot=None,
-                       ms=100,use_keys=None,ylim=None,xlim=None):
+    def plot_residuals(self,doplot=None,ms=100,
+                       use_keys=None,ylim_dict=None):
         '''two plots of everything numberic between legacy zeropoints and Arjun's
         1) x vs. y-x 
         2) x vs. y/x
@@ -655,8 +668,8 @@ class StarResiduals(Residuals):
         assert(doplot in ['diff','div'])
         # All keys and any ylims to use
         cols= self.get_numeric_keys()
-        ylim= self.get_defaultdict_ylim(doplot=doplot,ylim=ylim)
-        xlim= self.get_defaultdict_xlim(doplot=doplot,xlim=xlim)
+        #ylim= self.get_defaultdict_ylim(doplot=doplot,ylim=ylim)
+        #xlim= self.get_defaultdict_xlim(doplot=doplot,xlim=xlim)
         # Plot
         FS=25
         eFS=FS+5
@@ -701,10 +714,10 @@ class StarResiduals(Residuals):
             supti= ax[0].set_title(col,fontsize=FS)
             for row in range(3):
                 ax[row].tick_params(axis='both', labelsize=tickFS)
-                if ylim[col]:
-                    ax[row].set_ylim(ylim[col])
-                if xlim[col]:
-                    ax[row].set_xlim(xlim[col])
+                if ylim_dict.get(col,None):
+                    ax[row].set_ylim(ylim_dict[col])
+                #if xlim[col]:
+                #    ax[row].set_xlim(xlim[col])
             savefn=os.path.join(self.savedir,
                                 "matchesresiduals_%s_%s.png" % 
                                  (doplot,col))
