@@ -34,7 +34,7 @@ export MKL_NUM_THREADS=1
 export OMP_NUM_THREADS=1
 
 srun -n $tasks -c 1 \
-  python $zpts_code/legacyzpts/py/legacyzpts/legacy_zeropoints_merge.py 
+  python $zpts_code/legacyzpts/py/legacyzpts/legacy_zeropoints_merge.py \
   --file_list $file_list --nproc $tasks \
   --outname $outname \
     >> $log 2>&1
