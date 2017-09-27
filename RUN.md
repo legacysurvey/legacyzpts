@@ -1,29 +1,5 @@
 # Run legacyzpts @ NERSC
 
-### Procedure
-
-1 generate file list of cpimages, e.g. for everything mzls. For example,
-```
-find /project/projectdirs/cosmo/staging/mosaicz/MZLS_CP/CP*v2/k4m*ooi*.fits.fz > mosaic_allcp.txt
-```
-2 use batch script "submit_zpts.sh" to run legacy-zeropoints.py
- * scaling is good with 10,000+ cores
- * key is Yu Feng's bcast, we made tar.gz files for all the NERSC HPCPorts modules and Yu's bcast efficiently copies them to ram on every compute node for fast python startup
- * the directory containing the tar.gz files is /global/homes/k/kaylanb/repos/yu-bcase
- * also on kaylans tape: bcast_hpcp.tar
-3 queus
- * debug queue gets all zeropoints done < 30 min
- * set SBATCH -N to be as many nodes as will give you mpi tasks = nodes*cores_per_nodes ~ number of cp images
- * ouput ALL plots with --verboseplots, ie Moffat PSF fits to 20 brightest stars for FWHM
- 4 Make a file (e.g. zpt_files.txt) listing all the zeropoint files you just made (not includeing the -star.fits ones), then 
-  * compare legacy zeropoints to Arjuns 
-  ```
-  python legacy-zeropoints.py --image_list zpt_files.txt --compare2arjun
-  ```
-  * gather all zeropoint files into one fits table
-  ```python legacy-zeropoints-gather.py --file_list zpt_files.txt --nproc 1 --outname gathered_zpts.fits
-  ```
-
 ### Code and Data
 The code runs with the same python environment on either Cori or Edison, so install it to one place. Git clone the repos to a directory "zpts_code"
 ```sh
@@ -90,17 +66,17 @@ We use "qdo" to manage the thousands of production jobs, but for testing it is u
  * B) Docker image
 
 #### 1A)
-Make a text file listing all the absolute paths to the CP image filenames you want to run on
-e.g.
+Make a text file listing all the absolute paths to the CP image filenames you want to run on.
 ```
 find /project/projectdirs/cosmo/staging/mosaicz/MZLS_CP/CP*v2/k4m*ooi*.fits.fz > image_list.txt
 ```
+Ill use eBOSS DR5 PS1 only zeropoints as an example. Anand gave me the list of CP images, so I renamed it to image_list.txt
 
 Run a `Serial job`, see
 https://github.com/legacysurvey/legacyzpts/blob/master/bin/slurm_job.sh
 
 ```sh
-export name_for_run=dr6
+export name_for_run=ebossDR5
 export outdir=$zpts_out/$name_for_run
 mkdir -p $outdir
 cd $outdir
@@ -110,7 +86,7 @@ cp $zpts_code/legacyzpts/bin/slurm_job.sh ./
 Edit these lines for your run:
 ```sh
 export camera=decam
-export name_for_run=dr6
+export name_for_run=ebossDR5
 export proj_dir=/project/projectdirs/cosmo/staging
 export scr_dir=/global/cscratch1/sd/kaylanb/zpts_out/${name_for_run}
 export image_list=$scr_dir/image_list.txt
@@ -121,10 +97,11 @@ then Submit the job
 sbatch slurm_job.sh
 ```
 
-Once that works, run the MPI version, see 
+Now you could run the MPI version, see 
 https://github.com/legacysurvey/legacyzpts/blob/master/bin/slurm_job_mpi.sh
+but Ill continue on to qdo
 
-Submit for all exposures, say from night CP20160225
+To submit the MPI version for all exposures, say from night CP20160225, do
 ```
 cd $zpts_out/$name_for_run
 night=CP20160225
@@ -136,29 +113,33 @@ sbatch $zpts_code/legacyzpts/bin/slurm_job_mpi.sh
 Coming soon
 
 #### 2A)
-Run with `qdo job`, see
-https://github.com/legacysurvey/obiwan/blob/master/bin/qdo_job.sh
+Qdo
 
-(Optional) Edit these lines:
+Make a new queue. 
+```
+qdo create zpts_eBOSS
+qdo load zpts_eBOSS image_list.txt
+```
+
+Get the job script, see
+https://github.com/legacysurvey/obiwan/blob/master/bin/qdo_job.sh
+```sh
+cd $zpts_out/$name_for_run
+cp $zpts_code/legacyzpts/bin/qdo_job.sh ./
+```
+
+Edit these lines:
 ```sh
 export camera=decam
-export name_for_run=dr6
+export name_for_run=ebossDR5
 export proj_dir=/project/projectdirs/cosmo/staging
 export scr_dir=/global/cscratch1/sd/kaylanb/zpts_out/${name_for_run}
 ```
 
-Qdo tasks will be cp image names. Make a queue for night CP20160225
+Now launch qdo workers
 ```sh
 cd $zpts_out/$name_for_run
-night=CP20160225
-find $proj_dir/decam/DECam_CP/${night}/c4d*oki*.fits.fz > image_list.txt
-qdo load zpts_20160225 image_list.txt
-```
-
-Now launch 96 qdo workers for these tasks with 1 hardware core per task (3 nodes on Cori)
-```sh
-cd $obiwan_code
-qdo launch obiwan 96 --cores_per_worker 1 --batchqueue debug --walltime 00:30:00 --script $CSCRATCH/zpts_code/legacyzpts/bin/qdo_job.sh --keep_env
+qdo launch zpts_eBOSS 320 --cores_per_worker 1 --batchqueue debug --walltime 00:30:00 --script $zpts_out/$name_for_run/qdo_job.sh --keep_env
 ```
 
 #### 2B)
@@ -167,3 +148,29 @@ Coming soon
 ### TODO
 
 * --night option for legacy_zeropoints, which will run all exposures for that night 
+
+### Oringal Instructions
+
+1 generate file list of cpimages, e.g. for everything mzls. For example,
+```
+find /project/projectdirs/cosmo/staging/mosaicz/MZLS_CP/CP*v2/k4m*ooi*.fits.fz > mosaic_allcp.txt
+```
+2 use batch script "submit_zpts.sh" to run legacy-zeropoints.py
+ * scaling is good with 10,000+ cores
+ * key is Yu Feng's bcast, we made tar.gz files for all the NERSC HPCPorts modules and Yu's bcast efficiently copies them to ram on every compute node for fast python startup
+ * the directory containing the tar.gz files is /global/homes/k/kaylanb/repos/yu-bcase
+ * also on kaylans tape: bcast_hpcp.tar
+3 queus
+ * debug queue gets all zeropoints done < 30 min
+ * set SBATCH -N to be as many nodes as will give you mpi tasks = nodes*cores_per_nodes ~ number of cp images
+ * ouput ALL plots with --verboseplots, ie Moffat PSF fits to 20 brightest stars for FWHM
+ 4 Make a file (e.g. zpt_files.txt) listing all the zeropoint files you just made (not includeing the -star.fits ones), then 
+  * compare legacy zeropoints to Arjuns 
+  ```
+  python legacy-zeropoints.py --image_list zpt_files.txt --compare2arjun
+  ```
+  * gather all zeropoint files into one fits table
+  ```python legacy-zeropoints-gather.py --file_list zpt_files.txt --nproc 1 --outname gathered_zpts.fits
+  ```
+
+
