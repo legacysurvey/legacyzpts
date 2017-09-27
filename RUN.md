@@ -149,6 +149,24 @@ Coming soon
 
 * --night option for legacy_zeropoints, which will run all exposures for that night 
 
+### Managing your qdo production run
+Manage your qdo production run with `legacyzpts/py/legacyzpts/runmanager/status.py`. List the log files associated with each QDO state "succeeded, failed, running", and list the errors in each log file with
+```sh
+cd $zpts_code/$name_for_run
+python $zpts_code/legacyzpts/py/legacyzpts/runmanager/status.py --qdo_quename zpts_eBOSS --outdir $zpts_code/$name_for_run
+```
+
+Any "running" jobs that remain after all qdo jobs have finished are time outs. They get miscomunicated to the QDO db and need to be rerun. Resubmit them and delete the associated outputs for that task with 
+```sh
+python $zpts_code/legacyzpts/py/legacyzpts/runmanager/status.py --qdo_quename zpts_eBOSS --outdir $zpts_code/$name_for_run --running_to_pending --modify
+```
+Note run without the "--modify" to see what tasks would be reset and file removed
+
+The types of errors found in the "failed" log files are listed. You can rerun all tasks and remove associated outputs specifying the name of the error. For example, "log not exist"
+```sh
+python $zpts_code/legacyzpts/py/legacyzpts/runmanager/status.py --qdo_quename zpts_eBOSS --outdir $zpts_code/$name_for_run --failed_message_to_pending "log not exist" --modify
+```
+
 ### Oringal Instructions
 
 1 generate file list of cpimages, e.g. for everything mzls. For example,
