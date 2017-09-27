@@ -62,7 +62,7 @@ def write_cat(cat, outname):
             os.remove(f)
     cat.writeto(fn)
     cat2.writeto(fn2)
-    with open(fn_flag,'w') as foo:
+    with open(fn_flag,'wb') as foo:
         pickle.dump(flag, foo)
     print('Wrote Files')
     for f in [fn,fn2]:

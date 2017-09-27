@@ -168,6 +168,30 @@ The types of errors found in the "failed" log files are listed. You can rerun al
 python $zpts_code/legacyzpts/py/legacyzpts/runmanager/status.py --qdo_quename zpts_eBOSS --outdir $zpts_code/$name_for_run --failed_message_to_pending "log not exist" --modify
 ```
 
+### Merge tables
+Once your satisfied that all zeropoints outputs have been created, you need to merge everything into one table. The legacypipe/tractor pipeline uses the files named "*-legacypipe.fits". Find them and merge with
+```sh
+export file_list=done_legacypipe.txt
+find $zpts_out/$name_for_run/decam -name "*-legacypipe.fits" > $file_list
+export outname=merged_legacypipe.fits
+python $zpts_code/legacyzpts/py/legacy_zeropoints_merge.py --file_list $file_list --nproc 1 --outname $outname
+```
+
+But this could take FOREVER, so do it with MPI on N compute nodes
+```sh
+cd $zpts_code/$name_for_run
+cp $zpts_out/legacyzpts/bin/slurm_job_merge.sh .
+```
+Edit
+```sh
+export file_list=done_legacypipe.txt
+export outname=merged_legacypipe.fits
+```
+then run with
+```sh
+sbatch slurm_job_merge.sh
+```
+
 ### Oringal Instructions
 
 1 generate file list of cpimages, e.g. for everything mzls. For example,
