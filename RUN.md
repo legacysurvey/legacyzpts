@@ -152,8 +152,9 @@ Coming soon
 ### Managing your qdo production run
 Manage your qdo production run with `legacyzpts/py/legacyzpts/runmanager/status.py`. List the log files associated with each QDO state "succeeded, failed, running", and list the errors in each log file with
 ```sh
+export name_for_run=ebossDR5
 cd $zpts_code/$name_for_run
-python $zpts_code/legacyzpts/py/legacyzpts/runmanager/status.py --qdo_quename zpts_eBOSS --outdir $zpts_code/$name_for_run
+python $zpts_code/legacyzpts/py/legacyzpts/runmanager/status.py --qdo_quename zpts_eBOSS --outdir "$zpts_out/$name_for_run"
 ```
 
 Any "running" jobs that remain after all qdo jobs have finished are time outs. They get miscomunicated to the QDO db and need to be rerun. Resubmit them and delete the associated outputs for that task with 

@@ -27,6 +27,7 @@ def get_logfile(proj_fn,outdir):
   """
   return projfn_to_scrfn(proj_fn,outdir).replace('.fits.fz','.log')
 
+
 def get_slurm_files(outdir):
   return glob( outdir + '/slurm-*.out')
 
@@ -193,9 +194,14 @@ if __name__ == '__main__':
   R.print_tally(tally)
 
   #err_logs= R.get_logs_for_failed(regex='Other')
-  err_key= 'Other'
-  err_logs= np.array(logs['failed'])[ tally['failed'] == err_key ]
-  writelist(err_logs,"%s_%s_logsfailed.txt" % (args.qdo_quename,err_key))
+  for err_key in R.regex_errs + ['Other','log not exist']:
+    err_logs= np.array(logs['failed'])[ tally['failed'] == err_key ]
+    err_tasks= np.array(tasks['failed'])[ tally['failed'] == err_key ]
+    err_string= (err_key[:10]
+                 .replace(" ","_")
+                 .replace(":",""))
+    writelist(err_logs,"logs_%s_%s.txt" % (args.qdo_quename,err_string))
+    writelist(err_tasks,"tasks_%s_%s.txt" % (args.qdo_quename,err_string))
 
   if args.running_to_pending:
     if len(ids['running']) > 0:
