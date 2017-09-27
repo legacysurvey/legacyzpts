@@ -435,27 +435,6 @@ def create_legacypipe_table(ccds_fn):
     print('Wrote %s' % outfn)
 
 
-def create_matches_table(stars_fn, zp_fid=None,pixscale=0.262):
-    """Takes legacy star table fn, reads, write out converted to idl names and units
-
-    Args:
-      stars_fn: legacy star file, ends with -star.fits
-      zp_fid: fiducial zeropoint for the band
-      pixscale: pixscale
-
-    Example:
-    kwargs= primary_hdr(zpt_fn)
-    create_matches_table(stars_fn, zp_fid=kwargs['zp_fid'],
-    pixscale=kwargs['pixscale'])
-    """
-    assert('-star.fits' in stars_fn)
-    T = fits_table(stars_fn)
-    convert_stars_table(T, zp_fid=zp_fid,pixscale=pixscale)
-    # Write
-    outfn= stars_fn.replace('-star.fits','-matches.fits')
-    T.writeto(outfn) #, columns=cols, header=hdr, primheader=primhdr, units=units)
-    print('Wrote %s' % outfn)
-
 
 def convert_stars_table(T, camera=None): #zp_fid=None,pixscale=0.262):
     """converges legacy stars to idl matches table
@@ -533,16 +512,7 @@ def convert_stars_table_one_band(T, zp_fid=None,pixscale=0.262):
     return T
 
 
-def create_zeropoints_table(zpt_fn):
-    assert('-zpt.fits' in zpt_fn)
-    T = fits_table(zpt_fn)
-    T= legacy2idl_zpts(T)
-    # Write
-    outfn=zpt_fn.replace('-zpt.fits','-zeropoint.fits')
-    T.writeto(outfn) #, columns=cols, header=hdr, primheader=primhdr, units=units)
-    print('Wrote %s' % outfn)
-
-def convert_zeropoints_table(T):
+def convert_zeropoints_table(T, pix=0.262):
     """Make column names and units of -zpt.fits identical to IDL zeropoints
 
     Args:
@@ -562,7 +532,6 @@ def convert_zeropoints_table(T):
         ['arawgain','ccdhdunum','ccdzpta', 'ccdzptb','ccdnstarfind', 'ccdnstar',
          'ccdnmatcha', 'ccdnmatchb', 'ccdmdncol','temp']
     # Change units
-    pix= 0.262
     T.set('fwhm',T.fwhm * pix)
     T.set('skycounts', T.skycounts * T.exptime / T.gain)
     T.set('skyrms', T.skycounts * T.exptime / T.gain)
@@ -1627,8 +1596,12 @@ def get_extlist(camera,fn,debug=False):
     '''
     if camera == '90prime':
         extlist = ['CCD1', 'CCD2', 'CCD3', 'CCD4']
+        if debug:
+          extlist = ['CCD1']
     elif camera == 'mosaic':
         extlist = ['CCD1', 'CCD2', 'CCD3', 'CCD4']
+        if debug:
+          extlist = ['CCD1']
     elif camera == 'decam':
         hdu= fitsio.FITS(fn)
         extlist= [hdu[i].get_extname() for i in range(1,len(hdu))]

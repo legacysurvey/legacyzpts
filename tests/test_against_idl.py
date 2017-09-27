@@ -74,7 +74,7 @@ class LoadData(object):
     assert(len(zpt.legacy.data) == len(zpt.idl.data) )
     return zpt 
 
-  def zpts_new(self,camera=None,indir='ps1_gaia'):
+  def zpts_new(self,camera='decam',indir='ps1_gaia'):
     """
     Args:
       indir: the testoutput directory to read from
@@ -83,16 +83,18 @@ class LoadData(object):
     assert(indir in ['ps1_gaia','ps1_only'])
 
     leg_dir= os.path.join(os.path.dirname(__file__),
-                          'testoutput','new_legacyzpts_data',
+                          'testoutput',camera,
                           indir)
+    print('leg_dir=%s' % leg_dir)
     leg_fns= glob(os.path.join(leg_dir,
-                               'small_%s*-zpt.fits' % 
+                               '*%s*-zpt.fits' % 
                                   FN_SUFFIX[camera]))
                                
     idl_fns= glob(os.path.join(get_data_dir(),
                                'good_idlzpts_data',
                                'zeropoint-%s*.fits' %
                                   FN_SUFFIX[camera]))
+    assert(len(leg_fns) > 0 and len(idl_fns) > 0)
     zpt= ZptResiduals(camera=camera,
                       savedir= leg_dir,
                       leg_list=leg_fns,
@@ -133,7 +135,7 @@ class LoadData(object):
     assert(len(star.legacy.data) == len(star.idl.data) )
     return star
 
-  def stars_new(self,camera=None,which='photom',indir='ps1_gaia'):
+  def stars_new(self,camera='decam',which='photom',indir='ps1_gaia'):
     """Two tables are possible, photom and astrom
 
     Args:
@@ -144,15 +146,17 @@ class LoadData(object):
     assert(which in ['photom','astrom'])
     assert(indir in ['ps1_gaia','ps1_only'])
     leg_dir= os.path.join(os.path.dirname(__file__),
-                          'testoutput','new_legacyzpts_data',
+                          'testoutput',camera,
                            indir)
+    print('leg_dir=%s' % leg_dir)
     leg_fns= glob(os.path.join(leg_dir,
-                               'small_c4d_*oki*-star-%s.fits' % which))
-    
+                               '*%s*-star-%s.fits' % (FN_SUFFIX[camera],which)))
+
     idl_fns= glob(os.path.join(get_data_dir(),
                                'good_idlzpts_data',
                                'matches-%s*.fits' %
                                  FN_SUFFIX[camera]))
+    assert(len(leg_fns) > 0 and len(idl_fns) > 0)
     star= StarResiduals(camera=camera,
                         savedir= leg_dir,
                         leg_list=leg_fns,
@@ -295,14 +299,26 @@ def test_decam_stars_new(indir='ps1_gaia'):
   #DecamEqualsIDL().stars(stars)
   assert(True)
 
+def test_mosaic_zpts_new(indir='ps1_gaia'):
+  print("NEW: mosaic zpts")
+  assert(indir in ['ps1_gaia','ps1_only'])
+  # Load and Match legacyzpts to IDLzpts
+  zpts= LoadData().zpts_new(camera='mosaic',indir=indir)
+  return zpts
+  #DecamEqualsIDL().zeropoints(zpts, full_ps1_cat=True)
+  #assert(True)
+
 
 
 if __name__ == "__main__":
   #test_decam_zpts_old_but_good()
   #test_decam_stars_old_but_good()
   # Default settings
-  test_decam_zpts_new(indir='ps1_gaia')
-  test_decam_stars_new(indir='ps1_gaia')
+  #test_decam_zpts_new(indir='ps1_gaia')
+  #test_decam_stars_new(indir='ps1_gaia')
   # eBOSS DR5
-  test_decam_zpts_new(indir='ps1_only')
-  test_decam_stars_new(indir='ps1_only')
+  #test_decam_zpts_new(indir='ps1_only')
+  #zpts= test_decam_stars_new(indir='ps1_only')
+  
+  zpts= test_mosaic_zpts_new(indir='ps1_gaia')
+  #test_decam_stars_new(indir='ps1_gaia')
