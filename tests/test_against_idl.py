@@ -170,20 +170,22 @@ class LoadData(object):
 
 
 
-class DecamEqualsIDL(object):
-  """checks that legazpts tables for decam are within tolerance compared to idl zpts tables
+class CheckTolerance(object):
+  """checks that legazpts tables are within tolerance compared to idl zpts tables
   
   Note: supports zpts and stars tables
   """
 
-  def zeropoints(self,zpts, full_ps1_cat=True):
+  def zeropoints(self,camera='decam',zpts=None, full_ps1_cat=True):
     """Sanity check how close legacy values are to idl
 
     Args:
+      camera: CAMERAS
       zpts: ZptResidual object as returned by LoadData().zpts_*()
       full_ps1_cat: all ps1 sources, not just those with gaia matches, were used
     """
-    print("zpts: decam_vs_idl".upper())
+    assert(camera in CAMERAS)
+    print(("zpts: %s_vs_idl" % camera).upper())
 
     # Tolerances
     tol= {'ccdzpt':0.008,
@@ -199,8 +201,11 @@ class DecamEqualsIDL(object):
                         ylim_dict=ylim_dict)
     # Test
     for col in ['ccdzpt']:
-      diff,_,_= stats.sigmaclip(zpts.legacy.data.get(col) - 
-                                zpts.idl.data.get(col))
+      if camera == 'decam':
+        diff,_,_= stats.sigmaclip(zpts.legacy.data.get(col) - 
+                                  zpts.idl.data.get(col))
+      else:
+        diff= zpts.legacy.data.get(col) - zpts.idl.data.get(col)
       print('require %s < %g, stats=' % (col,tol[col]), 
             stats.describe( np.abs(diff) ))
       assert(np.all( np.abs(diff) < tol[col]))
@@ -233,10 +238,11 @@ class DecamEqualsIDL(object):
             stats.describe( diff[isZ] ))
       assert(np.all( diff[isZ] < tol['ccdskycounts']))
 
-  def stars(self,stars):
+  def stars(self,camera='decam',stars=None):
     """Sanity check how close legacy values are to idl
 
     Args:
+      camera: CAMERAS
       star: StarResidual object as returned by test_load_star
     """
     print("stars: decam_vs_idl".upper())
@@ -265,7 +271,7 @@ def test_decam_zpts_old_but_good():
   print("OLD BUT GOOD: decam zpts")
   # Load and Match legacyzpts to IDLzpts
   zpts= LoadData().zpts_old_but_good(camera='decam')
-  DecamEqualsIDL().zeropoints(zpts)
+  CheckTolerance().zeropoints(camera='decam',zpts=zpts)
   assert(True)
 
 def test_decam_zpts_new(indir='ps1_gaia'):
@@ -274,14 +280,15 @@ def test_decam_zpts_new(indir='ps1_gaia'):
   # Load and Match legacyzpts to IDLzpts
   zpts= LoadData().zpts_new(camera='decam',indir=indir)
   #return zpts
-  DecamEqualsIDL().zeropoints(zpts, full_ps1_cat=True)
+  CheckTolerance().zeropoints(camera='decam',zpts=zpts, 
+                              full_ps1_cat=True)
   assert(True)
 
 def test_decam_stars_old_but_good():
   print("OLD BUT GOOD: decam stars")
   # Load and Match legacy to IDL
   stars= LoadData().stars_old_but_good(camera='decam')
-  DecamEqualsIDL().stars(stars)
+  CheckTolerance().stars(camera='decam',stars=stars)
   assert(True)
 
 def test_decam_stars_new(indir='ps1_gaia'):
@@ -293,7 +300,7 @@ def test_decam_stars_new(indir='ps1_gaia'):
                               which='photom',
                               indir=indir)
   #return stars
-  DecamEqualsIDL().stars(stars)
+  CheckTolerance().stars(camera='decam',stars=stars)
   print('ASRTROM table')
   #stars= LoadData().stars_new(camera='decam',which='astrom')
   #DecamEqualsIDL().stars(stars)
@@ -304,9 +311,9 @@ def test_mosaic_zpts_new(indir='ps1_gaia'):
   assert(indir in ['ps1_gaia','ps1_only'])
   # Load and Match legacyzpts to IDLzpts
   zpts= LoadData().zpts_new(camera='mosaic',indir=indir)
-  return zpts
-  #DecamEqualsIDL().zeropoints(zpts, full_ps1_cat=True)
-  #assert(True)
+  CheckTolerance().zeropoints(camera='mosaic',zpts=zpts, 
+                              full_ps1_cat=True)
+  assert(True)
 
 
 
@@ -318,7 +325,7 @@ if __name__ == "__main__":
   #test_decam_stars_new(indir='ps1_gaia')
   # eBOSS DR5
   #test_decam_zpts_new(indir='ps1_only')
-  #zpts= test_decam_stars_new(indir='ps1_only')
+  #test_decam_stars_new(indir='ps1_only')
   
   zpts= test_mosaic_zpts_new(indir='ps1_gaia')
   #test_decam_stars_new(indir='ps1_gaia')

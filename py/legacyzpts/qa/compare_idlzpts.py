@@ -445,7 +445,8 @@ class ZptResiduals(Residuals):
 
     def convert_legacy(self):
         # Converts to idl names, units
-        self.legacy.data= convert_zeropoints_table(self.legacy.data)
+        self.legacy.data= convert_zeropoints_table(self.legacy.data,
+                                                   camera=self.camera)
 
 
     def get_numeric_keys(self):

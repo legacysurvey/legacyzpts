@@ -365,6 +365,12 @@ def primary_hdr(fn):
     a.close()
     return h 
 
+def get_pixscale(camera='decam'):
+  assert(camera in CAMERAS)
+  return {'decam':0.262,
+          'mosaic':0.262,
+          '90prime':0.470}[camera]
+
 def run_create_legacypipe_table(zpt_list):
     fns= np.loadtxt(zpt_list,dtype=str)
     assert(len(fns) > 1)
@@ -512,13 +518,14 @@ def convert_stars_table_one_band(T, zp_fid=None,pixscale=0.262):
     return T
 
 
-def convert_zeropoints_table(T, pix=0.262):
+def convert_zeropoints_table(T, camera='decam'):
     """Make column names and units of -zpt.fits identical to IDL zeropoints
 
     Args:
       T: fits_table of some -zpt.fits like fits file
     """
-    # HACK! need func to put in appropriate units e.g. compare to survey-ccds file for decam,mosaic, and bass
+    assert(camera in CAMERAS)
+    pix= get_pixscale(camera)
     need_arjuns_keys= \
         ['filename', 'object', 'expnum', 'exptime', 'filter', 'seeing', 'ra', 'dec', 
          'date_obs', 'mjd_obs', 'ut', 'ha', 'airmass', 'propid', 'zpt', 'avsky', 
@@ -533,10 +540,13 @@ def convert_zeropoints_table(T, pix=0.262):
          'ccdnmatcha', 'ccdnmatchb', 'ccdmdncol','temp']
     # Change units
     T.set('fwhm',T.fwhm * pix)
-    T.set('skycounts', T.skycounts * T.exptime / T.gain)
-    T.set('skyrms', T.skycounts * T.exptime / T.gain)
-    T.set('zpt',T.zpt - 2.5*np.log10(T.gain))
-    T.set('zptavg',T.zptavg - 2.5*np.log10(T.gain))
+    if camera == "decam":
+      T.set('skycounts', T.skycounts * T.exptime / T.gain)
+      T.set('skyrms', T.skycounts * T.exptime / T.gain)
+      T.set('zpt',T.zpt - 2.5*np.log10(T.gain))
+      T.set('zptavg',T.zptavg - 2.5*np.log10(T.gain))
+    elif camera == "mosaic":
+      pass
     # Rename
     # Append 'ccd' to name
     app_ccd= ['skycounts','skyrms','skymag',
