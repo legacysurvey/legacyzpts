@@ -23,6 +23,7 @@ from legacyzpts.fetch import fetch_targz
 from legacyzpts.common import merge_tables_fns
 from legacyzpts.legacy_zeropoints import cols_for_legacypipe_table
 
+from test_against_common import get_tolerance,PlotDifference,differenceChecker 
 
 
 DOWNLOAD_DIR='http://portal.nersc.gov/project/desi/users/kburleigh/legacyzpts'
@@ -86,40 +87,42 @@ class LoadData(object):
 # TEST FUNCS
 ############
 
-def test_legacypipe_table(camera='decam',indir='ps1_gaia'):
-    """
+def test_legacypipe_table(camera='decam',indir='ps1_gaia', 
+                          plot=False):
+    """checks that difference between legacypipe and surveyccds sufficiently small
     Args:
+      camera: CAMERAS
       indir: the testoutput directory to read from
     """
-    print("TESTING LEGACYPIPE again survey-ccds")
+    print("TESTING LEGACYPIPE")
     assert(camera in CAMERAS)
     assert(indir in ['ps1_gaia','ps1_only'])
     # Matched tables
     leg,ccds= LoadData().legacypipe_matched_surveyccds(camera=camera,
                                                        indir=indir)
-    # Tolerances
-    numeric_cols= cols_for_legacypipe_table(which='numeric')
+    # Check differences
+    cols= cols_for_legacypipe_table(which='numeric')
     not_in_surveyccds= ['skyrms']
-    hard_to_compare= ['ccdraoff','ccddecoff'] + ['width','height']
-    # Defalut is 0.01 unless specify here
-    tol= {'fwhm':0.1,
-          'ccdnmatch':0.5}
-    #should_be_different= ['ccdnmatch']
-    for col in numeric_cols:
-      assert(col in leg.get_columns())
-      assert(np.all(np.isfinite(leg.get(col))))
-      if col in not_in_surveyccds + hard_to_compare:
-        continue
-      abs_rel_diff= np.abs(  (leg.get(col) - ccds.get(col))/ccds.get(col)  )
-      print('col=',col,'leg=',leg.get(col),'ccds=',ccds.get(col))
-      print('\ttol=%g, abs_rel_diff=' % tol.get(col,0.01),abs_rel_diff)
-      assert(np.all( abs_rel_diff < tol.get(col,0.01) ))
+    for col in not_in_surveyccds:
+      cols.remove(col)
+    differenceChecker(data=leg, ref=ccds,
+                      cols=cols, camera=camera)   
+    # Plot
+    if plot:
+      cols= cols_for_legacypipe_table(which='nonzero_diff')
+      for col in not_in_surveyccds:
+        cols.remove(col)
+      PlotDifference(which_table='legacypipe',camera=camera,
+                     indir=indir,against='surveyccds',
+                     x=ccds, y=leg, cols=cols, 
+                     xname='Surveyccds',yname='Legacy')
     assert(True)
 
 
-
 if __name__ == "__main__":
-  #test_legacypipe_table(camera='decam',indir='ps1_gaia')
-  test_legacypipe_table(camera='mosaic',indir='ps1_gaia')
+  #test_legacypipe_table(camera='decam',indir='ps1_gaia',
+  #                      plot=True)
+  test_legacypipe_table(camera='mosaic',indir='ps1_gaia',
+                         plot=True)
   #test_legacypipe_table(camera='decam',indir='ps1_only')
   #test_legacypipe_table(camera='decam',indir='ps1_only')

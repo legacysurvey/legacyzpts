@@ -379,7 +379,13 @@ def run_create_legacypipe_table(zpt_list):
         
 
 def cols_for_legacypipe_table(which='all'):
-  assert(which in ['all','numeric'])
+  """Return list of -legacypipe.fits table colums
+  
+  Args:
+    which: all, numeric, 
+       nonzero_diff (numeric and expect non-zero diff with reference 
+       when compute it)"""
+  assert(which in ['all','numeric','nonzero_diff'])
   if which == 'all':
     need_arjuns_keys= ['ra','dec','ra_bore','dec_bore',
                        'image_filename','image_hdu','expnum','ccdname','object',
@@ -398,10 +404,15 @@ def cols_for_legacypipe_table(which='all'):
                        'cd1_1','cd2_2','cd1_2','cd2_1',
                        'crval1','crval2','crpix1','crpix2']
     dustins_keys= ['skyrms']
+  elif which == 'nonzero_diff':
+    need_arjuns_keys= ['ra','dec','ccdnmatch',
+                       'fwhm','zpt','ccdzpt','ccdraoff','ccddecoff']
+    dustins_keys= ['skyrms']
+  
   return need_arjuns_keys + dustins_keys
  
 
-def create_legacypipe_table(ccds_fn, camera='decam'):
+def create_legacypipe_table(ccds_fn, camera=None):
     '''input _ccds_table fn
     output a table formatted for legacypipe/runbrick'''
     assert(camera in CAMERAS)
@@ -417,9 +428,9 @@ def create_legacypipe_table(ccds_fn, camera='decam'):
     #                        comment='Band order in array values'))
     #has_zpt = 'zpt' in T.columns()
     # Units
-    # DECAM only
-    T.set('zpt',T.zpt - 2.5*np.log10(T.gain))
-    T.set('zptavg',T.zptavg - 2.5*np.log10(T.gain))
+    if camera == 'decam':
+      T.set('zpt',T.zpt - 2.5*np.log10(T.gain))
+      T.set('zptavg',T.zptavg - 2.5*np.log10(T.gain))
     # Rename
     rename_keys= [('zpt','ccdzpt'),('zptavg','zpt'),
                   ('raoff','ccdraoff'),('decoff','ccddecoff'),
@@ -535,7 +546,7 @@ def convert_stars_table_one_band(T, zp_fid=None,pixscale=0.262):
     return T
 
 
-def convert_zeropoints_table(T, camera='decam'):
+def convert_zeropoints_table(T, camera=None):
     """Make column names and units of -zpt.fits identical to IDL zeropoints
 
     Args:
@@ -1847,7 +1858,7 @@ def runit(imgfn,zptfn,starfn_photom,starfn_astrom,
         hdulist.close() # Save changes
         print('Wrote {}'.format(zptfn))
         # zpt --> Legacypipe table
-        create_legacypipe_table(zptfn)
+        create_legacypipe_table(zptfn, camera=measureargs['camera'])
         # Two stars tables
         stars_photom.write(starfn_photom)
         stars_astrom.write(starfn_astrom)

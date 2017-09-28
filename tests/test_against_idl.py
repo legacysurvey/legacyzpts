@@ -13,6 +13,7 @@ from scipy import stats
 from legacyzpts.qa.compare_idlzpts import ZptResiduals, StarResiduals
 from legacyzpts.fetch import fetch_targz
 
+from against_common import get_tolerance,PlotDifference 
 
 
 DOWNLOAD_DIR='http://portal.nersc.gov/project/desi/users/kburleigh/legacyzpts'
@@ -176,60 +177,29 @@ class LoadData(object):
     assert(len(star.legacy.data) == len(star.idl.data) )
     return star
 
-class CheckTolerance(object):
-  """checks that legazpts tables are within tolerance compared to idl zpts tables
+class CheckDifference(object):
+  """checks that legazpts tables are sufficienlty close to idl zpts tables
   
   Note: supports zpts and stars tables
   """
 
-  def zeropoints(self,camera='decam',zpts=None, full_ps1_cat=True):
+  def zeropoints(self,camera='decam',zpts=None):
     """Sanity check how close legacy values are to idl
 
     Args:
       camera: CAMERAS
       zpts: ZptResidual object as returned by LoadData().zpts_*()
-      full_ps1_cat: all ps1 sources, not just those with gaia matches, were used
     """
     assert(camera in CAMERAS)
-    print(("zpts: %s_vs_idl" % camera).upper())
-
-    # Tolerances
-    tol= {'ccdzpt':0.008,
-          'ccdnmatch':20,
-          'ccdskycounts':0.1}
-    ylim_dict= {key: (-tol[key],tol[key])
-                for key in tol.keys()}
-    if full_ps1_cat:
-      ylim_dict['ccdnmatch']= None
-    zpts.plot_residuals(doplot='diff',
-                        use_keys=['ccdzpt','ccdnmatch',
-                                  'ccdskycounts'],
-                        ylim_dict=ylim_dict)
-    # Test
-    for col in ['ccdzpt']:
-      if camera == 'decam':
-        diff,_,_= stats.sigmaclip(zpts.legacy.data.get(col) - 
-                                  zpts.idl.data.get(col))
-      else:
-        diff= zpts.legacy.data.get(col) - zpts.idl.data.get(col)
+     diff= zpts.legacy.data.get(col) - zpts.idl.data.get(col)
       print('require %s < %g, stats=' % (col,tol[col]), 
             stats.describe( np.abs(diff) ))
       assert(np.all( np.abs(diff) < tol[col]))
 
-    if full_ps1_cat:
-      print('require idl < %s < 2*idl' % 'ccdnmatch')
-      print('leg=',zpts.legacy.data.ccdnmatch,
-            'idl=',zpts.idl.data.ccdnmatch)
-      if camera == 'mosaic':
-        assert(np.all( (zpts.legacy.data.ccdnmatch < 2*zpts.idl.data.ccdnmatch)))
-      else:
-        assert(np.all( (zpts.legacy.data.ccdnmatch > zpts.idl.data.ccdnmatch) &
-                       (zpts.legacy.data.ccdnmatch < 2*zpts.idl.data.ccdnmatch)))
-    else:
-      diff= zpts.legacy.data.ccdnmatch - zpts.idl.data.ccdnmatch
-      print('require %s < %g, stats=' % ('ccdnmatch',tol['ccdnmatch']), 
-            stats.describe( np.abs(diff) ))
-      assert(np.all( np.abs(diff) < tol['ccdnmatch']))
+    diff= zpts.legacy.data.ccdnmatch - zpts.idl.data.ccdnmatch
+    print('require %s < %g, stats=' % ('ccdnmatch',tol['ccdnmatch']), 
+          stats.describe( np.abs(diff) ))
+    assert(np.all( np.abs(diff) < tol['ccdnmatch']))
     
     filt= np.char.strip(zpts.legacy.data.filter)
     isGR= ((filt == 'g') |
@@ -272,32 +242,35 @@ class CheckTolerance(object):
             stats.describe( np.abs(diff) ))
       assert(np.all( np.abs(diff) < tol[col]))
 
+
 #############
 # TEST FUNCS
 ############
 
-def test_decam_zpts_old_but_good():
-  print("OLD BUT GOOD: decam zpts")
-  # Load and Match legacyzpts to IDLzpts
-  zpts= LoadData().zpts_old_but_good(camera='decam')
-  CheckTolerance().zeropoints(camera='decam',zpts=zpts)
-  assert(True)
 
-def test_decam_zpts_new(indir='ps1_gaia'):
-  print("NEW: decam zpts")
+def test_zpt_table(camera='decam',indir='ps1_gaia',
+                   plot=False):
+  """Difference -zpt and IDL zeropoint- tables
+  
+  Args:
+    camera:
+    indir:
+    plot: set to True to make plot of all quantities with 
+      non-zero differences
+  """
+  print("TESTING ZPT")
+  assert(camera in CAMERAS)
   assert(indir in ['ps1_gaia','ps1_only'])
   # Load and Match legacyzpts to IDLzpts
-  zpts= LoadData().zpts_new(camera='decam',indir=indir)
+  zpts= LoadData().zpts_new(camera=camera,indir=indir)
   #return zpts
-  CheckTolerance().zeropoints(camera='decam',zpts=zpts, 
-                              full_ps1_cat=True)
-  assert(True)
-
-def test_decam_stars_old_but_good():
-  print("OLD BUT GOOD: decam stars")
-  # Load and Match legacy to IDL
-  stars= LoadData().stars_old_but_good(camera='decam')
-  CheckTolerance().stars(camera='decam',stars=stars)
+  CheckDifference().zeropoints(camera=camera, zpts=zpts,
+                               pm=get_tolerance(camera=camera)
+  if plot:
+    PlotDifference(which_table='zpt',camera=camera,indir=indir,
+                   x=zpts.idl.data, y=zpts.legacy.data, 
+                   pm=get_tolerance(camera),
+                   xname='IDL',yname='Legacy')
   assert(True)
 
 def test_decam_stars_new(indir='ps1_gaia'):
@@ -315,14 +288,19 @@ def test_decam_stars_new(indir='ps1_gaia'):
   #DecamEqualsIDL().stars(stars)
   assert(True)
 
-def test_mosaic_zpts_new(indir='ps1_gaia'):
-  print("NEW: mosaic zpts")
-  assert(indir in ['ps1_gaia','ps1_only'])
-  # Load and Match legacyzpts to IDLzpts
-  zpts= LoadData().zpts_new(camera='mosaic',indir=indir)
-  CheckTolerance().zeropoints(camera='mosaic',zpts=zpts, 
-                              full_ps1_cat=True)
-  assert(True)
+#def test_decam_zpts_old_but_good():
+#  print("OLD BUT GOOD: decam zpts")
+#  # Load and Match legacyzpts to IDLzpts
+#  zpts= LoadData().zpts_old_but_good(camera='decam')
+#  CheckTolerance().zeropoints(camera='decam',zpts=zpts)
+#  assert(True)
+#
+#def test_decam_stars_old_but_good():
+#  print("OLD BUT GOOD: decam stars")
+#  # Load and Match legacy to IDL
+#  stars= LoadData().stars_old_but_good(camera='decam')
+#  CheckTolerance().stars(camera='decam',stars=stars)
+#  assert(True)
 
 
 
@@ -330,11 +308,11 @@ if __name__ == "__main__":
   #test_decam_zpts_old_but_good()
   #test_decam_stars_old_but_good()
   # Default settings
-  #test_decam_zpts_new(indir='ps1_gaia')
+  test_zpt_table(camera='decam',indir='ps1_gaia'):
   #test_decam_stars_new(indir='ps1_gaia')
   # eBOSS DR5
-  #test_decam_zpts_new(indir='ps1_only')
+  #test_zpt_table(camera='decam',indir='ps1_only'):
   #test_decam_stars_new(indir='ps1_only')
   
-  test_mosaic_zpts_new(indir='ps1_gaia')
-  test_mosaic_stars_new(indir='ps1_gaia')
+  test_zpt_table(camera='mosaic',indir='ps1_gaia'):
+  #test_mosaic_stars_new(indir='ps1_gaia')
