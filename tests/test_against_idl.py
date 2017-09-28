@@ -12,8 +12,9 @@ from scipy import stats
 
 from legacyzpts.qa.compare_idlzpts import ZptResiduals, StarResiduals
 from legacyzpts.fetch import fetch_targz
+from legacyzpts.legacy_zeropoints import cols_for_converted_zpt_table
 
-from against_common import get_tolerance,PlotDifference 
+from test_against_common import get_tolerance,PlotDifference,differenceChecker 
 
 
 DOWNLOAD_DIR='http://portal.nersc.gov/project/desi/users/kburleigh/legacyzpts'
@@ -93,7 +94,7 @@ class LoadData(object):
 
     leg_dir= os.path.join(os.path.dirname(__file__),
                           'testoutput',camera,
-                          indir)
+                          indir,'against_idl')
     print('leg_dir=%s' % leg_dir)
     leg_fns= glob(os.path.join(leg_dir,
                                '*%s*-zpt.fits' % 
@@ -156,7 +157,7 @@ class LoadData(object):
     assert(indir in ['ps1_gaia','ps1_only'])
     leg_dir= os.path.join(os.path.dirname(__file__),
                           'testoutput',camera,
-                           indir)
+                           indir,'agains_idl')
     print('leg_dir=%s' % leg_dir)
     leg_fns= glob(os.path.join(leg_dir,
                                '*%s*-star-%s.fits' % (FN_SUFFIX[camera],which)))
@@ -190,33 +191,8 @@ class CheckDifference(object):
       camera: CAMERAS
       zpts: ZptResidual object as returned by LoadData().zpts_*()
     """
-    assert(camera in CAMERAS)
-     diff= zpts.legacy.data.get(col) - zpts.idl.data.get(col)
-      print('require %s < %g, stats=' % (col,tol[col]), 
-            stats.describe( np.abs(diff) ))
-      assert(np.all( np.abs(diff) < tol[col]))
-
-    diff= zpts.legacy.data.ccdnmatch - zpts.idl.data.ccdnmatch
-    print('require %s < %g, stats=' % ('ccdnmatch',tol['ccdnmatch']), 
-          stats.describe( np.abs(diff) ))
-    assert(np.all( np.abs(diff) < tol['ccdnmatch']))
-    
-    filt= np.char.strip(zpts.legacy.data.filter)
-    isGR= ((filt == 'g') |
-           (filt == 'r'))
-    isZ= (filt == 'z')
-    diff= np.abs(zpts.legacy.data.ccdskycounts - 
-                 zpts.idl.data.ccdskycounts)
-    if np.where(isGR)[0].size > 0:
-      print('require gr %s < %g, stats=' % ('ccdskycounts', tol['ccdskycounts']/100.), 
-            stats.describe( diff[isGR] ))
-      assert(np.all( diff[isGR] < tol['ccdskycounts']/100.))
-    
-    if np.where(isZ)[0].size > 0:
-      print('require z %s < %g, stats=' % ('ccdskycounts', tol['ccdskycounts']), 
-            stats.describe( diff[isZ] ))
-      assert(np.all( diff[isZ] < tol['ccdskycounts']))
-
+    print('see differenceChecker')
+  
   def stars(self,camera='decam',stars=None):
     """Sanity check how close legacy values are to idl
 
@@ -250,7 +226,7 @@ class CheckDifference(object):
 
 def test_zpt_table(camera='decam',indir='ps1_gaia',
                    plot=False):
-  """Difference -zpt and IDL zeropoint- tables
+  """Convert -zpt to idl names and units then compare to IDL zeropoint- table
   
   Args:
     camera:
@@ -264,13 +240,19 @@ def test_zpt_table(camera='decam',indir='ps1_gaia',
   # Load and Match legacyzpts to IDLzpts
   zpts= LoadData().zpts_new(camera=camera,indir=indir)
   #return zpts
-  CheckDifference().zeropoints(camera=camera, zpts=zpts,
-                               pm=get_tolerance(camera=camera)
+  cols= cols_for_converted_zpt_table(which='numeric')
+  differenceChecker(data=zpts.legacy.data, ref=zpts.idl.data,
+                    cols=cols, camera=camera)   
+  #CheckDifference().zeropoints(camera=camera, zpts=zpts,
+  #                             pm=get_tolerance(camera=camera)
   if plot:
-    PlotDifference(which_table='zpt',camera=camera,indir=indir,
+    cols= cols_for_converted_zpt_table(which='nonzero_diff')
+    PlotDifference(which_table='zpt',camera=camera,
+                   indir=indir,against='idl',
                    x=zpts.idl.data, y=zpts.legacy.data, 
-                   pm=get_tolerance(camera),
+                   cols= cols,
                    xname='IDL',yname='Legacy')
+  
   assert(True)
 
 def test_decam_stars_new(indir='ps1_gaia'):
@@ -308,11 +290,11 @@ if __name__ == "__main__":
   #test_decam_zpts_old_but_good()
   #test_decam_stars_old_but_good()
   # Default settings
-  test_zpt_table(camera='decam',indir='ps1_gaia'):
+  test_zpt_table(camera='decam',indir='ps1_gaia')
   #test_decam_stars_new(indir='ps1_gaia')
   # eBOSS DR5
-  #test_zpt_table(camera='decam',indir='ps1_only'):
+  #test_zpt_table(camera='decam',indir='ps1_only')
   #test_decam_stars_new(indir='ps1_only')
   
-  test_zpt_table(camera='mosaic',indir='ps1_gaia'):
+  #test_zpt_table(camera='mosaic',indir='ps1_gaia')
   #test_mosaic_stars_new(indir='ps1_gaia')

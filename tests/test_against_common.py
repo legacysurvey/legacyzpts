@@ -55,6 +55,8 @@ def differenceChecker(data,ref, cols, camera=None):
     data, ref: fits_tables of data and reference data
       example: data would be zpt table and ref would be idl zeropoint table
     cols: list of cols into data,ref
+  
+  TODO: grz dependence?
   """
   assert(camera in CAMERAS)
   for col in cols:

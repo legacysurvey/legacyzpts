@@ -85,10 +85,10 @@ def test_decam(inSurveyccds=False, ps1_only=False):
     assert(len(fns) > 0)
     cmd_line=['--camera', 'decam','--outdir', outdir, 
               '--not_on_proj', '--debug'] + extra_args
-    #run_and_check_outputs(image_list=fns, cmd_line=cmd_line,
-    #                      outdir=outdir)
-    run_and_check_outputs(image_list=[fns[0]], cmd_line=cmd_line,
+    run_and_check_outputs(image_list=fns, cmd_line=cmd_line,
                           outdir=outdir)
+    #run_and_check_outputs(image_list=[fns[0]], cmd_line=cmd_line,
+    #                      outdir=outdir)
 
 def test_mosaic(inSurveyccds=False, ps1_only=False):
     """Runs at least 1 CCD per band
@@ -131,14 +131,18 @@ def test_mosaic(inSurveyccds=False, ps1_only=False):
 
 if __name__ == "__main__":
   # Run on images, compare to IDL zeropoints
-  #test_decam(inSurveyccds=False, ps1_only=False)
-  #test_decam(inSurveyccds=False, ps1_only=True)
-  #test_mosaic(inSurveyccds=False, ps1_only=False)
-  #test_mosaic(inSurveyccds=False, ps1_only=True)
+  test_decam(inSurveyccds=False, ps1_only=False)
+  test_mosaic(inSurveyccds=False, ps1_only=False)
   
   # Run on images, compare to survey-ccds
-  test_decam(inSurveyccds=True, ps1_only=False)
+  #test_decam(inSurveyccds=True, ps1_only=False)
   #test_mosaic(inSurveyccds=True, ps1_only=False)
+ 
+
+
+  #test_decam(inSurveyccds=False, ps1_only=True)
+  #test_mosaic(inSurveyccds=False, ps1_only=True)
+  
   #test_decam(inSurveyccds=True, ps1_only=True)
   #test_mosaic(inSurveyccds=True, ps1_only=True)
 

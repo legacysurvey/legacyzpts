@@ -546,6 +546,44 @@ def convert_stars_table_one_band(T, zp_fid=None,pixscale=0.262):
     return T
 
 
+def cols_for_converted_zpt_table(which='all'):
+  """Return list of columns for -zpt.fits table converted to idl names
+  
+  Args:
+    which: all, numeric, 
+       nonzero_diff (numeric and expect non-zero diff with reference 
+       when compute it)"""
+  assert(which in ['all','numeric','nonzero_diff'])
+  if which == 'all':
+    need_arjuns_keys= ['filename', 'object', 'expnum', 'exptime', 'filter', 'seeing', 'ra', 'dec', 
+         'date_obs', 'mjd_obs', 'ut', 'ha', 'airmass', 'propid', 'zpt', 'avsky', 
+         'fwhm', 'crpix1', 'crpix2', 'crval1', 'crval2', 'cd1_1', 'cd1_2', 'cd2_1', 'cd2_2', 
+         'naxis1', 'naxis2', 'ccdnum', 'ccdname', 'ccdra', 'ccddec', 
+         'ccdzpt', 'ccdphoff', 'ccdphrms', 'ccdskyrms', 'ccdskymag', 
+         'ccdskycounts', 'ccdraoff', 'ccddecoff', 'ccdrarms', 'ccddecrms', 'ccdtransp', 
+         'ccdnmatch']
+  
+  elif which == 'numeric':
+    need_arjuns_keys= ['expnum', 'exptime', 'seeing', 'ra', 'dec', 
+         'mjd_obs', 'airmass', 'zpt', 'avsky', 
+         'fwhm', 'crpix1', 'crpix2', 'crval1', 'crval2', 'cd1_1', 'cd1_2', 'cd2_1', 'cd2_2', 
+         'naxis1', 'naxis2', 'ccdnum', 'ccdra', 'ccddec', 
+         'ccdzpt', 'ccdphoff', 'ccdphrms', 'ccdskyrms', 'ccdskymag', 
+         'ccdskycounts', 'ccdraoff', 'ccddecoff', 'ccdrarms', 'ccddecrms', 'ccdtransp', 
+         'ccdnmatch']
+   
+  elif which == 'nonzero_diff':
+    need_arjuns_keys= ['seeing', 'ra', 'dec', 
+         'zpt', 'avsky', 
+         'fwhm', 
+         'ccdra', 'ccddec', 
+         'ccdzpt', 'ccdphoff', 'ccdphrms', 'ccdskyrms', 'ccdskymag', 
+         'ccdskycounts', 'ccdraoff', 'ccddecoff', 'ccdrarms', 'ccddecrms', 'ccdtransp', 
+         'ccdnmatch']
+  
+  return need_arjuns_keys
+ 
+
 def convert_zeropoints_table(T, camera=None):
     """Make column names and units of -zpt.fits identical to IDL zeropoints
 
@@ -554,18 +592,7 @@ def convert_zeropoints_table(T, camera=None):
     """
     assert(camera in CAMERAS)
     pix= get_pixscale(camera)
-    need_arjuns_keys= \
-        ['filename', 'object', 'expnum', 'exptime', 'filter', 'seeing', 'ra', 'dec', 
-         'date_obs', 'mjd_obs', 'ut', 'ha', 'airmass', 'propid', 'zpt', 'avsky', 
-         'arawgain', 'fwhm', 'crpix1', 'crpix2', 'crval1', 'crval2', 'cd1_1', 'cd1_2', 'cd2_1', 'cd2_2', 
-         'naxis1', 'naxis2', 'ccdhdunum', 'ccdnum', 'ccdname', 'ccdra', 'ccddec', 
-         'ccdzpt', 'ccdzpta', 'ccdzptb', 'ccdphoff', 'ccdphrms', 'ccdskyrms', 'ccdskymag', 
-         'ccdskycounts', 'ccdraoff', 'ccddecoff', 'ccdrarms', 'ccddecrms', 'ccdtransp', 
-         'ccdnstarfind', 'ccdnstar', 'ccdnmatch', 'ccdnmatcha', 'ccdnmatchb', 'ccdmdncol', 
-         'temp']
-    ignoring_these= \
-        ['arawgain','ccdhdunum','ccdzpta', 'ccdzptb','ccdnstarfind', 'ccdnstar',
-         'ccdnmatcha', 'ccdnmatchb', 'ccdmdncol','temp']
+    need_arjuns_keys= cols_for_converted_zpt_table(which='all')
     # Change units
     T.set('fwhm',T.fwhm * pix)
     if camera == "decam":
@@ -596,8 +623,8 @@ def convert_zeropoints_table(T, camera=None):
     # New columns
     T.set('avsky', np.zeros(len(T)) + np.mean(T.ccdskycounts))
     # Delete unneeded keys
-    needed= set(need_arjuns_keys).difference(set(ignoring_these))
-    del_keys= list( set(T.get_columns()).difference(needed) )
+    #needed= set(need_arjuns_keys).difference(set(ignoring_these))
+    del_keys= list( set(T.get_columns()).difference(need_arjuns_keys) )
     for key in del_keys:
         T.delete_column(key)
     return T
