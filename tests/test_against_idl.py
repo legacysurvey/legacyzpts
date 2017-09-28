@@ -1,3 +1,10 @@
+"""
+Tests that reproduce IDL zeropoints and matches tables
+
+Converts -zpt.fits tables to columns and units of IDL zeropoints
+then compare to acutal idl zeropoints
+"""
+
 import os 
 from glob import glob
 import numpy as np
@@ -5,6 +12,7 @@ from scipy import stats
 
 from legacyzpts.qa.compare_idlzpts import ZptResiduals, StarResiduals
 from legacyzpts.fetch import fetch_targz
+
 
 
 DOWNLOAD_DIR='http://portal.nersc.gov/project/desi/users/kburleigh/legacyzpts'
@@ -168,8 +176,6 @@ class LoadData(object):
     assert(len(star.legacy.data) == len(star.idl.data) )
     return star
 
-
-
 class CheckTolerance(object):
   """checks that legazpts tables are within tolerance compared to idl zpts tables
   
@@ -214,8 +220,11 @@ class CheckTolerance(object):
       print('require idl < %s < 2*idl' % 'ccdnmatch')
       print('leg=',zpts.legacy.data.ccdnmatch,
             'idl=',zpts.idl.data.ccdnmatch)
-      assert(np.all( (zpts.legacy.data.ccdnmatch > zpts.idl.data.ccdnmatch) &
-                     (zpts.legacy.data.ccdnmatch < 2*zpts.idl.data.ccdnmatch)))
+      if camera == 'mosaic':
+        assert(np.all( (zpts.legacy.data.ccdnmatch < 2*zpts.idl.data.ccdnmatch)))
+      else:
+        assert(np.all( (zpts.legacy.data.ccdnmatch > zpts.idl.data.ccdnmatch) &
+                       (zpts.legacy.data.ccdnmatch < 2*zpts.idl.data.ccdnmatch)))
     else:
       diff= zpts.legacy.data.ccdnmatch - zpts.idl.data.ccdnmatch
       print('require %s < %g, stats=' % ('ccdnmatch',tol['ccdnmatch']), 
@@ -327,5 +336,5 @@ if __name__ == "__main__":
   #test_decam_zpts_new(indir='ps1_only')
   #test_decam_stars_new(indir='ps1_only')
   
-  zpts= test_mosaic_zpts_new(indir='ps1_gaia')
-  #test_decam_stars_new(indir='ps1_gaia')
+  test_mosaic_zpts_new(indir='ps1_gaia')
+  test_mosaic_stars_new(indir='ps1_gaia')

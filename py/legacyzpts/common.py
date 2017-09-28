@@ -107,11 +107,12 @@ def _shrink_img(imgfn,imgfn_new, camera='decam'):
   new.close()
   print('wrote %s' % imgfn_new)
 
+
 def shrink_img(camera='decam'):
   root='/project/projectdirs/cosmo/staging/decam'
-  images= ['DECam_CP/CP20170326/c4d_170327_042837_oki_g_v1.fits.fz',
-           'DECam_CP/CP20170326/c4d_170327_042342_oki_r_v1.fits.fz',
-           'DECam_CP/CP20170326/c4d_170326_233934_oki_z_v1.fits.fz']
+  images= ['DECam_CP/CP20150407/c4d_150409_000747_ooi_g_v1.fits.fz',
+           'DECam_CP/CP20150407/c4d_150409_000424_ooi_r_v1.fits.fz',
+           'DECam_CP/CP20150407/c4d_150409_001645_ooi_z_v1.fits.fz']
   for image in images:
     fn= os.path.join(root,image)
     # ooi

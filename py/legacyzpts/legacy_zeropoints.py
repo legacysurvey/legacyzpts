@@ -378,10 +378,9 @@ def run_create_legacypipe_table(zpt_list):
         create_legacypipe_table(fn)
         
 
-def create_legacypipe_table(ccds_fn):
-    '''input _ccds_table fn
-    output a table formatted for legacypipe/runbrick'''
-    # HACK! need func to put in appropriate units e.g. compare to survey-ccds file for decam,mosaic, and bass
+def cols_for_legacypipe_table(which='all'):
+  assert(which in ['all','numeric'])
+  if which == 'all':
     need_arjuns_keys= ['ra','dec','ra_bore','dec_bore',
                        'image_filename','image_hdu','expnum','ccdname','object',
                        'filter','exptime','camera','width','height','propid',
@@ -390,6 +389,23 @@ def create_legacypipe_table(ccds_fn):
                        'cd1_1','cd2_2','cd1_2','cd2_1',
                        'crval1','crval2','crpix1','crpix2']
     dustins_keys= ['skyrms']
+  elif which == 'numeric':
+    need_arjuns_keys= ['ra','dec','ra_bore','dec_bore',
+                       'expnum',
+                       'exptime','width','height',
+                       'mjd_obs','ccdnmatch',
+                       'fwhm','zpt','ccdzpt','ccdraoff','ccddecoff',
+                       'cd1_1','cd2_2','cd1_2','cd2_1',
+                       'crval1','crval2','crpix1','crpix2']
+    dustins_keys= ['skyrms']
+  return need_arjuns_keys + dustins_keys
+ 
+
+def create_legacypipe_table(ccds_fn, camera='decam'):
+    '''input _ccds_table fn
+    output a table formatted for legacypipe/runbrick'''
+    assert(camera in CAMERAS)
+    need_keys= cols_for_legacypipe_table(which='all')
     # Load full zpt table
     assert('-zpt.fits' in ccds_fn)
     T = fits_table(ccds_fn)
@@ -412,14 +428,15 @@ def create_legacypipe_table(ccds_fn):
         T.rename(old,new)
         #units[new]= units.pop(old)
     # Delete 
-    del_keys= list( set(T.get_columns()).difference(set(need_arjuns_keys+dustins_keys)) )
+    del_keys= list( set(T.get_columns()).difference(set(need_keys)) )
     for key in del_keys:
         T.delete_column(key)
         #if key in units.keys():
         #    _= units.pop(key)
     # legacypipe/merge-zeropoints.py
-    T.set('width', np.zeros(len(T), np.int16) + 2046)
-    T.set('height', np.zeros(len(T), np.int16) + 4094)
+    if camera == 'decam':
+      T.set('width', np.zeros(len(T), np.int16) + 2046)
+      T.set('height', np.zeros(len(T), np.int16) + 4094)
     # precision
     T.width  = T.width.astype(np.int16)
     T.height = T.height.astype(np.int16)
@@ -923,16 +940,14 @@ class Measurer(object):
         ccds['gain'] = self.gain
         ccds['pixscale'] = self.pixscale
         # FWHM from CP header
-        if self.camera in ['mosaic','90prime']:
-            fwhm_key= 'seeingp1' # pixel seeing so FWHM
-        else:
-            fwhm_key= 'fwhm'
-        if fwhm_key in hdr.keys():
-            hdr_fwhm= hdr[fwhm_key]
-            ccds['fwhm_cp']= hdr_fwhm
-        else:
-            hdr_fwhm= 5. #fallback value for source detection
-            ccds['fwhm_cp']= -1. #flag that didn't find in header
+        hdr_fwhm=-1
+        for fwhm_key in self.cp_fwhm_keys:
+          if fwhm_key in hdr.keys():
+            hdr_fwhm= hdr[fwhm_key] #FWHM in pixels
+            break
+        if hdr_fwhm < 0:
+            hdr_fwhm= 1.3 / self.pixscale #fallback value for source detection
+        ccds['fwhm_cp']= hdr_fwhm
         # Copy some header cards directly.
         # ZNAXIS[12] not NAXIS
         hdrkey = ('avsky', 'crpix1', 'crpix2', 'crval1', 'crval2', 'cd1_1',
@@ -1439,6 +1454,7 @@ class DecamMeasurer(Measurer):
         # --> e/sec
         #for b in self.zp0.keys(): 
         #    self.zp0[b] += -2.5*np.log10(self.gain)  
+        self.cp_fwhm_keys= np.char.upper(['fwhm'])
     
     def get_band(self):
         band = self.primhdr['FILTER']
@@ -1513,6 +1529,7 @@ class Mosaic3Measurer(Measurer):
         # --> e/sec
         #for b in self.zp0.keys(): 
         #    self.zp0[b] += -2.5*np.log10(self.gain)  
+        self.cp_fwhm_keys= np.char.upper(['seeingp','seeingp1'])
 
     def get_band(self):
         band = self.primhdr['FILTER']
@@ -1610,8 +1627,8 @@ def get_extlist(camera,fn,debug=False):
           extlist = ['CCD1']
     elif camera == 'mosaic':
         extlist = ['CCD1', 'CCD2', 'CCD3', 'CCD4']
-        if debug:
-          extlist = ['CCD1']
+        #if debug:
+        #  extlist = ['CCD1']
     elif camera == 'decam':
         hdu= fitsio.FITS(fn)
         extlist= [hdu[i].get_extname() for i in range(1,len(hdu))]

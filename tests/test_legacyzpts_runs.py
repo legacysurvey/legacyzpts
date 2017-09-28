@@ -16,7 +16,7 @@ def download_ccds():
     outdir= os.path.join(os.path.dirname(__file__),
                          'testdata')
     fetch_targz(os.path.join(DOWNLOAD_DIR,
-                             'ccds.tar.gz'), 
+                             'ccds_decam.tar.gz'), 
                 outdir)
     fetch_targz(os.path.join(DOWNLOAD_DIR,
                              'ccds_mosaic.tar.gz'), 
@@ -52,55 +52,75 @@ def run_and_check_outputs(image_list,cmd_line,outdir):
                              base+"-debug-legacypipe.fits")))
 
 
-def test_decam_ps1_gaia():
+def test_decam(inSurveyccds=False, ps1_only=False):
     """Runs at least 1 CCD per band
+
+    Args:
+      inSurveyccds: True to run CCDs that are in the surveyccds file for DR3 or DR4
+        False will be used to test again idl zeropoints instead of surveyccds
+      ps1_only: True to use ps1 for astrometry and photometry
     """
     print('RUNNING LEGACYZPTS: default settings')
     download_ccds()
+    if inSurveyccds:
+      uniq_dir= 'against_surveyccds'
+      img_patt= 'small_c4d_150409*ooi*.fits.fz'
+    else:
+      uniq_dir= 'against_idl'
+      img_patt= 'small_c4d_17032*oki*.fits.fz'
+    if ps1_only:
+      ps1_gaia_dir= 'ps1_only'
+      extra_args= ['--ps1_only']
+    else:
+      ps1_gaia_dir= 'ps1_gaia'
+      extra_args= []
     outdir = os.path.join(os.path.dirname(__file__),
-                          'testoutput','new_legacyzpts_data',
-                          'ps1_gaia')
-    fns= glob( os.path.join(os.path.dirname(__file__),
-                            'testdata','ccds',
-                            'small_c4d_*oki_*_v1.fits.fz'))
+                          'testoutput','decam',
+                          ps1_gaia_dir, uniq_dir)
+    patt= os.path.join(os.path.dirname(__file__),
+                       'testdata','ccds_decam',
+                       img_patt)
+    print('pattern=%s' % patt)
+    fns= glob( patt)
+    assert(len(fns) > 0)
     cmd_line=['--camera', 'decam','--outdir', outdir, 
-              '--not_on_proj', '--debug']
-    run_and_check_outputs(image_list=fns, cmd_line=cmd_line,
-                          outdir=outdir)
-    #run_and_check_outputs(image_list=[fns[0]], cmd_line=cmd_line,
+              '--not_on_proj', '--debug'] + extra_args
+    #run_and_check_outputs(image_list=fns, cmd_line=cmd_line,
     #                      outdir=outdir)
-
-def test_decam_ps1_only():
-    """Runs at least 1 CCD per band
-    """
-    print('RUNNING LEGACYZPTS: ps1_only')
-    download_ccds()
-    outdir = os.path.join(os.path.dirname(__file__),
-                          'testoutput','new_legacyzpts_data',
-                          'ps1_only')
-    fns= glob( os.path.join(os.path.dirname(__file__),
-                            'testdata','ccds',
-                            'small_c4d_*oki_*_v1.fits.fz'))
-    cmd_line=['--camera', 'decam','--outdir', outdir, 
-              '--not_on_proj', '--debug', '--ps1_only']
-    run_and_check_outputs(image_list=fns, cmd_line=cmd_line,
+    run_and_check_outputs(image_list=[fns[0]], cmd_line=cmd_line,
                           outdir=outdir)
-    #run_and_check_outputs(image_list=[fns[0]], cmd_line=cmd_line,
-    #                      outdir=outdir)
 
-def test_mosaic_ps1_gaia():
+def test_mosaic(inSurveyccds=False, ps1_only=False):
     """Runs at least 1 CCD per band
+
+    Args:
+      inSurveyccds: True to run CCDs that are in the surveyccds file for DR3 or DR4
+        False will be used to test again idl zeropoints instead of surveyccds
+      ps1_only: True to use ps1 for astrometry and photometry
     """
     print('RUNNING LEGACYZPTS: default settings')
     download_ccds()
+    if inSurveyccds:
+      uniq_dir= 'against_surveyccds'
+      img_patt= 'k4m*160605_042430*ooi*.fits.fz'
+    else:
+      uniq_dir= 'against_idl'
+      img_patt= 'k4m*170221_072831*ooi*.fits.fz'
+    if ps1_only:
+      ps1_gaia_dir= 'ps1_only'
+      extra_args= ['--ps1_only']
+    else:
+      ps1_gaia_dir= 'ps1_gaia'
+      extra_args= []
     outdir = os.path.join(os.path.dirname(__file__),
                           'testoutput','mosaic',
-                          'ps1_gaia')
+                          ps1_gaia_dir,uniq_dir)
     fns= glob( os.path.join(os.path.dirname(__file__),
                             'testdata','ccds_mosaic',
-                            'k4m*ooi*.fits.fz'))
+                            img_patt))
+    assert(len(fns) > 0)
     cmd_line=['--camera', 'mosaic','--outdir', outdir, 
-              '--not_on_proj','--debug']
+              '--not_on_proj','--debug'] + extra_args
     run_and_check_outputs(image_list=fns, cmd_line=cmd_line,
                           outdir=outdir)
     #run_and_check_outputs(image_list=[fns[0]], cmd_line=cmd_line,
@@ -110,7 +130,15 @@ def test_mosaic_ps1_gaia():
 
 
 if __name__ == "__main__":
-  #test_decam_ps1_gaia()
-  #test_decam_ps1_only()
-  test_mosaic_ps1_gaia()
+  # Run on images, compare to IDL zeropoints
+  #test_decam(inSurveyccds=False, ps1_only=False)
+  #test_decam(inSurveyccds=False, ps1_only=True)
+  #test_mosaic(inSurveyccds=False, ps1_only=False)
+  #test_mosaic(inSurveyccds=False, ps1_only=True)
+  
+  # Run on images, compare to survey-ccds
+  #test_decam(inSurveyccds=True, ps1_only=False)
+  test_mosaic(inSurveyccds=True, ps1_only=False)
+  #test_decam(inSurveyccds=True, ps1_only=True)
+  #test_mosaic(inSurveyccds=True, ps1_only=True)
 
