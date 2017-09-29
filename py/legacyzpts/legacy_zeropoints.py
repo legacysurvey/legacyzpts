@@ -1563,10 +1563,11 @@ class Measurer(object):
                                       tractor.Flux(flux0))
             tr = tractor.Tractor([tim], [src])
             tr.freezeParam('images')
+            optargs = dict(priors=False, shared_params=False)
             # The initial flux estimate doesn't seem to work too well,
             # so just for plotting's sake, fit flux first
             src.freezeParam('pos')
-            tr.optimize()
+            tr.optimize(**optargs)
             src.thawParam('pos')
             #print('Optimizing position of Gaia star', istar)
 
@@ -1587,7 +1588,7 @@ class Measurer(object):
 
             #print('Initial flux', flux0)
             for step in range(50):
-                dlnp, x, alpha = tr.optimize()
+                dlnp, x, alpha = tr.optimize(**optargs)
                 #print('delta position', src.pos.x - x0, src.pos.y - y0,
                 #      'flux', src.brightness, 'dlnp', dlnp)
                 if dlnp == 0:
