@@ -445,7 +445,8 @@ class ZptResiduals(Residuals):
 
     def convert_legacy(self):
         # Converts to idl names, units
-        self.legacy.data= convert_zeropoints_table(self.legacy.data)
+        self.legacy.data= convert_zeropoints_table(self.legacy.data,
+                                                   camera=self.camera)
 
 
     def get_numeric_keys(self):
@@ -482,84 +483,13 @@ class ZptResiduals(Residuals):
     #        pass
     #    return xlim_dict      
 
-    def plot_residuals(self,doplot=None,
-                       ms=100,
-                       use_keys=None,ylim_dict=None):
-        '''two plots of everything numberic between legacy zeropoints and Arjun's
-        1) x vs. y-x 
-        2) x vs. y/x
-
-        Args:
-          use_keys= only plot these cols
-          ylim_dict: +/- ylim for each col
-        '''
-        #raise ValueError
-        assert(doplot in ['diff','div'])
-        # All keys and any ylims to use
-        cols= self.get_numeric_keys()
-        #ylim= self.get_defaultdict_ylim(doplot=doplot,ylim=ylim)
-        #xlim= self.get_defaultdict_xlim(doplot=doplot,xlim=xlim)
-        # Plot
-        FS=25
-        eFS=FS+5
-        tickFS=FS
-        bands= np.sort(list(set(self.legacy.data.filter)))
-        ccdnums= set(self.legacy.data.ccdnum)
-        for cnt,col in enumerate(cols):
-            if use_keys:
-                if not col in use_keys:
-                    print('skipping col=%s' % col)
-                    continue
-            # Plot
-            fig,ax= plt.subplots(3,1,figsize=(10,15))
-            plt.subplots_adjust(hspace=0.2,wspace=0.)
-            # Loop over bands, hdus
-            for row,band in zip( range(3), bands ):
-                for ccdnum,color in zip(ccdnums,['g','r','m','b','k','y']*12):
-                    keep= (self.legacy.data.filter == band)*\
-                          (self.legacy.data.ccdnum == ccdnum)
-                    if np.where(keep)[0].size > 0:
-                        x= self.idl.data.get( col )[keep]
-                        xlabel= 'IDL'
-                        if doplot == 'diff':
-                            y= self.legacy.data.get(col)[keep] - self.idl.data.get(col)[keep]
-                            y_horiz= 0
-                            ylabel= 'Legacy - IDL'
-                        elif doplot == 'div':
-                            y= self.legacy.data.get(col)[keep] / self.idl.data.get(col)[keep]
-                            y_horiz= 1
-                            ylabel= 'Legacy / IDL'
-                        myscatter(ax[row],x,y,color=color,m='o',s=ms,alpha=0.75) 
-                        ax[row].axhline(y_horiz,color='k',linestyle='dashed',linewidth=1)
-                        #ax[row].text(0.025,0.88,idl_key,
-                        #             va='center',ha='left',transform=ax[cnt].transAxes,fontsize=20)
-                        ylab= ax[row].set_ylabel(ylabel,fontsize=FS)
-                # Label grz
-                ax[row].text(0.9,0.9,band, 
-                             transform=ax[row].transAxes,
-                             fontsize=FS)
-            xlab = ax[row].set_xlabel(xlabel,fontsize=FS)
-            supti= ax[0].set_title(col,fontsize=FS)
-            for row in range(3):
-                ax[row].tick_params(axis='both', labelsize=tickFS)
-                if ylim_dict.get(col,None):
-                    ax[row].set_ylim(ylim_dict[col])
-                #if xlim[col]:
-                #    ax[row].set_xlim(xlim[col])
-            savefn=os.path.join(self.savedir,
-                                "zeropointresiduals_%s_%s.png" % 
-                                    (doplot,col))
-            plt.savefig(savefn, bbox_extra_artists=[supti,xlab,ylab], 
-                        bbox_inches='tight')
-            plt.close() 
-            print("wrote %s" % savefn)
-
 
 class StarResiduals(Residuals): 
     """Matches star data to idl and plots residuals
 
     Args:
       camera: decam,mosaic,90prime
+      star table: two tables, photom and astrom
       savedir: has to write merged zpts file somewhere
       leg_list: list of legacy zpt files
       idl_list: list of idl zpt files
@@ -567,6 +497,7 @@ class StarResiduals(Residuals):
 
     Attributes:
       camera: decam,mosaic,90prime
+      star table: two tables, photom and astrom
       savedir: has to write merged zpts file somewhere
       leg: LegacyZpt object for legacy table
       idl: ditto for idl table
@@ -588,13 +519,16 @@ class StarResiduals(Residuals):
     star.plot_residuals(doplot='diff')
     """
 
-    def __init__(self,camera='decam',savedir='./',
+    def __init__(self,camera='decam',star_table=None,
+                 savedir='./',
                  leg_list=[],
                  idl_list=[],
                  loadable=False):
         super(StarResiduals, self).__init__(camera,savedir,
                                             leg_list,idl_list,
-                                            loadable)    
+                                            loadable) 
+        assert(star_table in ['photom','astrom'])
+        self.star_table= star_table
     
     def read_json(self, json_fn):
         """return dict"""
@@ -628,17 +562,19 @@ class StarResiduals(Residuals):
     def convert_legacy(self):
         """Converts legay star table to to idl names, units"""
         self.legacy.data= convert_stars_table(self.legacy.data,
-                                              camera=self.legacy.camera)
+                                              camera=self.legacy.camera,
+                                              star_table=self.star_table
+                                              )
 
-    def get_numeric_keys(self):
-        idl_keys= \
-            ['ccd_x','ccd_y','ccd_ra','ccd_dec',
-             'ccd_mag','ccd_sky',
-             'raoff','decoff',
-             'magoff',
-             'nmatch',
-             'gmag','ps1_g','ps1_r','ps1_i','ps1_z']
-        return idl_keys
+    #def get_numeric_keys(self):
+    #    idl_keys= \
+    #        ['ccd_x','ccd_y','ccd_ra','ccd_dec',
+    #         'ccd_mag','ccd_sky',
+    #         'raoff','decoff',
+    #         'magoff',
+    #         'nmatch',
+    #         'gmag','ps1_g','ps1_r','ps1_i','ps1_z']
+    #    return idl_keys
 
     #def get_defaultdict_ylim(self,doplot,ylim=None):
     #    ylim_dict=defaultdict(lambda: ylim)
