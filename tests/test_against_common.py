@@ -124,8 +124,8 @@ def get_tolerance_per_band(camera=None):
 
   return pm
 
-def get_tolerance_stars(camera=None,
-                        legacyzpts_product=None):
+def get_tolerance_star(camera=None,
+                       legacyzpts_product=None):
   """Same as get_tolerance but for -star tables
   
   Note, dont fill in if differnce should be zero, that's default
@@ -164,11 +164,11 @@ def get_tolerance_stars(camera=None,
     for key in ['ccd_ra','ccd_dec']:
       pm[key]= 1.e-7
     for key in ['ccd_mag']:
-      pm[key]= 1.
+      pm[key]= 0.5
     for key in ['ccd_sky']:
-      pm[key]= 10.
+      pm[key]= 2.
     for key in ['magoff']:
-      pm[key]= 1.
+      pm[key]= 0.5
     for key in ['raoff','decoff']:
       pm[key]= 1./3600 # arcsec
   
@@ -213,8 +213,8 @@ def differenceChecker(data,ref, cols,
     assert(col in data.get_columns())
     assert(col in ref.get_columns())
   if 'star' in legacyzpts_product:
-    pm= get_tolerance_stars(camera,
-                            legacyzpts_product=legacyzpts_product)
+    pm= get_tolerance_star(camera,
+                          legacyzpts_product=legacyzpts_product)
     pm_band= {}
   else:
     pm= get_tolerance(camera,
@@ -267,15 +267,24 @@ def PlotDifference(legacyzpts_product='zpt',
       assert(col in x.get_columns())
       assert(col in y.get_columns())
     if 'star' in legacyzpts_product:
-      pm= get_tolerance_star(camera) 
+      pm= get_tolerance_star(camera,
+              legacyzpts_product=legacyzpts_product) 
     else:
-      pm= get_tolerance(camera)
+      pm= get_tolerance(camera,
+              legacyzpts_product=legacyzpts_product)
     # Plot
     FS=25
     eFS=FS+5
     tickFS=FS
-    bands= np.sort(list(set(x.filter)))
-    ccdnames= set(x.ccdname)
+    # In legacyzpts but potentially not idl
+    if 'filter' in y.get_columns():
+      bands= np.sort(list(set(y.filter)))
+      band_arr= y.filter
+      ccdname_arr= y.ccdname
+    else:
+      bands= np.sort(list(set(x.filter)))
+      band_arr= x.filter
+      ccdname_arr= x.ccdname
     save_dir= os.path.join(os.path.dirname(__file__),
                            'testoutput',camera,
                            indir,'against_%s' % against)
@@ -285,10 +294,10 @@ def PlotDifference(legacyzpts_product='zpt',
         plt.subplots_adjust(hspace=0.2,wspace=0.)
         # Loop over bands, hdus
         for row,band in zip( range(3), bands ):
-            hasBand= x.filter == band
-            for ccdname,color in zip(ccdnames,['g','r','m','b','k','y']*12):
+            hasBand= band_arr == band
+            for ccdname,color in zip(set(ccdname_arr),['g','r','m','b','k','y']*12):
                 keep= ((hasBand) &
-                       (x.ccdname == ccdname))
+                       (ccdname_arr == ccdname))
                 if len(x[keep]) > 0:
                     xs= x.get(col)[keep]
                     ys= y.get(col)[keep] - xs
@@ -297,6 +306,7 @@ def PlotDifference(legacyzpts_product='zpt',
             ax[row].text(0.9,0.9,band, 
                          transform=ax[row].transAxes,
                          fontsize=FS)
+            ax[row].axhline(y=0.,xmin=xs.min(),xmax=xs.max(),c='k',lw=2.,ls='--') 
         supti= ax[0].set_title(col,fontsize=FS)
         xlab = ax[row].set_xlabel(xname,fontsize=FS)
         for row in range(3):

@@ -482,7 +482,8 @@ def cols_for_converted_star_table(star_table=None,
                        'magoff',
                        'nmatch',
                        'gmag','ps1_g','ps1_r','ps1_i','ps1_z']
-    extra_keys= ['image_hdu','filter'] # check for hdu and band depenent trends
+    # If want it in star- table, add it here
+    extra_keys= ['image_hdu','filter','ccdname'] 
   elif which == 'numeric':
     need_arjuns_keys= ['expnum',
                        'ccd_x','ccd_y','ccd_ra','ccd_dec',
@@ -566,13 +567,19 @@ def convert_stars_table_one_band(T, camera=None, star_table=None,
                         which='all')
     extname=[ccdname for _,ccdname in np.char.split(T.expid,'-')]
     T.set('extname', np.array(extname))
+    T.set('ccdname', np.array(extname))
     # AB mag of stars using fiducial ZP to convert
     #T.set('exptime', lookup_exptime(T.expnum, expnum2exptime))
     T.set('ccd_mag',-2.5 * np.log10(T.apflux / T.exptime) +  \
           zp_fid)
-    # ADU per pixel from sky aperture 
+    # IDL matches- ccd_sky is counts / pix / sec where counts
+    # is ADU for DECam and e- for mosaic/90prime 
+    # legacyzpts star- apskyflux is e- from sky in 7'' aperture
     area= np.pi*3.5**2/pixscale**2
-    T.set('ccd_sky', T.apskyflux / area / T.gain)
+    if camera == 'decam':
+      T.set('ccd_sky', T.apskyflux / area / T.gain)
+    elif camera in ['mosaic','90prime']:
+      T.set('ccd_sky', T.apskyflux / area / T.exptime)
     # Arjuns ccd_sky is ADUs in 7-10 arcsec sky aperture
     # e.g. sky (total e/pix/sec)= ccd_sky (ADU) * gain / exptime
     # Rename
@@ -1461,6 +1468,7 @@ class Measurer(object):
       stars['expnum'] = self.expnum
       stars['expid'] = self.expid
       stars['filter'] = self.band
+      stars['ccdname'] = self.ccdname
       stars['gain'] = self.gain
       stars['exptime'] = exptime
       # Matched quantities

@@ -14,7 +14,7 @@ from legacyzpts.qa.compare_idlzpts import ZptResiduals, StarResiduals
 from legacyzpts.fetch import fetch_targz
 from legacyzpts.legacy_zeropoints import cols_for_converted_zpt_table,cols_for_converted_star_table
 
-from test_against_common import get_tolerance,PlotDifference,differenceChecker 
+from test_against_common import PlotDifference,differenceChecker 
 
 
 DOWNLOAD_DIR='http://portal.nersc.gov/project/desi/users/kburleigh/legacyzpts'
@@ -247,7 +247,7 @@ def test_zpt_table(camera='decam',indir='ps1_gaia',
                     legacyzpts_product='zpt')   
   if plot:
     cols= cols_for_converted_zpt_table(which='nonzero_diff')
-    PlotDifference(which_table='zpt',camera=camera,
+    PlotDifference(legacyzpts_product='zpt',camera=camera,
                    indir=indir,against='idl',
                    x=zpts.idl.data, y=zpts.legacy.data, 
                    cols= cols,
@@ -272,8 +272,6 @@ def test_star_table(camera='decam',indir='ps1_gaia',
   print("TESTING STAR %s" % star_table)
   stars= LoadData().stars_new(camera=camera, indir=indir,
                               star_table=star_table)
-  return stars
-  ##########
   cols= cols_for_converted_star_table(star_table= star_table,
                                       which='numeric')
   skip_keys= ['nmatch','gmag']
@@ -289,9 +287,9 @@ def test_star_table(camera='decam',indir='ps1_gaia',
     cols= cols_for_converted_star_table(star_table= star_table,
                                         which='nonzero_diff')
     # Redundant or not in my file
-    for key in skip_keys: 
+    for key in set(cols).intersection(set(skip_keys)): 
       cols.remove(key)
-    PlotDifference(legacyzpts_product='star_%s' % star_table,
+    PlotDifference(legacyzpts_product='star-%s' % star_table,
                    camera=camera,indir=indir,against='idl',
                    x=stars.idl.data, y=stars.legacy.data, 
                    cols= cols,
@@ -321,18 +319,16 @@ if __name__ == "__main__":
   
   
   # Default settings
-  #test_zpt_table(camera='decam',indir='ps1_gaia',plot=False)
+  plot=True
+  #test_zpt_table(camera='decam',indir='ps1_gaia',plot=plot)
   #for star_table in ['photom','astrom']:
   #  test_star_table(camera='decam',indir='ps1_gaia',
-  #                  star_table=star_table,plot=False)
+  #                  star_table=star_table,plot=plot)
   
-  #test_zpt_table(camera='mosaic',indir='ps1_gaia',plot=False)
-  #for star_table in ['photom','astrom']:
-  #  test_star_table(camera='mosaic',indir='ps1_gaia',
-  #                  star_table=star_table,plot=False)
-  star_table='photom'
-  stars= test_star_table(camera='mosaic',indir='ps1_gaia',
-                    star_table=star_table,plot=False)
+  #test_zpt_table(camera='mosaic',indir='ps1_gaia',plot=plot)
+  for star_table in ['photom','astrom']:
+    test_star_table(camera='mosaic',indir='ps1_gaia',
+                    star_table=star_table,plot=True)
   
   #test_decam_stars_new(indir='ps1_gaia')
   # eBOSS DR5
