@@ -1061,9 +1061,9 @@ class Measurer(object):
         colorterm = self.colorterm_ps1_to_observed(ps1.median, self.band)
         ps1band = ps1cat.ps1band[self.band]
         ps1.mag = ps1.median[:, ps1band] + colorterm
-        # same for ps1_gaia
+        # same for ps1_gaia -- but clip the color term because we don't clip the g-i color.
         colorterm = self.colorterm_ps1_to_observed(ps1_gaia.median, self.band)
-        ps1_gaia.mag = ps1_gaia.median[:, ps1band] + colorterm
+        ps1_gaia.mag = ps1_gaia.median[:, ps1band] + np.clip(colorterm, -1., +1.)
 
         if not psfex:
             # Detect stars on the image.  
