@@ -97,6 +97,7 @@ before_script:
     - cd $HOME/tractor 
     - make 
     - python setup.py install --prefix=$MYCODE/tractor
+    - find $MYCODE/tractor
     - export PYTHONPATH=$MYCODE/tractor/lib/python2.7/site-packages:$PYTHONPATH
     - cd $HOME && python -c "import tractor; print(tractor.__file__)"
     - mkdir -p $HOME/dust/maps
