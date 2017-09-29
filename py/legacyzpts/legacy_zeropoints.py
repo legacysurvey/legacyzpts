@@ -469,9 +469,53 @@ def create_legacypipe_table(ccds_fn, camera=None):
     print('Wrote %s' % outfn)
 
 
+def cols_for_converted_star_table(star_table=None,
+                                  which=None):
+  assert(star_table in ['photom','astrom'])
+  assert(which in ['all','numeric','nonzero_diff'])
+  # which
+  if which == 'all':
+    need_arjuns_keys= ['filename','expnum','extname',
+                       'ccd_x','ccd_y','ccd_ra','ccd_dec',
+                       'ccd_mag','ccd_sky',
+                       'raoff','decoff',
+                       'magoff',
+                       'nmatch',
+                       'gmag','ps1_g','ps1_r','ps1_i','ps1_z']
+    extra_keys= ['image_hdu','filter'] # check for hdu and band depenent trends
+  elif which == 'numeric':
+    need_arjuns_keys= ['expnum',
+                       'ccd_x','ccd_y','ccd_ra','ccd_dec',
+                       'ccd_mag','ccd_sky',
+                       'raoff','decoff',
+                       'magoff',
+                       'nmatch',
+                       'gmag','ps1_g','ps1_r','ps1_i','ps1_z']
+    extra_keys= [] 
+  elif which == 'nonzero_diff':
+    need_arjuns_keys= ['ccd_x','ccd_y','ccd_ra','ccd_dec',
+                       'ccd_mag','ccd_sky',
+                       'raoff','decoff',
+                       'magoff',
+                       'nmatch']
+    extra_keys= [] 
 
-def convert_stars_table(T, camera=None): #zp_fid=None,pixscale=0.262):
-    """converges legacy stars to idl matches table
+  # star_table
+  if star_table == 'photom':
+    for key in ['raoff','decoff']:
+      need_arjuns_keys.remove(key)
+  
+  elif star_table == 'astrom':
+    for key in ['magoff']:
+      need_arjuns_keys.remove(key)
+  # Done 
+  return need_arjuns_keys + extra_keys
+ 
+
+
+def convert_stars_table(T, camera=None,
+                        star_table=None):
+    """converts -star.fits table to idl matches table
 
     Note, unlike converte_zeropoints_table, must treat each band 
       separately so loop over the bands
@@ -479,7 +523,11 @@ def convert_stars_table(T, camera=None): #zp_fid=None,pixscale=0.262):
     Args:
       T: legacy stars fits_table, can be a single stars table or a merge
         of many stars tables
+      camera: CAMERAS
+      star_table: photom or astrom
     """
+    assert(camera in CAMERAS)
+    assert(star_table in ['photom','astrom'])
     from legacyzpts.qa.params import get_fiducial
     fid= get_fiducial(camera=camera)
     new_T= [] 
@@ -488,15 +536,18 @@ def convert_stars_table(T, camera=None): #zp_fid=None,pixscale=0.262):
         zp0= fid.zp0[band]
         new_T.append(
             convert_stars_table_one_band(T[isBand],
+                            camera= camera, star_table= star_table,
                             zp_fid=fid.zp0[band], 
                             pixscale=fid.pixscale))
     return merge_tables(new_T)
 
-def convert_stars_table_one_band(T, zp_fid=None,pixscale=0.262):
+def convert_stars_table_one_band(T, camera=None, star_table=None,
+                                 zp_fid=None,pixscale=0.262):
     """Converts legacy star fits table (T) to idl names and units
     
     Attributes:
       T: legacy star fits table
+      star_table: photom or astrom
       zp_fid: fiducial zeropoint for the band
       pixscale: pixscale
       expnum2exptime: dict mapping expnum to exptime
@@ -507,16 +558,12 @@ def convert_stars_table_one_band(T, zp_fid=None,pixscale=0.262):
     newT= convert_stars_table(T, zp_fid=kwargs['zp_fid'],
     pixscale=kwargs['pixscale'])
     """ 
+    assert(camera in CAMERAS)
+    assert(star_table in ['photom','astrom'])
     assert(len(set(T.filter)) == 1)
-    need_arjuns_keys= ['filename','expnum','extname',
-                       'ccd_x','ccd_y','ccd_ra','ccd_dec',
-                       'ccd_mag','ccd_sky',
-                       'raoff','decoff',
-                       'magoff',
-                       'nmatch',
-                       'gmag','ps1_g','ps1_r','ps1_i','ps1_z']
-    extra_keys= ['image_hdu','filter'] # Check for hdu and band depenent trends
-    # 
+    need_keys= cols_for_converted_star_table(
+                        star_table=star_table,
+                        which='all')
     extname=[ccdname for _,ccdname in np.char.split(T.expid,'-')]
     T.set('extname', np.array(extname))
     # AB mag of stars using fiducial ZP to convert
@@ -534,11 +581,14 @@ def convert_stars_table_one_band(T, zp_fid=None,pixscale=0.262):
                   ('dmagall','magoff'),
                   ('image_filename','filename'),
                   ('gaia_g','gmag')]
+    if star_table == 'astrom':
+      for key in [('dmagall','magoff')]:
+        rename_keys.remove(key)
     for old,new in rename_keys:
         T.rename(old,new)
         #units[new]= units.pop(old)
     # Delete unneeded keys
-    del_keys= list( set(T.get_columns()).difference(set(need_arjuns_keys + extra_keys)) )
+    del_keys= list( set(T.get_columns()).difference(set(need_keys)) )
     for key in del_keys:
         T.delete_column(key)
         #if key in units.keys():
@@ -594,15 +644,15 @@ def convert_zeropoints_table(T, camera=None):
     pix= get_pixscale(camera)
     need_arjuns_keys= cols_for_converted_zpt_table(which='all')
     # Change units
-    T.set('fwhm',T.fwhm * pix)
     if camera == "decam":
+      T.set('fwhm', T.fwhm * pix)
       T.set('skycounts', T.skycounts * T.exptime / T.gain)
-      T.set('skyrms', T.skycounts * T.exptime / T.gain)
+      T.set('skyrms', T.skyrms * T.exptime / T.gain)
       T.set('zpt',T.zpt - 2.5*np.log10(T.gain))
       T.set('zptavg',T.zptavg - 2.5*np.log10(T.gain))
     elif camera == "mosaic":
-      pass
-    # Rename
+      T.set('fwhm', T.fwhm * pix)
+      T.set('fwhm_cp', T.fwhm_cp * pix)
     # Append 'ccd' to name
     app_ccd= ['skycounts','skyrms','skymag',
               'phoff','raoff','decoff',
@@ -621,7 +671,8 @@ def convert_zeropoints_table(T, camera=None):
     for old,new in rename_keys:
         T.rename(old,new)
     # New columns
-    T.set('avsky', np.zeros(len(T)) + np.mean(T.ccdskycounts))
+    #T.set('avsky', np.zeros(len(T)) + np.mean(T.ccdskycounts))
+    
     # Delete unneeded keys
     #needed= set(need_arjuns_keys).difference(set(ignoring_these))
     del_keys= list( set(T.get_columns()).difference(need_arjuns_keys) )
@@ -949,9 +1000,8 @@ class Measurer(object):
             bitmask= self.read_bitmask()
         img_mask= self.get_image_mask(img,bitmask)
         t0= ptime('read image, bitmask',t0)
-        # Initialize and begin populating the output CCDs table.
+        # Initialize 
         ccds = _ccds_table(self.camera)
-        # starts with the decam/ mosaic/ or 90prime/ dir
         if STAGING_CAMERAS[self.camera] in self.fn:
           ccds['image_filename'] = self.fn[self.fn.rfind('/%s/' % \
                                            STAGING_CAMERAS[self.camera])+1:]
@@ -977,32 +1027,54 @@ class Measurer(object):
         ccds['airmass'] = self.airmass
         ccds['gain'] = self.gain
         ccds['pixscale'] = self.pixscale
-        # FWHM from CP header
-        hdr_fwhm=-1
-        for fwhm_key in self.cp_fwhm_keys:
-          if fwhm_key in hdr.keys():
-            hdr_fwhm= hdr[fwhm_key] #FWHM in pixels
-            break
-        if hdr_fwhm < 0:
-            hdr_fwhm= 1.3 / self.pixscale #fallback value for source detection
-        ccds['fwhm_cp']= hdr_fwhm
-        # Copy some header cards directly.
-        # ZNAXIS[12] not NAXIS
-        hdrkey = ('avsky', 'crpix1', 'crpix2', 'crval1', 'crval2', 'cd1_1',
-                  'cd1_2', 'cd2_1', 'cd2_2', 'znaxis1', 'znaxis2')
-        ccdskey = ('avsky', 'crpix1', 'crpix2', 'crval1', 'crval2', 'cd1_1',
-                   'cd1_2', 'cd2_1', 'cd2_2', 'width', 'height')
-        for ckey, hkey in zip(ccdskey, hdrkey):
-            try:
-                ccds[ckey] = hdr[hkey]
-            except KeyError:
-                if hkey == 'avsky':
-                    print('CP image does not have avsky in hdr: %s' % ccds['image_filename'])
-                    ccds[hkey]= -1
-                elif hkey in ['znaxis1','znaxis2']:
-                  print('%s not in header, but not huge deal' % hkey)
-                else:
-                    raise NameError('key not in header: %s' % hkey)
+        # From CP Header
+        hdrVal={}
+        # values we want
+        for ccd_col in ['width','height','fwhm_cp']:
+          # Possible keys in hdr for these values
+          for key in self.cp_header_keys[ccd_col]:
+            if key in hdr.keys():
+              hdrVal[ccd_col]= hdr[key]
+              break
+        for ccd_col in ['width','height','fwhm_cp']:
+          if ccd_col in hdrVal.keys():
+            print('CP Header: %s = ' % ccd_col,hdrVal[ccd_col])
+            ccds[ccd_col]= hdrVal[ccd_col]
+          else:
+            raise KeyError('Could not find %s, keys not in cp header:' \
+                           % ccd_col,self.cp_header_keys[ccd_col])
+        hdr_fwhm= ccds['fwhm_cp'].data[0]
+        #hdr_fwhm=-1
+        #for fwhm_key in self.cp_fwhm_keys:
+        #  if fwhm_key in hdr.keys():
+        #    hdr_fwhm= hdr[fwhm_key] #FWHM in pixels
+        #    break
+        #if hdr_fwhm < 0:
+        #    ccds['fwhm_cp']= hdr_fwhm # -1 so know didn't find it
+        #    hdr_fwhm= 1.3 / self.pixscale #fallback value for source detection
+        #else:
+        #    ccds['fwhm_cp']= hdr_fwhm
+        # Same ccd and header names
+        for ccd_col in ['avsky', 'crpix1', 'crpix2', 'crval1', 'crval2', 
+                        'cd1_1','cd1_2', 'cd2_1', 'cd2_2']:
+          if ccd_col in hdr.keys():
+            print('CP Header: %s = ' % ccd_col,hdr[ccd_col])
+            ccds[ccd_col]= hdr[ccd_col]
+          else:
+            raise KeyError('Could not find %s, keys not in cp header:' \
+                           % ccd_col,ccd_col)
+        #hdrkey = ('avsky', 'crpix1', 'crpix2', 'crval1', 'crval2', 'cd1_1',
+        #          'cd1_2', 'cd2_1', 'cd2_2')
+        #ccdskey = ('avsky', 'crpix1', 'crpix2', 'crval1', 'crval2', 'cd1_1',
+        #           'cd1_2', 'cd2_1', 'cd2_2')
+        #for ckey, hkey in zip(ccdskey, hdrkey):
+        #    try:
+        #        ccds[ckey] = hdr[hkey]
+        #    except KeyError:
+        #        #if hkey == 'avsky':
+        #        #    print('CP image does not have avsky in hdr: %s' % ccds['image_filename'])
+        #        #    ccds[hkey]= -1
+        #        raise NameError('key not in header: %s' % hkey)
             
         exptime = ccds['exptime'].data[0]
         airmass = ccds['airmass'].data[0]
@@ -1491,8 +1563,11 @@ class DecamMeasurer(Measurer):
         self.k_ext = dict(g = 0.17,r = 0.10,z = 0.06)
         # --> e/sec
         #for b in self.zp0.keys(): 
-        #    self.zp0[b] += -2.5*np.log10(self.gain)  
-        self.cp_fwhm_keys= np.char.upper(['fwhm'])
+        #    self.zp0[b] += -2.5*np.log10(self.gain) 
+        # Dict: {"ccd col":[possible CP Header keys for that]}
+        self.cp_header_keys= {'width':['ZNAXIS1','NAXIS1'],
+                              'height':['ZNAXIS2','NAXIS2'],
+                              'fwhm_cp':['FWHM']}
     
     def get_band(self):
         band = self.primhdr['FILTER']
@@ -1567,8 +1642,11 @@ class Mosaic3Measurer(Measurer):
         # --> e/sec
         #for b in self.zp0.keys(): 
         #    self.zp0[b] += -2.5*np.log10(self.gain)  
-        self.cp_fwhm_keys= np.char.upper(['seeingp','seeingp1'])
-
+        # Dict: {"ccd col":[possible CP Header keys for that]}
+        self.cp_header_keys= {'width':['ZNAXIS1','NAXIS1'],
+                              'height':['ZNAXIS2','NAXIS2'],
+                              'fwhm_cp':['SEEINGP1','SEEINGP']}
+   
     def get_band(self):
         band = self.primhdr['FILTER']
         band = band.split()[0][0] # zd --> z

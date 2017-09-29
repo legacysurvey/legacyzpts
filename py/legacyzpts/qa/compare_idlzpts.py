@@ -489,6 +489,7 @@ class StarResiduals(Residuals):
 
     Args:
       camera: decam,mosaic,90prime
+      star table: two tables, photom and astrom
       savedir: has to write merged zpts file somewhere
       leg_list: list of legacy zpt files
       idl_list: list of idl zpt files
@@ -496,6 +497,7 @@ class StarResiduals(Residuals):
 
     Attributes:
       camera: decam,mosaic,90prime
+      star table: two tables, photom and astrom
       savedir: has to write merged zpts file somewhere
       leg: LegacyZpt object for legacy table
       idl: ditto for idl table
@@ -517,13 +519,16 @@ class StarResiduals(Residuals):
     star.plot_residuals(doplot='diff')
     """
 
-    def __init__(self,camera='decam',savedir='./',
+    def __init__(self,camera='decam',star_table=None,
+                 savedir='./',
                  leg_list=[],
                  idl_list=[],
                  loadable=False):
         super(StarResiduals, self).__init__(camera,savedir,
                                             leg_list,idl_list,
-                                            loadable)    
+                                            loadable) 
+        assert(star_table in ['photom','astrom'])
+        self.star_table= star_table
     
     def read_json(self, json_fn):
         """return dict"""
@@ -557,17 +562,19 @@ class StarResiduals(Residuals):
     def convert_legacy(self):
         """Converts legay star table to to idl names, units"""
         self.legacy.data= convert_stars_table(self.legacy.data,
-                                              camera=self.legacy.camera)
+                                              camera=self.legacy.camera,
+                                              star_table=self.star_table
+                                              )
 
-    def get_numeric_keys(self):
-        idl_keys= \
-            ['ccd_x','ccd_y','ccd_ra','ccd_dec',
-             'ccd_mag','ccd_sky',
-             'raoff','decoff',
-             'magoff',
-             'nmatch',
-             'gmag','ps1_g','ps1_r','ps1_i','ps1_z']
-        return idl_keys
+    #def get_numeric_keys(self):
+    #    idl_keys= \
+    #        ['ccd_x','ccd_y','ccd_ra','ccd_dec',
+    #         'ccd_mag','ccd_sky',
+    #         'raoff','decoff',
+    #         'magoff',
+    #         'nmatch',
+    #         'gmag','ps1_g','ps1_r','ps1_i','ps1_z']
+    #    return idl_keys
 
     #def get_defaultdict_ylim(self,doplot,ylim=None):
     #    ylim_dict=defaultdict(lambda: ylim)

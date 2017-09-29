@@ -106,7 +106,8 @@ def test_legacypipe_table(camera='decam',indir='ps1_gaia',
     for col in not_in_surveyccds:
       cols.remove(col)
     differenceChecker(data=leg, ref=ccds,
-                      cols=cols, camera=camera)   
+                      cols=cols, camera=camera,
+                      legazpts_product='legacypipe')   
     # Plot
     if plot:
       cols= cols_for_legacypipe_table(which='nonzero_diff')

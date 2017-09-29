@@ -12,7 +12,7 @@ from scipy import stats
 
 from legacyzpts.qa.compare_idlzpts import ZptResiduals, StarResiduals
 from legacyzpts.fetch import fetch_targz
-from legacyzpts.legacy_zeropoints import cols_for_converted_zpt_table
+from legacyzpts.legacy_zeropoints import cols_for_converted_zpt_table,cols_for_converted_star_table
 
 from test_against_common import get_tolerance,PlotDifference,differenceChecker 
 
@@ -145,29 +145,30 @@ class LoadData(object):
     assert(len(star.legacy.data) == len(star.idl.data) )
     return star
 
-  def stars_new(self,camera='decam',which='photom',indir='ps1_gaia'):
+  def stars_new(self,camera='decam',
+                star_table='photom',indir='ps1_gaia'):
     """Two tables are possible, photom and astrom
 
     Args:
-      which: which stars table to read
+      star_table: photom or astrom
       indir: the testoutput directory to read from
     """
     assert(camera in CAMERAS)
-    assert(which in ['photom','astrom'])
+    assert(star_table in ['photom','astrom'])
     assert(indir in ['ps1_gaia','ps1_only'])
     leg_dir= os.path.join(os.path.dirname(__file__),
                           'testoutput',camera,
-                           indir,'agains_idl')
+                           indir,'against_idl')
     print('leg_dir=%s' % leg_dir)
     leg_fns= glob(os.path.join(leg_dir,
-                               '*%s*-star-%s.fits' % (FN_SUFFIX[camera],which)))
+                               '*%s*-star-%s.fits' % (FN_SUFFIX[camera],star_table)))
 
     idl_fns= glob(os.path.join(get_data_dir(),
                                'good_idlzpts_data',
                                'matches-%s*.fits' %
                                  FN_SUFFIX[camera]))
     assert(len(leg_fns) > 0 and len(idl_fns) > 0)
-    star= StarResiduals(camera=camera,
+    star= StarResiduals(camera=camera, star_table=star_table,
                         savedir= leg_dir,
                         leg_list=leg_fns,
                         idl_list=idl_fns,
@@ -242,9 +243,8 @@ def test_zpt_table(camera='decam',indir='ps1_gaia',
   #return zpts
   cols= cols_for_converted_zpt_table(which='numeric')
   differenceChecker(data=zpts.legacy.data, ref=zpts.idl.data,
-                    cols=cols, camera=camera)   
-  #CheckDifference().zeropoints(camera=camera, zpts=zpts,
-  #                             pm=get_tolerance(camera=camera)
+                    cols=cols, camera=camera,
+                    legacyzpts_product='zpt')   
   if plot:
     cols= cols_for_converted_zpt_table(which='nonzero_diff')
     PlotDifference(which_table='zpt',camera=camera,
@@ -255,20 +255,49 @@ def test_zpt_table(camera='decam',indir='ps1_gaia',
   
   assert(True)
 
-def test_decam_stars_new(indir='ps1_gaia'):
+def test_star_table(camera='decam',indir='ps1_gaia',
+                    star_table='photom',plot=False):
+  """Convert -star to idl names and units then compare to IDL matches- table
+  
+  Args:
+    camera:
+    indir:
+    star_table: there are two -star.fits tables: photom and astrom
+    plot: set to True to make plot of all quantities with 
+      non-zero differences
+  """
+  assert(camera in CAMERAS)
   assert(indir in ['ps1_gaia','ps1_only'])
-  print("NEW: decam stars")
-  # Load and Match legacy to IDL
-  print('PHOTOM table')
-  stars= LoadData().stars_new(camera='decam',
-                              which='photom',
-                              indir=indir)
-  #return stars
-  CheckTolerance().stars(camera='decam',stars=stars)
-  print('ASRTROM table')
-  #stars= LoadData().stars_new(camera='decam',which='astrom')
+  assert(star_table in ['photom','astrom'])
+  print("TESTING STAR %s" % star_table)
+  stars= LoadData().stars_new(camera=camera, indir=indir,
+                              star_table=star_table)
+  return stars
+  ##########
+  cols= cols_for_converted_star_table(star_table= star_table,
+                                      which='numeric')
+  skip_keys= ['nmatch','gmag']
+  if star_table == 'astrom':
+    skip_keys += ['ps1_'+band for band in ['g','r','i','z']]
+  for key in skip_keys: 
+    cols.remove(key)
+  differenceChecker(data=stars.legacy.data, ref=stars.idl.data,
+                    cols=cols, camera=camera,
+                    legacyzpts_product='star-%s' % star_table)   
   #DecamEqualsIDL().stars(stars)
+  if plot:
+    cols= cols_for_converted_star_table(star_table= star_table,
+                                        which='nonzero_diff')
+    # Redundant or not in my file
+    for key in skip_keys: 
+      cols.remove(key)
+    PlotDifference(legacyzpts_product='star_%s' % star_table,
+                   camera=camera,indir=indir,against='idl',
+                   x=stars.idl.data, y=stars.legacy.data, 
+                   cols= cols,
+                   xname='IDL',yname='Legacy')
   assert(True)
+
 
 #def test_decam_zpts_old_but_good():
 #  print("OLD BUT GOOD: decam zpts")
@@ -289,8 +318,29 @@ def test_decam_stars_new(indir='ps1_gaia'):
 if __name__ == "__main__":
   #test_decam_zpts_old_but_good()
   #test_decam_stars_old_but_good()
+  
+  
   # Default settings
-  test_zpt_table(camera='decam',indir='ps1_gaia')
+  #test_zpt_table(camera='decam',indir='ps1_gaia',plot=False)
+  #for star_table in ['photom','astrom']:
+  #  test_star_table(camera='decam',indir='ps1_gaia',
+  #                  star_table=star_table,plot=False)
+  
+  #test_zpt_table(camera='mosaic',indir='ps1_gaia',plot=False)
+  #for star_table in ['photom','astrom']:
+  #  test_star_table(camera='mosaic',indir='ps1_gaia',
+  #                  star_table=star_table,plot=False)
+  star_table='photom'
+  stars= test_star_table(camera='mosaic',indir='ps1_gaia',
+                    star_table=star_table,plot=False)
+  
+  #test_decam_stars_new(indir='ps1_gaia')
+  # eBOSS DR5
+  #test_zpt_table(camera='decam',indir='ps1_only')
+  #test_decam_stars_new(indir='ps1_only')
+  
+  #test_zpt_table(camera='mosaic',indir='ps1_gaia')
+  #test_mosaic_stars_new(indir='ps1_gaia')
   #test_decam_stars_new(indir='ps1_gaia')
   # eBOSS DR5
   #test_zpt_table(camera='decam',indir='ps1_only')
