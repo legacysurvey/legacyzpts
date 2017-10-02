@@ -21,6 +21,9 @@ def download_ccds():
     fetch_targz(os.path.join(DOWNLOAD_DIR,
                              'ccds_mosaic.tar.gz'), 
                 outdir)
+    fetch_targz(os.path.join(DOWNLOAD_DIR,
+                             'ccds_90prime.tar.gz'), 
+                outdir)
 
 
 def run_and_check_outputs(image_list,cmd_line,outdir):
@@ -126,17 +129,55 @@ def test_mosaic(inSurveyccds=False, ps1_only=False):
     #run_and_check_outputs(image_list=[fns[0]], cmd_line=cmd_line,
     #                      outdir=outdir)
 
+def test_90prime(inSurveyccds=False, ps1_only=False):
+    """Runs at least 1 CCD per band
+
+    Args:
+      inSurveyccds: True to run CCDs that are in the surveyccds file for DR3 or DR4
+        False will be used to test again idl zeropoints instead of surveyccds
+      ps1_only: True to use ps1 for astrometry and photometry
+    """
+    print('RUNNING LEGACYZPTS: default settings')
+    download_ccds()
+    if inSurveyccds:
+      uniq_dir= 'against_surveyccds'
+      img_patt= 'ksb_160711_*_ooi_*.fits.fz'
+    else:
+      uniq_dir= 'against_idl'
+      raise ValueError('%s not supported yet' % uniq_dir)
+      img_patt= 'k4m*170221_072831*ooi*.fits.fz'
+    if ps1_only:
+      ps1_gaia_dir= 'ps1_only'
+      extra_args= ['--ps1_only']
+    else:
+      ps1_gaia_dir= 'ps1_gaia'
+      extra_args= []
+    outdir = os.path.join(os.path.dirname(__file__),
+                          'testoutput','90prime',
+                          ps1_gaia_dir,uniq_dir)
+    fns= glob( os.path.join(os.path.dirname(__file__),
+                            'testdata','ccds_90prime',
+                            img_patt))
+    assert(len(fns) > 0)
+    cmd_line=['--camera', '90prime','--outdir', outdir, 
+              '--not_on_proj','--debug'] + extra_args
+    run_and_check_outputs(image_list=fns, cmd_line=cmd_line,
+                          outdir=outdir)
+    #run_and_check_outputs(image_list=[fns[0]], cmd_line=cmd_line,
+    #                      outdir=outdir)
+
 
 
 
 if __name__ == "__main__":
   # Run on images, compare to IDL zeropoints
-  test_decam(inSurveyccds=False, ps1_only=False)
+  #test_decam(inSurveyccds=False, ps1_only=False)
   #test_mosaic(inSurveyccds=False, ps1_only=False)
   
   # Run on images, compare to survey-ccds
   #test_decam(inSurveyccds=True, ps1_only=False)
   #test_mosaic(inSurveyccds=True, ps1_only=False)
+  test_90prime(inSurveyccds=True, ps1_only=False)
  
 
 

@@ -27,11 +27,11 @@ from test_against_common import get_tolerance,PlotDifference,differenceChecker
 
 
 DOWNLOAD_DIR='http://portal.nersc.gov/project/desi/users/kburleigh/legacyzpts'
-CAMERAS= ['decam','mosaic','bok']
+CAMERAS= ['decam','mosaic','90prime']
 
 FN_SUFFIX= {"decam":"c4d",
             "mosaic": "k4m",
-            "bok":"bs4"}
+            "90prime":"ksb"}
 
 def get_data_dir():
   return os.path.join(os.path.dirname(__file__),
@@ -73,6 +73,9 @@ class LoadData(object):
     elif camera == 'mosaic':
       ccds_fn= os.path.join(get_data_dir(),'surveyccds',
                             'dr4','survey-ccds-mzls.fits.gz')
+    elif camera == '90prime':
+      ccds_fn= os.path.join(get_data_dir(),'surveyccds',
+                            'dr4','survey-ccds-bass.fits.gz')
     ccds= fits_table(ccds_fn)
     # Match, big list first
     m1, m2, d12 = match_radec(ccds.ra, ccds.dec,
@@ -103,27 +106,34 @@ def test_legacypipe_table(camera='decam',indir='ps1_gaia',
     # Check differences
     cols= cols_for_legacypipe_table(which='numeric')
     not_in_surveyccds= ['skyrms']
+    if camera == '90prime':
+      not_in_surveyccds+= ['expnum']
     for col in not_in_surveyccds:
       cols.remove(col)
     differenceChecker(data=leg, ref=ccds,
                       cols=cols, camera=camera,
-                      legazpts_product='legacypipe')   
+                      legacyzpts_product='legacypipe')   
     # Plot
     if plot:
       cols= cols_for_legacypipe_table(which='nonzero_diff')
       for col in not_in_surveyccds:
         cols.remove(col)
-      PlotDifference(which_table='legacypipe',camera=camera,
-                     indir=indir,against='surveyccds',
+      PlotDifference(legacyzpts_product='legacypipe',
+                     camera=camera,indir=indir,
+                     against='surveyccds',
                      x=ccds, y=leg, cols=cols, 
                      xname='Surveyccds',yname='Legacy')
     assert(True)
 
 
 if __name__ == "__main__":
+  plot=False
   #test_legacypipe_table(camera='decam',indir='ps1_gaia',
-  #                      plot=True)
-  test_legacypipe_table(camera='mosaic',indir='ps1_gaia',
-                         plot=True)
+  #                      plot=plot)
+  #test_legacypipe_table(camera='mosaic',indir='ps1_gaia',
+  #                       plot=plot)
+  test_legacypipe_table(camera='90prime',indir='ps1_gaia',
+                         plot=plot)
+  
   #test_legacypipe_table(camera='decam',indir='ps1_only')
   #test_legacypipe_table(camera='decam',indir='ps1_only')

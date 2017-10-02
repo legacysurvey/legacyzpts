@@ -14,6 +14,7 @@ from pickle import dump
 from scipy.optimize import curve_fit
 from scipy.stats import sigmaclip
 from scipy.ndimage.filters import median_filter
+import re
 
 import fitsio
 from astropy.io import fits as fits_astropy
@@ -800,14 +801,14 @@ class Measurer(object):
                 val= -1
             setattr(self, key.lower(),val)
             print('WARNING! not in primhdr %s' % key) 
-        
-        # FIX ME!, gets unique id for mosaic but not 90prime
-        if 'EXPNUM' in self.primhdr: 
-            self.expnum = self.primhdr['EXPNUM']
-        else:
-            print('WARNING! no EXPNUM in %s' % self.fn)
-            self.expnum = np.int32(os.path.basename(self.fn)[11:17])
 
+        if kwargs['camera'] in ['decam','mosaic']:
+          self.expnum= self.primhdr['EXPNUM']
+        elif kwargs['camera'] == '90prime':
+          # /descache/bass/20160710/d7580.0144.fits --> 75800144
+          base= os.path.basename(self.primhdr['DTACQNAM']).replace('.fits','')
+          self.expnum= int( re.sub(r'([a-z]+|\.+)','',base) )
+        print('CP Header: EXPNUM = ',self.expnum)
         self.obj = self.primhdr['OBJECT']
 
     def zeropoint(self, band):
@@ -1297,12 +1298,15 @@ class Measurer(object):
                          "apskyflux_perpix":apskyflux_perpix}
 
         # Matching
-        os.environ["PS1CAT_DIR"]=PS1
-        os.environ["PS1_GAIA_MATCHES"]= PS1_GAIA_MATCHES
+        pattern={'ps1':'/project/projectdirs/cosmo/work/ps1/cats/chunks-qz-star-v3/ps1-%(hp)05d.fits',
+                 'ps1_gaia':'/project/projectdirs/cosmo/work/gaia/chunks-ps1-gaia/chunk-%(hp)05d.fits'}
+
+        #ps1_pattern= #os.environ["PS1CAT_DIR"]=PS1
+        #ps1_gaia_patternos.environ["PS1_GAIA_MATCHES"]= PS1_GAIA_MATCHES
         ps1 = ps1cat(ccdwcs=self.wcs, 
-                     prefix='ps1',ps1_or_gaia='ps1').get_stars(magrange=None)
+                     pattern= pattern['ps1']).get_stars(magrange=None)
         ps1_gaia = ps1cat(ccdwcs=self.wcs,
-                     prefix='chunk',ps1_or_gaia='ps1_gaia').get_stars(magrange=None)
+                          pattern=pattern['ps1_gaia']).get_stars(magrange=None)
         assert(len(ps1_gaia.columns()) > len(ps1.columns()))
         #except IOError:
         #    # The gaia file does not exist:
@@ -1723,6 +1727,10 @@ class NinetyPrimeMeasurer(Measurer):
         # --> e/sec
         #for b in self.zp0.keys(): 
         #    self.zp0[b] += -2.5*np.log10(self.gain)  
+        # Dict: {"ccd col":[possible CP Header keys for that]}
+        self.cp_header_keys= {'width':['ZNAXIS1','NAXIS1'],
+                              'height':['ZNAXIS2','NAXIS2'],
+                              'fwhm_cp':['SEEINGP1','SEEINGP']}
     
     def get_gain(self,hdr):
         self.gain= 1.4 # no GAINA,B
@@ -1752,8 +1760,8 @@ def get_extlist(camera,fn,debug=False):
     '''
     if camera == '90prime':
         extlist = ['CCD1', 'CCD2', 'CCD3', 'CCD4']
-        if debug:
-          extlist = ['CCD1']
+        #if debug:
+        #  extlist = ['CCD1']
     elif camera == 'mosaic':
         extlist = ['CCD1', 'CCD2', 'CCD3', 'CCD4']
         #if debug:
