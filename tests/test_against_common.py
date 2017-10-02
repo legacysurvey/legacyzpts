@@ -5,7 +5,7 @@ from collections import defaultdict
 
 from legacyzpts.qa.paper_plots import myscatter
 
-CAMERAS= ['decam','mosaic','bok']
+CAMERAS= ['decam','mosaic','90prime']
 PRODUCTS= ['legacypipe','zpt','star-photom','star-astrom']
 
 def get_tolerance(camera=None,
@@ -24,7 +24,8 @@ def get_tolerance(camera=None,
   assert(camera in CAMERAS)
   assert(legacyzpts_product in PRODUCTS)
   pix_scale= {"mosaic":0.260,
-              "decam":0.262}[camera]
+              "decam":0.262,
+              "90prime":0.470}[camera]
   pm={}
   if camera == 'decam':
     # legacypipe keys
@@ -33,7 +34,7 @@ def get_tolerance(camera=None,
     for key in ['zpt']: # Average ccdzpt not as strict
       pm[key]= 0.03
     for key in ['ra','dec','ra_bore','dec_bore']:
-      pm[key]= 0.5/3600 #10 mas
+      pm[key]= 0.5/3600 
     for key in ['ccdraoff','ccddecoff']:
       pm[key]= 60e-3 # arcsec
     for key in ['ccdnmatch']:
@@ -56,7 +57,7 @@ def get_tolerance(camera=None,
     for key in ['ccdtransp']:
       pm[key]= 0.1
     for key in ['ccdra','ccddec']:
-      pm[key]= 0.5/3600 #10 mas
+      pm[key]= 0.5/3600 
     for key in ['ccdrarms', 'ccddecrms']:
       pm[key]= 70./3600 
     for key in ['cd1_1','cd1_2','cd2_1', 'cd2_2']:
@@ -69,11 +70,47 @@ def get_tolerance(camera=None,
     for key in ['zpt']: # Average ccdzpt not as strict
       pm[key]= 0.03
     for key in ['ra','dec','ra_bore','dec_bore']:
-      pm[key]= 0.5/3600 #10 mas
+      pm[key]= 0.5/3600 
     for key in ['ccdraoff','ccddecoff']:
       pm[key]= 10e-3 #arcsec
     for key in ['ccdnmatch']:
       pm[key]= 50
+    for key in ['fwhm', 'seeing']:
+      pm[key]= 0.1/pix_scale # Pixels is default unit
+      if legacyzpts_product == 'zpt': # idl uses arcsec
+        pm[key] *= pix_scale
+    # zpt keys
+    for key in ['ccdskycounts','ccdskyrms']:
+      pm[key]= 1.e-2
+    for key in ['avsky']:
+      pm[key]= 1.e-4 # a header value
+    for key in ['ccdphoff']:
+      pm[key]= 0.2
+    for key in ['ccdphrms']:
+      pm[key]= 0.05
+    for key in ['ccdskymag']:
+      pm[key]= 0.15
+    for key in ['ccdtransp']:
+      pm[key]= 1.e-2
+    for key in ['ccdra','ccddec']:
+      pm[key]= 0.5/3600 
+    for key in ['ccdrarms', 'ccddecrms']:
+      pm[key]= 70./3600 
+    for key in ['cd1_1','cd1_2','cd2_1', 'cd2_2']:
+      pm[key]= 1.e-10 
+
+  elif camera == '90prime':
+    # legacypipe keys
+    for key in ['ccdzpt']: #cczpt strict
+      pm[key]= 0.006
+    for key in ['zpt']: # Average ccdzpt not as strict
+      pm[key]= 0.03
+    for key in ['ra','dec','ra_bore','dec_bore']:
+      pm[key]= 1./3600 #deg
+    for key in ['ccdraoff','ccddecoff']:
+      pm[key]= 10e-3 #arcsec
+    for key in ['ccdnmatch']:
+      pm[key]= 500
     for key in ['fwhm', 'seeing']:
       pm[key]= 0.1/pix_scale # Pixels is default unit
       if legacyzpts_product == 'zpt': # idl uses arcsec
@@ -97,7 +134,8 @@ def get_tolerance(camera=None,
       pm[key]= 70./3600 
     for key in ['cd1_1','cd1_2','cd2_1', 'cd2_2']:
       pm[key]= 1.e-10 
-  
+ 
+
   return pm
 
 def get_tolerance_per_band(camera=None):

@@ -8,10 +8,6 @@ mkdir $zpts_code
 cd $zpts_code
 git clone https://github.com/legacysurvey/legacyzpts.git
 git clone https://github.com/legacysurvey/legacypipe.git
-cd legacypipe
-git fetch
-git checkout dr5_wobiwan
-git checkout 5134bc49240ba py/legacyanalysis/ps1cat.py
 ```
 
 ### Python environment
@@ -47,13 +43,22 @@ qdo list
 ```
 you should now see a list of the qdo queues
 
-### Unit tests
-Run the tests with
+### Run the test suite
+Generate all the legacyzpts outputs for 3 DECam exposures (1 per band and just 2 CCDs), 1 Mosaic3 exposure, and 2 90Prime exposures (1 per band) 
 ```sh
 cd $zpts_code/legacyzpts
-pytest tests/
+#pytest tests/test_legacyzpts_runs.py
+python tests/test_legacyzpts_runs.py
 ```
-which should print "3 passed in <blah> seconds"
+
+Once that completes, check that all computed quantities are very close to the matched values in the original IDL zeropoints files and in the survey-ccds files from DR3 and DR4.
+```sh
+#pytest tests/test_against_idl.py
+#pytest tests/test_against_surveyccds.py
+python tests/test_against_idl.py
+python tests/test_against_surveyccds.py
+```
+That should print out a ton of info, showing the residuals in ccdzpt, skycounts, ccdnmatch, etc.
 
 ### Production Runs
 
