@@ -5,6 +5,7 @@ from __future__ import print_function
 import matplotlib
 import matplotlib.pyplot as plt
 import os
+from subprocess import check_output 
 import pandas as pd
 import numpy as np
 import fitsio
@@ -33,8 +34,29 @@ def save_png(outdir,fig_id):
         plt.close()
 
 def dobash(cmd):
+  """Runs a bash comand, one that isnt meant to return anything"""
   print('UNIX cmd: %s' % cmd)
   if os.system(cmd): raise ValueError
+
+def getbash(cmd):
+  """Runs a bash command and returns what it would return
+  
+  Returns:
+    string with \n as delimieters
+  """
+  #return check_output(["find", "doc","-name","*.png"]) 
+  cmd_arr= cmd.split(' ')
+  return check_output(cmd_arr) 
+
+def writelist(lis,fn):
+  if os.path.exists(fn):
+    os.remove(fn)
+  with open(fn,'w') as foo:
+    for li in lis:
+      foo.write('%s\n' % li)
+  print('Wrote %s' % fn)
+  if len(lis) == 0:
+    print('Warning: %s is empty list' % fn) 
 
 def fits2pandas(tab,attrs=None):
     """converts a fits_table into a pandas DataFrame
