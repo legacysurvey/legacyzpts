@@ -132,7 +132,7 @@ def test_mosaic(inSurveyccds=False, ps1_only=False):
 if __name__ == "__main__":
   # Run on images, compare to IDL zeropoints
   test_decam(inSurveyccds=False, ps1_only=False)
-  test_mosaic(inSurveyccds=False, ps1_only=False)
+  #test_mosaic(inSurveyccds=False, ps1_only=False)
   
   # Run on images, compare to survey-ccds
   #test_decam(inSurveyccds=True, ps1_only=False)

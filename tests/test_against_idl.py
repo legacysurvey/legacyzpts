@@ -319,16 +319,16 @@ if __name__ == "__main__":
   
   
   # Default settings
-  plot=True
-  #test_zpt_table(camera='decam',indir='ps1_gaia',plot=plot)
-  #for star_table in ['photom','astrom']:
-  #  test_star_table(camera='decam',indir='ps1_gaia',
-  #                  star_table=star_table,plot=plot)
+  plot=False
+  test_zpt_table(camera='decam',indir='ps1_gaia',plot=plot)
+  for star_table in ['photom','astrom']:
+    test_star_table(camera='decam',indir='ps1_gaia',
+                    star_table=star_table,plot=plot)
   
   #test_zpt_table(camera='mosaic',indir='ps1_gaia',plot=plot)
-  for star_table in ['photom','astrom']:
-    test_star_table(camera='mosaic',indir='ps1_gaia',
-                    star_table=star_table,plot=True)
+  #for star_table in ['photom','astrom']:
+  #  test_star_table(camera='mosaic',indir='ps1_gaia',
+  #                  star_table=star_table,plot=plot)
   
   #test_decam_stars_new(indir='ps1_gaia')
   # eBOSS DR5

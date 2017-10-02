@@ -1064,7 +1064,7 @@ class Measurer(object):
         # Same ccd and header names
         for ccd_col in ['avsky', 'crpix1', 'crpix2', 'crval1', 'crval2', 
                         'cd1_1','cd1_2', 'cd2_1', 'cd2_2']:
-          if ccd_col in hdr.keys():
+          if ccd_col.upper() in hdr.keys():
             print('CP Header: %s = ' % ccd_col,hdr[ccd_col])
             ccds[ccd_col]= hdr[ccd_col]
           else:
@@ -1298,9 +1298,11 @@ class Measurer(object):
 
         # Matching
         os.environ["PS1CAT_DIR"]=PS1
-        os.environ["GAIACAT_DIR"]= PS1_GAIA_MATCHES
-        ps1 = ps1cat(ccdwcs=self.wcs).get_stars(gaia_ps1=False)
-        ps1_gaia = ps1cat(ccdwcs=self.wcs).get_stars(gaia_ps1=True)
+        os.environ["PS1_GAIA_MATCHES"]= PS1_GAIA_MATCHES
+        ps1 = ps1cat(ccdwcs=self.wcs, 
+                     prefix='ps1',ps1_or_gaia='ps1').get_stars(magrange=None)
+        ps1_gaia = ps1cat(ccdwcs=self.wcs,
+                     prefix='chunk',ps1_or_gaia='ps1_gaia').get_stars(magrange=None)
         assert(len(ps1_gaia.columns()) > len(ps1.columns()))
         #except IOError:
         #    # The gaia file does not exist:
@@ -1407,7 +1409,7 @@ class Measurer(object):
 
         
         # FWHM from Tractor
-        # SN from sky_img aperture photometry
+        # Find SN of sources
         ap = CircularAperture((stars_photom['x'], stars_photom['y']), 
                                self.aprad / self.pixscale)
         skyphot = aperture_photometry(sky_img, ap)
@@ -1415,22 +1417,25 @@ class Measurer(object):
         t0= ptime('sky_img aperture photometry',t0)
         star_SN= stars_photom['apflux'].data / np.sqrt(stars_photom['apflux'].data + skyflux)
  
-        # SN cut because interactive iraf gives best FWHM when star not too bright
-        sn_cut = (star_SN >= 10.)*(star_SN <= 100.)
-        # Only tractoring nstars is approx. random selection of nstars within sn
-        sample=dict(x= stars_photom['x'][sn_cut][:self.tractor_nstars],
-                    y= stars_photom['y'][sn_cut][:self.tractor_nstars],
-                    apflux= stars_photom['apflux'][sn_cut][:self.tractor_nstars],
-                    sn= star_SN[sn_cut][:self.tractor_nstars])
+        # Brightest N stars
+        sn_cut= ((star_SN >= 10.) &
+                 (star_SN <= 100.))
+        if len(star_SN[sn_cut]) < 10.:
+          sn_cut= star_SN >= 10.
+          if len(star_SN[sn_cut]) < 10.:
+            sn_cut= np.ones(len(star_SN),bool)
+        i_low_hi= np.argsort(star_SN)[sn_cut] 
+        # brightest stars in sample, at most self.tractor_nstars
+        sample=dict(x= stars_photom['x'][i_low_hi][-self.tractor_nstars:],
+                    y= stars_photom['y'][i_low_hi][-self.tractor_nstars:],
+                    apflux= stars_photom['apflux'][i_low_hi][-self.tractor_nstars:],
+                    sn= star_SN[i_low_hi][-self.tractor_nstars:])
         #ivar = np.zeros_like(img) + 1.0/sig1**2
         # Hack! To avoid 1/0 and sqrt(<0) just considering Poisson Stats due to sky
         ierr = 1.0/np.sqrt(sky_img)
-        try:
-            fwhms = self.fitstars(img_sub_sky, ierr, sample['x'], sample['y'], sample['apflux'])
-            ccds['fwhm'] = np.median(fwhms) # fwhms= 2.35 * psf.sigmas 
-            print('FWHM med=%f, std=%f, std_med=%f' % (np.median(fwhms),np.std(fwhms),np.std(fwhms)/len(sample['x'])))
-        except ValueError:
-            ccds['fwhm'] = -1. 
+        fwhms = self.fitstars(img_sub_sky, ierr, sample['x'], sample['y'], sample['apflux'])
+        ccds['fwhm'] = np.median(fwhms) # fwhms= 2.35 * psf.sigmas 
+        print('FWHM med=%f, std=%f, std_med=%f' % (np.median(fwhms),np.std(fwhms),np.std(fwhms)/len(sample['x'])))
         #ccds['seeing'] = self.pixscale * np.median(fwhms)
         t0= ptime('Tractor fit FWHM to %d/%d stars' % (len(sample['x']),len(stars_photom)), t0) 
 
