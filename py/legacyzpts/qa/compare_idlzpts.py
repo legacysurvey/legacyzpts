@@ -96,6 +96,61 @@ def imgs2fits(images,name):
     hdu.close()
     print('Wrote %s' % name)
 
+def imshow_stars(ccd_image,camera=None,
+                 xs=None,ys=None,
+                 xx1=0,xx2=4096-1,yy1=0,yy2=2048-1,
+                 name='stars_on_ccd'):
+    """Overlays positions on a CCD image
+     
+    Args:
+     ccd_image: hdu[ccdname].read() array
+     camera: CAMERAS
+     xs,ys: x and y pixel positions
+     xx1,xx2,yy1,yy2: bounding box in pixels
+    """
+    assert(camera in ['decam','90prime','mosaic'])
+    pix_scale= {"mosaic":0.260,
+                "decam":0.262,
+                "90prime":0.470}[camera]
+    from matplotlib.patches import Circle,Wedge
+    from matplotlib.collections import PatchCollection
+    fig,ax=plt.subplots(figsize=(20,10))
+    vmin=np.percentile(ccd_image,q=0.5);vmax=np.percentile(ccd_image,q=99.5)
+    ax.imshow(ccd_image.T, interpolation='none', origin='lower',
+              cmap='gray',vmin=vmin,vmax=vmax)
+    ax.tick_params(direction='out')
+    aprad_pix= 10/2./ pix_scale
+    drad= aprad_pix / 4
+    #aprad_pix= 100.
+    #for x,y,color,r in [(extra['daofind_x'],extra['daofind_y'],'y',aprad_pix),
+    #                  (extra['mycuts_x'],extra['mycuts_y'],'b',aprad_pix + 1.25*drad),
+    #                  (extra['x'],extra['y'],'m',aprad_pix + 2.5*drad)]:
+    #iso= extra['b_isolated']
+    #m1, m2, d12 = match_radec(extra['dao_ra'][iso],extra['dao_dec'][iso],extra['arjun_ra'],extra['arjun_dec'],1./3600.0,nearest=True)
+    for x,y,color,r in [(xs,ys,'y',aprad_pix)]:
+    #for x,y,color,r in [(extra['1st_x'],extra['1st_y'],'y',aprad_pix),
+    #                    (extra['2nd_x'],extra['2nd_y'],'m',2*aprad_pix)]:
+    #key2,key3 = 'apflux','bit_flux' 
+    #key2,key3 = 'b_isolated','apmags' 
+    #key2,key3 = 'b_isolated','separation' 
+    #for x,y,color,r in [(extra['dao_x_5'],extra['dao_y_5'],'y',aprad_pix),
+    #                    (extra['dao_x_5'][extra[key2]],extra['dao_y_5'][extra[key2]],'b',aprad_pix + 1.25*drad),
+    #                    (extra['dao_x_5'][extra[key3]],extra['dao_y_5'][extra[key3]],'m',aprad_pix + 2.5*drad)]:
+        # img transpose used, so reverse x,y
+        #circles=[ Circle((y1, x1), rad) for x1, y1 in zip(x, y) ]
+        patches=[ Wedge((y1, x1), r + drad, 0, 360,drad) for x1, y1 in zip(x, y) ]
+        coll = PatchCollection(patches, color=color) #,alpha=1)
+        ax.add_collection(coll)
+        #plt.scatter(y,x,facecolors='none',edgecolors=color,marker='o',s=rad,linewidth=5.,rasterized=True)
+    plt.xlim(xx1,xx2)
+    plt.ylim(yy1,yy2)
+    savefn= '%s_x%d-%d_y%d-%d.png' % (name,xx1,xx2,yy1,yy2)
+    plt.savefig(savefn)
+    plt.close()
+    print('Wrote %s' % savefn)
+
+
+
 def imshow_stars_on_ccds(extra_fn, arjun_fn=None,
                          xx1=0,xx2=4096-1,yy1=0,yy2=2048-1,
                          img_or_badpix='img'):

@@ -750,6 +750,8 @@ class Measurer(object):
         aper_sky_sub: do aperture sky subtraction instead of splinesky
         '''
         # Set extra kwargs
+        self.ps1_pattern= kwargs['ps1_pattern']
+        self.ps1_gaia_pattern= kwargs['ps1_gaia_pattern']
         self.ps1_only= kwargs.get('ps1_only')
         
         self.zptsfile= kwargs.get('zptsfile')
@@ -1298,15 +1300,15 @@ class Measurer(object):
                          "apskyflux_perpix":apskyflux_perpix}
 
         # Matching
-        pattern={'ps1':'/project/projectdirs/cosmo/work/ps1/cats/chunks-qz-star-v3/ps1-%(hp)05d.fits',
-                 'ps1_gaia':'/project/projectdirs/cosmo/work/gaia/chunks-ps1-gaia/chunk-%(hp)05d.fits'}
+        #pattern={'ps1':'/project/projectdirs/cosmo/work/ps1/cats/chunks-qz-star-v3/ps1-%(hp)05d.fits',
+        #         'ps1_gaia':'/project/projectdirs/cosmo/work/gaia/chunks-ps1-gaia/chunk-%(hp)05d.fits'}
 
         #ps1_pattern= #os.environ["PS1CAT_DIR"]=PS1
         #ps1_gaia_patternos.environ["PS1_GAIA_MATCHES"]= PS1_GAIA_MATCHES
         ps1 = ps1cat(ccdwcs=self.wcs, 
-                     pattern= pattern['ps1']).get_stars(magrange=None)
+                     pattern= self.ps1_pattern).get_stars(magrange=None)
         ps1_gaia = ps1cat(ccdwcs=self.wcs,
-                          pattern=pattern['ps1_gaia']).get_stars(magrange=None)
+                          pattern= self.ps1_gaia_pattern).get_stars(magrange=None)
         assert(len(ps1_gaia.columns()) > len(ps1.columns()))
         #except IOError:
         #    # The gaia file does not exist:
@@ -1474,6 +1476,8 @@ class Measurer(object):
       # Additional info to stars tables 
       stars['image_filename'] =ccds['image_filename']
       stars['image_hdu']= ccds['image_hdu'] 
+      stars['width']= ccds['width'] 
+      stars['height']= ccds['height'] 
       stars['expnum'] = self.expnum
       stars['expid'] = self.expid
       stars['filter'] = self.band
@@ -1760,8 +1764,8 @@ def get_extlist(camera,fn,debug=False):
     '''
     if camera == '90prime':
         extlist = ['CCD1', 'CCD2', 'CCD3', 'CCD4']
-        #if debug:
-        #  extlist = ['CCD1']
+        if debug:
+          extlist = ['CCD1']
     elif camera == 'mosaic':
         extlist = ['CCD1', 'CCD2', 'CCD3', 'CCD4']
         #if debug:
@@ -1769,6 +1773,8 @@ def get_extlist(camera,fn,debug=False):
     elif camera == 'decam':
         hdu= fitsio.FITS(fn)
         extlist= [hdu[i].get_extname() for i in range(1,len(hdu))]
+        if 'S7' in extlist:
+          extlist.remove('S7')
         if debug:
           extlist = ['N4','S4'] #, 'S22','N19']
         #extlist = ['S29', 'S31', 'S25', 'S26', 'S27', 'S28', 'S20', 'S21', 'S22',
@@ -2026,6 +2032,8 @@ def get_parser():
     parser.add_argument('--copy_from_proj', action='store_true', default=False, help='copy image data from proj to scratch before analyzing')
     parser.add_argument('--debug', action='store_true', default=False, help='Write additional files and plots for debugging')
     parser.add_argument('--ps1_only', action='store_true', default=False, help='only ps1 (not gaia) for astrometry. For photometry, only ps1 is used no matter what')
+    parser.add_argument('--ps1_pattern', action='store', default='/project/projectdirs/cosmo/work/ps1/cats/chunks-qz-star-v3/ps1-%(hp)05d.fits', help='pattern for PS1 catalogues')
+    parser.add_argument('--ps1_gaia_pattern', action='store', default='/project/projectdirs/cosmo/work/gaia/chunks-ps1-gaia/chunk-%(hp)05d.fits', help='pattern for PS1-Gaia Matched-only catalogues')
     parser.add_argument('--det_thresh', type=float, default=10., help='source detection, 10x sky sigma')
     parser.add_argument('--match_radius', type=float, default=1., help='arcsec, matching to gaia/ps1, 1 arcsec better astrometry than 3 arcsec as used by IDL codes')
     parser.add_argument('--sn_min', type=float,default=None, help='min S/N, optional cut on apflux/sqrt(skyflux)')

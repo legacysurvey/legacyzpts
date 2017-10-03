@@ -4,8 +4,9 @@
 # qdo launch obiwan 3 --cores_per_worker 4 --batchqueue debug --walltime 00:05:00 --script $obiwan_code/obiwan/bin/qdo_job_test.sh --keep_env
 
 export camera=decam
-export name_for_run=ebossDR5
+export name_for_run=cosmos_dessn
 export proj_dir=/project/projectdirs/cosmo/staging
+export proja_dir=/global/projecta/projectdirs/cosmo/staging
 export scr_dir=/global/cscratch1/sd/kaylanb/zpts_out/${name_for_run}
 export image_fn="$1"
 
@@ -15,7 +16,7 @@ source $CSCRATCH/zpts_code/legacyzpts/etc/modulefiles/bashrc_nersc
 : ${zpts_code:?}
 
 # Redirect logs
-export log=`echo $image_fn|sed s#${proj_dir}#${scr_dir}#g|sed s#.fits.fz#.log#g`
+export log=`echo $image_fn|sed s#${proj_dir}#${scr_dir}#g|sed s#${proja_dir}#${scr_dir}#g|sed s#.fits.fz#.log#g`
 mkdir -p $(dirname $log)
 echo Logging to: $log
 
@@ -29,7 +30,6 @@ export threads=1
 cd $zpts_code/legacyzpts/py
 python legacyzpts/legacy_zeropoints.py \
 	--camera ${camera} --image ${image_fn} --outdir ${scr_dir} \
-  --ps1_only \
     >> $log 2>&1
 
 
