@@ -1065,13 +1065,17 @@ class Measurer(object):
         #else:
         #    ccds['fwhm_cp']= hdr_fwhm
         # Same ccd and header names
+        notneeded_cols= ['avsky']
         for ccd_col in ['avsky', 'crpix1', 'crpix2', 'crval1', 'crval2', 
                         'cd1_1','cd1_2', 'cd2_1', 'cd2_2']:
           if ccd_col.upper() in hdr.keys():
             print('CP Header: %s = ' % ccd_col,hdr[ccd_col])
             ccds[ccd_col]= hdr[ccd_col]
           else:
-            raise KeyError('Could not find %s, keys not in cp header:' \
+            if ccd_col in notneeded_cols:
+              ccds[ccd_col]= np.nan
+            else:
+              raise KeyError('Could not find %s, keys not in cp header:' \
                            % ccd_col,ccd_col)
         #hdrkey = ('avsky', 'crpix1', 'crpix2', 'crval1', 'crval2', 'cd1_1',
         #          'cd1_2', 'cd2_1', 'cd2_2')
