@@ -188,7 +188,7 @@ def test_90prime(inSurveyccds=False, ps1_only=False):
                             img_patt))
     assert(len(fns) > 0)
     cmd_line=['--camera', '90prime','--outdir', outdir, 
-              '--not_on_proj','--debug'] #+ PS1_GAIA_ARGS + extra_args
+              '--not_on_proj','--debug'] + PS1_GAIA_ARGS + extra_args
     run_and_check_outputs(image_list=fns, cmd_line=cmd_line,
                           outdir=outdir)
     #run_and_check_outputs(image_list=[fns[0]], cmd_line=cmd_line,
@@ -203,7 +203,7 @@ if __name__ == "__main__":
   #test_mosaic(inSurveyccds=False, ps1_only=False)
   
   # Run on images, compare to survey-ccds
-  test_decam(inSurveyccds=True, ps1_only=False)
+  #test_decam(inSurveyccds=True, ps1_only=False)
   #test_mosaic(inSurveyccds=True, ps1_only=False)
   test_90prime(inSurveyccds=True, ps1_only=False)
  
