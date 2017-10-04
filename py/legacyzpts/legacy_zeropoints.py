@@ -1519,8 +1519,6 @@ class Measurer(object):
       # Additional info to stars tables 
       stars['image_filename'] =ccds['image_filename']
       stars['image_hdu']= ccds['image_hdu'] 
-      stars['width']= ccds['width'] 
-      stars['height']= ccds['height'] 
       stars['expnum'] = self.expnum
       stars['expid'] = self.expid
       stars['filter'] = self.band
@@ -2003,20 +2001,20 @@ class outputFns(object):
             dobash("cp %s %s" % ( get_bitmask_fn(imgfn), get_bitmask_fn(self.imgfn)))
 
             
-def success(ccds,imgfn, debug=False, choose_ccd=None):
-    num_ccds= dict(decam=60,mosaic=4)
-    num_ccds['90prime']=4
-    hdu= fitsio.FITS(imgfn)
-    #if len(ccds) >= num_ccds.get(camera,0):
-    if len(ccds) == len(hdu)-1:
-        return True
-    elif debug and len(ccds) >= 1:
-        # only 1 ccds needs to be done if debuggin
-        return True
-    elif choose_ccd and len(ccds) >= 1:
-        return True
-    else:
-        return False
+#def success(ccds,imgfn, debug=False, choose_ccd=None):
+#    num_ccds= dict(decam=60,mosaic=4)
+#    num_ccds['90prime']=4
+#    hdu= fitsio.FITS(imgfn)
+#    #if len(ccds) >= num_ccds.get(camera,0):
+#    if len(ccds) == len(hdu)-1:
+#        return True
+#    elif debug and len(ccds) >= 1:
+#        # only 1 ccds needs to be done if debuggin
+#        return True
+#    elif choose_ccd and len(ccds) >= 1:
+#        return True
+#    else:
+#        return False
 
 
 def runit(imgfn,zptfn,starfn_photom,starfn_astrom,
@@ -2032,29 +2030,29 @@ def runit(imgfn,zptfn,starfn_photom,starfn_astrom,
     t0= ptime('measure_image',t0)
 
     # Only write if all CCDs are done
-    if success(ccds,imgfn, 
-               debug=measureargs['debug'],
-               choose_ccd=measureargs['choose_ccd']):
-        # Write out.
-        ccds.write(zptfn)
-        # Header <-- fiducial zp,sky,ext, also exptime, pixscale
-        hdulist = fits_astropy.open(zptfn, mode='update')
-        prihdr = hdulist[0].header
-        for key,val in extra_info.items():
-            prihdr[key] = val
-        hdulist.close() # Save changes
-        print('Wrote {}'.format(zptfn))
-        # zpt --> Legacypipe table
-        create_legacypipe_table(zptfn, camera=measureargs['camera'])
-        # Two stars tables
-        stars_photom.write(starfn_photom)
-        stars_astrom.write(starfn_astrom)
-        print('Wrote 2 stars tables\n%s\n%s' % 
-              (starfn_photom,starfn_astrom))
-        # Clean up
-        t0= ptime('write-results-to-fits',t0)
-    else:
-        print('FAILED, only %d CCDs, %s' % (len(ccds),imgfn_proj))
+    #if success(ccds,imgfn, 
+    #           debug=measureargs['debug'],
+    #           choose_ccd=measureargs['choose_ccd']):
+    # Write out.
+    ccds.write(zptfn)
+    # Header <-- fiducial zp,sky,ext, also exptime, pixscale
+    hdulist = fits_astropy.open(zptfn, mode='update')
+    prihdr = hdulist[0].header
+    for key,val in extra_info.items():
+        prihdr[key] = val
+    hdulist.close() # Save changes
+    print('Wrote {}'.format(zptfn))
+    # zpt --> Legacypipe table
+    create_legacypipe_table(zptfn, camera=measureargs['camera'])
+    # Two stars tables
+    stars_photom.write(starfn_photom)
+    stars_astrom.write(starfn_astrom)
+    print('Wrote 2 stars tables\n%s\n%s' % 
+          (starfn_photom,starfn_astrom))
+    # Clean up
+    t0= ptime('write-results-to-fits',t0)
+    #else:
+    #    print('FAILED, only %d CCDs, %s' % (len(ccds),imgfn))
     if measureargs['copy_from_proj'] & os.path.exists(imgfn): 
         # Safegaurd against removing stuff on /project
         assert(not 'project' in imgfn)
