@@ -58,6 +58,16 @@ def writelist(lis,fn):
   if len(lis) == 0:
     print('Warning: %s is empty list' % fn) 
 
+def writejson(d,fn):
+  """Save a dict to json file"""
+  json.dump(d, open(fn,'w'))
+  print('Wrote json %s' % fn)
+
+def loadjson(fn):
+  """Retuns a dict from reading json file"""
+  f= open(fn, 'r')
+  return json.loads(f.read())
+
 def fits2pandas(tab,attrs=None):
     """converts a fits_table into a pandas DataFrame
 

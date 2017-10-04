@@ -36,7 +36,7 @@ def get_tolerance(camera=None,
     for key in ['ra','dec','ra_bore','dec_bore']:
       pm[key]= 0.5/3600 
     for key in ['ccdraoff','ccddecoff']:
-      pm[key]= 60e-3 # arcsec
+      pm[key]= 0.15 
     for key in ['ccdnmatch']:
       pm[key]= 80
     for key in ['fwhm', 'seeing']:
@@ -104,15 +104,15 @@ def get_tolerance(camera=None,
     for key in ['ccdzpt']: #cczpt strict
       pm[key]= 0.006
     for key in ['zpt']: # Average ccdzpt not as strict
-      pm[key]= 0.03
+      pm[key]= 0.2 #0.03
     for key in ['ra','dec','ra_bore','dec_bore']:
       pm[key]= 1./3600 #deg
     for key in ['ccdraoff','ccddecoff']:
       pm[key]= 10e-3 #arcsec
     for key in ['ccdnmatch']:
-      pm[key]= 500
+      pm[key]= 600
     for key in ['fwhm', 'seeing']:
-      pm[key]= 0.1/pix_scale # Pixels is default unit
+      pm[key]= 0.2/pix_scale # Pixels is default unit
       if legacyzpts_product == 'zpt': # idl uses arcsec
         pm[key] *= pix_scale
     # zpt keys
