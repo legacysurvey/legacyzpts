@@ -65,7 +65,8 @@ def plot_xy_json(ax,xy_json_fn,camera=None):
     pix_scale= {"mosaic":0.260,
                 "decam":0.262,
                 "90prime":0.470}[camera]
-    for key,color,r_arcsec in zip(['dao','photom'],colors,[7,14]):
+    # isolated if NN is >= 11 arcsec
+    for key,color,r_arcsec in zip(['dao','photom'],colors,[11,15]):
       plot_xy(ax,xs=XY['%s_x' % key],ys=XY['%s_y' % key],
               color=color,r_pixels=r_arcsec/pix_scale)
       
@@ -97,68 +98,52 @@ def plot_ccd(camera,imgfn,ccdname,
   plt.close()
   print('Wrote %s' % savefn)
 
+## Tests
 
-def overplot_stars(star_photom_fn, camera=None,ccdname=None):
-  """
-  
-  Args:
-    star_photom_fn: like path/to/ksb_*-star-photom.fits
-    ccdname: N4
-  """
+def test_camera(camera='decam'):
+  """Plots xy_dict stars on every test ccd for given camera"""
   assert(camera in CAMERAS)
-  stars= fits_table(star_photom_fn)
-  W,H= stars.width[0],stars.height[0]
-  # img
-  imgroot= os.path.basename(star_photom_fn).split('-')[0] 
-  imgfn= os.path.join(os.path.dirname(__file__),
-                      'testdata','ccds_%s' % camera,
-                      imgroot + '.fits.fz')
-  hdu= fitsio.FITS(imgfn)
-  img= hdu[ccdname].read()
-  imshow_stars(img,camera=camera,
-               xs=stars.x,ys=stars.y,
-               xx1=0,xx2=W-1,yy1=0,yy2=H-1,
-               name='%s_%s' % (imgroot,ccdname))
-  imshow_stars(img,camera=camera,
-               xs=stars.x,ys=stars.y,
-               xx1=0,xx2=500,yy1=0,yy2=500,
-               name='%s_%s' % (imgroot,ccdname))
-
-
-if __name__ == "__main__":
-  camera= '90prime'
-  ccdname='CCD1'
   indir= 'ps1_gaia'
-  nums= "160711_103513"
+  ccds= {'decam':['N4','S4'],
+         'mosaic':['CCD' + str(i) for i in [1,2,3,4]],
+         '90prime':['CCD' + str(i) for i in [1,2,3,4]]}
+  prefix= {'decam':'small_c4d',
+           'mosaic':'k4m',
+           '90prime':'ksb'}
 
   ccd_dir=  os.path.join(os.path.dirname(__file__),
                          'testdata','ccds_%s' % camera)
   zpts_dir= os.path.join(os.path.dirname(__file__),
                          'testoutput',camera,
                          indir,'against_surveyccds')
-  expnum= {"160711_103513":"75800084",
-           "160711_070206":"75800144"}
+ 
+  patt= os.path.join(ccd_dir,
+                '%s*ooi*.fits.fz' % (prefix[camera],) )
+  print('patt=',patt)
+  fns= glob(patt)
+  for fn in fns:
+    print('fn=%s' % fn)
+    for ccdname in ccds[camera]:
+      print('ccd=%s' % ccdname)
+      xy_json_fn= os.path.join(zpts_dir,
+                         os.path.basename(fn).replace('.fits.fz','_xy_%s.json' % ccdname))
+      zpts_fn= os.path.join(zpts_dir,
+                  os.path.basename(fn).replace('.fits.fz','-debug-legacypipe.fits'))
+      if not os.path.exists(zpts_fn):
+        print('skipping %s' % zpts_fn)
+        continue
+      zpts= fits_table(zpts_fn)
+      zpts.cut( np.char.strip(zpts.ccdname) == ccdname)
+      W,H= zpts.width[0],zpts.height[0]
+      
+      plot_ccd(camera,fn,ccdname,
+               xy_json_fn=xy_json_fn,
+               xx1=0,xx2=H-1,yy1=0,yy2=W-1,
+               #xx1=1000,xx2=2000,yy1=0,yy2=500,
+               savedir=zpts_dir)
+  
 
-  imgfn= os.path.join(ccd_dir,
-                      'ksb_%s_ooi_g_v1.fits.fz' % nums)
-  xy_json_fn= os.path.join(zpts_dir,
-                      'xy_%s_%s.json' % (expnum[nums],ccdname))
-  zpts= fits_table(os.path.join(zpts_dir,
-            'ksb_%s_ooi_g_v1-debug-legacypipe.fits' % nums))
-  zpts.cut( np.char.strip(zpts.ccdname) == ccdname)
-  W,H= zpts.width[0],zpts.height[0]
-
-  plot_ccd(camera,imgfn,ccdname,
-           xy_json_fn=xy_json_fn,
-           xx1=0,xx2=W-1,yy1=0,yy2=H-1,
-           #xx1=1000,xx2=2000,yy1=0,yy2=500,
-           savedir=zpts_dir)
-  
-  #camera='90prime'
-  #dr= 'tests/testoutput/%s/ps1_gaia/against_surveyccds/' % camera
-  #fn= dr+ 'ksb_160711_070206_ooi_r_v1-debug-star-photom.fits'
-  #test_overplot_stars(fn, camera=camera,ccdname='ccd1')
-  
-  
-  #test_overplot_stars(fn, camera=camera,ccdname='ccd1')
+if __name__ == "__main__":
+  for camera in ['90prime']: #'decam','mosaic','90prime']:
+    test_camera(camera)
 

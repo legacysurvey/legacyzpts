@@ -1175,14 +1175,14 @@ class Measurer(object):
       
 
         # 1st round of cuts:  
-        # stars too close to CCD edges which can have outlying cnts
-        minsep = 1. + self.skyrad[1] #1'' buffer after 10 arcsec, same as Arjuns
-        minsep_px = minsep/self.pixscale
-        wid,ht= img.shape[1],img.shape[0] #2046,4096 for DECam
-        istar =  (obj['xcentroid'] > minsep_px)*\
-                 (obj['xcentroid'] < wid - minsep_px)*\
-                 (obj['ycentroid'] > minsep_px)*\
-                 (obj['ycentroid'] < ht - minsep_px)
+        # Conservative buffer from edges since stars on edges can have outlying cnts
+        edge_sep = 1. + self.skyrad[1] 
+        edge_sep_px = edge_sep/self.pixscale
+        wid,ht= img.shape[1],img.shape[0] 
+        istar =  (obj['xcentroid'] > edge_sep_px)*\
+                 (obj['xcentroid'] < wid - edge_sep_px)*\
+                 (obj['ycentroid'] > edge_sep_px)*\
+                 (obj['ycentroid'] < ht - edge_sep_px)
         obj = obj[istar]
         if len(obj) == 0:
             print('No sources away from edges, crash')
@@ -1255,16 +1255,24 @@ class Measurer(object):
         # We are ignoring aperature errors though
         # No stars within our skyrad_outer (10'')
         objra, objdec = self.wcs.pixelxy2radec(obj['xcentroid']+1, obj['ycentroid']+1)
-        b_isolated= self.isolated_radec(objra,objdec,nn=2,minsep=minsep/3600.)
+        nn_sep= self.skyrad[0] 
+        b_isolated= self.isolated_radec(objra,objdec,nn=2,minsep= nn_sep/3600.)
       
         # 2nd round of cuts:  
         # In order of biggest affect: isolated,apmags, apflux, flux_for_mask
-        istar =  (apflux > 0)*\
-                 (flux_for_mask == 0)*\
-                 (apmags > 12.)*\
-                 (apmags < 30.)*\
-                 (b_isolated == True)
-        print('First round of cuts, nstars=%d' % (np.where(istar)[0].size,))
+        istar =  ((apflux > 0) &
+                  (flux_for_mask == 0) &
+                  (apmags > 12.) &
+                  (apmags < 30.))
+        if self.camera != '90prime':
+          istar= ((istar) &
+                  (b_isolated == True))
+        print('2nd round of cuts')
+        print("positive ap flux: %d/%d" % (len(obj[apflux.data > 0]),len(obj))  )
+        print("no masked pixels in ap: %d/%d" % (len(obj[flux_for_mask.data == 0]),len(obj)) )
+        print("ap mag > 12: %d/%d" % (len(obj[apmags > 12.]),len(obj)) )
+        print("ap mag < 30: %d/%d" % (len(obj[apmags < 30.]),len(obj)) )
+        print("isolated source: %d/%d" % (len(obj[b_isolated]),len(obj)) )
         obj = obj[istar]
         objra, objdec = self.wcs.pixelxy2radec(obj['xcentroid']+1, obj['ycentroid']+1)
         apflux = apflux[istar]
@@ -1489,7 +1497,9 @@ class Measurer(object):
           from legacyzpts.common import writejson
           for key in xy_dict.keys():
             xy_dict[key]= list(xy_dict[key])
-          writejson(xy_dict,'xy_%s_%s.json' % (self.expnum,ext))
+          writejson(xy_dict,'%s_xy_%s.json' % 
+                  (os.path.basename(self.fn).replace('.fits','').replace('.fz',''),
+                   ext))
 
         t0= ptime('all-computations-for-this-ccd',t0)
         # Plots for comparing to Arjuns zeropoints*.ps
@@ -1801,17 +1811,11 @@ def get_extlist(camera,fn,debug=False):
     '''
     if camera == '90prime':
         extlist = ['CCD1', 'CCD2', 'CCD3', 'CCD4']
-        if debug:
-          extlist = ['CCD1']
     elif camera == 'mosaic':
         extlist = ['CCD1', 'CCD2', 'CCD3', 'CCD4']
-        #if debug:
-        #  extlist = ['CCD1']
     elif camera == 'decam':
         hdu= fitsio.FITS(fn)
         extlist= [hdu[i].get_extname() for i in range(1,len(hdu))]
-        if 'S7' in extlist:
-          extlist.remove('S7')
         if debug:
           extlist = ['N4','S4'] #, 'S22','N19']
         #extlist = ['S29', 'S31', 'S25', 'S26', 'S27', 'S28', 'S20', 'S21', 'S22',

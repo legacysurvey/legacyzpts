@@ -131,9 +131,9 @@ if __name__ == "__main__":
   #test_legacypipe_table(camera='decam',indir='ps1_gaia',
   #                      plot=plot)
   #test_legacypipe_table(camera='mosaic',indir='ps1_gaia',
-  #                       plot=plot)
+  #                      plot=plot)
   test_legacypipe_table(camera='90prime',indir='ps1_gaia',
-                         plot=plot)
+                        plot=plot)
   
   #test_legacypipe_table(camera='decam',indir='ps1_only')
   #test_legacypipe_table(camera='decam',indir='ps1_only')
