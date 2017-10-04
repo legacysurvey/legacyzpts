@@ -1361,8 +1361,7 @@ class Measurer(object):
             phot.delete_column('iref')
             ref.rename('ra_ok', 'ra')
             ref.rename('dec_ok', 'dec')
-                
-            phot.ra_fit,phot.dec_fit = self.wcs.pixelxy2radec(phot.x1, phot.y1)
+
             phot.raoff = (ref.ra - phot.ra_fit) * np.cos(np.deg2rad(ref.dec)) * 3600.
             phot.decoff = (ref.dec - phot.dec_fit) * 3600.
             phot.psfmag = -2.5*np.log10(phot.flux / exptime) + zp0
@@ -1463,7 +1462,6 @@ class Measurer(object):
                 ref.rename('gaia_ra', 'ra')
                 ref.rename('gaia_dec', 'dec')
 
-                astrom.ra_fit,astrom.dec_fit = self.wcs.pixelxy2radec(astrom.x1, astrom.y1)
                 astrom.raoff = (ref.ra - astrom.ra_fit) * np.cos(np.deg2rad(ref.dec)) * 3600.
                 astrom.decoff = (ref.dec - astrom.dec_fit) * 3600.
                 astrom.psfmag = -2.5*np.log10(astrom.flux / exptime) + zp0
@@ -1541,8 +1539,6 @@ class Measurer(object):
             yhi = ylo + R*2
             if xhi >= W or yhi >= H:
                 continue
-            X0.append(x)
-            Y0.append(y)
             subimg = img[ylo:yhi+1, xlo:xhi+1]
             # FIXME -- check that ierr is correct
             subie = ierr[ylo:yhi+1, xlo:xhi+1]
@@ -1559,6 +1555,8 @@ class Measurer(object):
             #print('Zp0', zp0, 'mag', ref.mag[istar], 'flux', flux0)
             x0 = x - xlo
             y0 = y - ylo
+            X0.append(x0 + xlo)
+            Y0.append(y0 + ylo)
             src = tractor.PointSource(tractor.PixPos(x0, y0),
                                       tractor.Flux(flux0))
             tr = tractor.Tractor([tim], [src])
@@ -1593,8 +1591,8 @@ class Measurer(object):
                 #      'flux', src.brightness, 'dlnp', dlnp)
                 if dlnp == 0:
                     break
-            X1.append(src.pos.x + xlo + 1)
-            Y1.append(src.pos.y + ylo + 1)
+            X1.append(src.pos.x + xlo)
+            Y1.append(src.pos.y + ylo)
             FLUX.append(src.brightness.getValue())
             Istar.append(istar)
             
@@ -1614,6 +1612,7 @@ class Measurer(object):
                 ps.savefig()
 
         cal = fits_table()
+        # These x0,y0,x1,y1 are zero-indexed coords.
         cal.x0 = X0
         cal.y0 = Y0
         cal.x1 = X1
@@ -1621,6 +1620,7 @@ class Measurer(object):
         cal.flux = FLUX
         cal.psfsum = psfsum
         cal.iref = Istar
+        cal.ra_fit,cal.dec_fit = self.wcs.pixelxy2radec(cal.x1 + 1, cal.y1 + 1)
         cal.to_np_arrays()
         return cal
 
