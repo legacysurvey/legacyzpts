@@ -195,8 +195,6 @@ def test_90prime(inSurveyccds=False, ps1_only=False):
     #                      outdir=outdir)
     
 
-
-
 if __name__ == "__main__":
   # Run on images, compare to IDL zeropoints
   #test_decam(inSurveyccds=False, ps1_only=False)
@@ -207,10 +205,10 @@ if __name__ == "__main__":
   #test_mosaic(inSurveyccds=True, ps1_only=False)
   test_90prime(inSurveyccds=True, ps1_only=False)
  
-  camera='90prime'
-  dr= 'tests/testoutput/%s/ps1_gaia/against_surveyccds/' % camera
-  fn= dr+ 'ksb_160711_070206_ooi_r_v1-debug-star-photom.fits'
-  overplot_stars(fn, camera=camera,ccdname='ccd1')
+  #camera='90prime'
+  #dr= 'tests/testoutput/%s/ps1_gaia/against_surveyccds/' % camera
+  #fn= dr+ 'ksb_160711_070206_ooi_r_v1-debug-star-photom.fits'
+  #overplot_stars(fn, camera=camera,ccdname='ccd1')
 
   #test_decam(inSurveyccds=False, ps1_only=True)
   #test_mosaic(inSurveyccds=False, ps1_only=True)

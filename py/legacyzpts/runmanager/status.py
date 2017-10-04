@@ -114,7 +114,10 @@ class RunStatus(object):
     self.logs= logs
     self.regex_errs= [
         'MemoryError',
-        "FAIL: All stars have negative aperture photometry AND/OR contain masked pixels!"
+        "FAIL: All stars have negative aperture photometry AND/OR contain masked pixels!",
+        "FAIL: All stars elimated after 2nd round of cuts",
+        #"NameError: name 'imgfn_proj' is not defined",
+        #"ValueError: Inconsistent data column lengths: {0, 1}"
         ]
 
   def get_tally(self):

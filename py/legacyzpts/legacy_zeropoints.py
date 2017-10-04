@@ -236,6 +236,7 @@ def _ccds_table(camera='decam'):
 
     '''
     cols = [
+        ('err_message', 'S30'), # error message if known error occurs for a ccd
         ('image_filename', 'S100'), # image filename, including the subdirectory
         ('image_hdu', '>i2'),      # integer extension number
         ('camera', 'S7'),          # camera name
@@ -288,9 +289,8 @@ def _ccds_table(camera='decam'):
         ('skyrms_clip_sm', '>f4'),    # sky variance [electron/pix]                   [=ccdskyrms in decstat]
         ('skyrms_sigma', '>f4'),    # sky variance [electron/pix]                   [=ccdskyrms in decstat]
         #('medskysub', '>f4'),    # sky variance [electron/pix]                   [=ccdskyrms in decstat]
-        ('nstarfind', '>i2'),    # number of PS1-matched stars                   [=ccdnmatch in decstat]
-        ('nstar', '>i2'),     # number of detected stars                      [=ccdnstar in decstat]
-        ('nmatch', '>i2'),    # number of PS1-matched stars                   [=ccdnmatch in decstat]
+        ('nmatch_photom', '>i2'),    # number of PS1-matched stars                   [=ccdnmatch in decstat]
+        ('nmatch_astrom', '>i2'),    # number of PS1(-Gaia)-matched stars                   [=ccdnmatch in decstat]
         ('mdncol', '>f4'),    # median g-i color of PS1-matched main-sequence stars [=ccdmdncol in decstat]
         ('phoff', '>f4'),     # photometric offset relative to PS1 (mag)      [=ccdphoff in decstat]
         ('phrms', '>f4'),     # photometric rms relative to PS1 (mag)         [=ccdphrms in decstat]
@@ -995,7 +995,37 @@ class Measurer(object):
         b= np.array(d2d) >= minsep
         return b
 
+    def return_on_error(self,err_message='',
+                        ccds=None, stars_photom=None, stars_astrom=None):
+        """Sets ccds table err message, zpt to nan, and returns appropriately for self.run() 
+        
+        Args: 
+         err_message: length <= 30 
+         ccds, stars_photom, stars_astrom: (optional) tables partially filled by run() 
+        """
+        assert(len(err_message) > 0 & len(err_message) <= 30)
+        if ccds is None:
+          ccds= _ccds_table(self.camera)
+        if stars_photom is None:
+          stars_photom= _stars_table()
+        if stars_astrom is None:
+          stars_astrom= _stars_table()
+        ccds['err_message']= err_message
+        ccds['zpt']= np.nan
+        return ccds, stars_photom, stars_astrom
+
     def run(self, ext=None):
+        """Runs on 1 ccd
+        
+        Args:
+          ext: ccdname
+          
+        Returns:
+          ccds, stars_photom, stars_astrom
+        """
+        if (self.camera == 'decam') & (ext == 'S7'):
+          self.return_on_error(err_mesisage='S7')
+        
         self.set_hdu(ext)
         # 
         t0= Time()
@@ -1158,8 +1188,8 @@ class Measurer(object):
         ccds['nstarfind']= nobj
 
         if nobj == 0:
-            print('No sources detected!  Giving up.')
-            return ccds, _stars_table()
+            print('No sources detected')
+            return self.return_on_error('No sources detected',ccds)
         t0= ptime('detect-stars',t0)
 
         # 1st round of cuts:  
@@ -1173,8 +1203,8 @@ class Measurer(object):
                  (obj['ycentroid'] < ht - minsep_px)
         obj = obj[istar]
         if len(obj) == 0:
-            print('No sources away from edges, crash')
-            return ccds, _stars_table()
+            print('No sources away from edges')
+            return self.return_on_error('No sources away from edges',ccds)
 
         # Do aperture photometry in a fixed aperture but using either local (in
         # an annulus around each star) or global sky-subtraction.
@@ -1243,12 +1273,21 @@ class Measurer(object):
       
         # 2nd round of cuts:  
         # In order of biggest affect: isolated,apmags, apflux, flux_for_mask
-        istar =  (apflux > 0)*\
-                 (flux_for_mask == 0)*\
+        istar =  (apflux.data > 0)*\
+                 (flux_for_mask.data == 0)*\
                  (apmags > 12.)*\
                  (apmags < 30.)*\
                  (b_isolated == True)
-        print('First round of cuts, nstars=%d' % (np.where(istar)[0].size,))
+        if len(obj[istar]) == 0:
+            print('FAIL: All stars elimated after 2nd round of cuts')
+            print("positive ap flux: %d/%d" % (len(obj[apflux.data > 0]),len(obj))  )
+            print("no masked pixels in ap: %d/%d" % (len(obj[flux_for_mask.data == 0]),len(obj)) )
+            print("ap mag > 12: %d/%d" % (len(obj[apmags > 12.]),len(obj)) )
+            print("ap mag < 30: %d/%d" % (len(obj[apmags < 30.]),len(obj)) )
+            print("isolated source: %d/%d" % (len(obj[b_isolated]),len(obj)) )
+            return self.return_on_error('no sources after 2nd cuts', ccds)
+        
+        print('2nd round of cuts, nstars=%d' % (np.where(istar)[0].size,))
         obj = obj[istar]
         objra, objdec = self.wcs.pixelxy2radec(obj['xcentroid']+1, obj['ycentroid']+1)
         apflux = apflux[istar]
@@ -1290,8 +1329,8 @@ class Measurer(object):
 
         ccds['nstar']= np.where(istar)[0].size
         if ccds['nstar'] == 0:
-            print('FAIL: All stars have negative aperture photometry AND/OR contain masked pixels!')
-            return ccds, _stars_table()
+            print('FAIL: All stars elimated after 3rd round of cuts')
+            return self.return_on_error('no sources after 3rd cuts',ccds)
 
         # Put useful info in one place
         info_for_stars= {"zp0":zp0,
@@ -1489,7 +1528,6 @@ class Measurer(object):
       stars['gain'] = self.gain
       stars['exptime'] = exptime
       # Matched quantities
-      stars['nmatch'] = ccds['nmatch'] 
       stars['x'] = obj['xcentroid'][m1]
       stars['y'] = obj['ycentroid'][m1]
       #
@@ -1762,8 +1800,13 @@ class NinetyPrimeMeasurer(Measurer):
         return wcs_pv2sip_hdr(self.hdr) # PV distortion
 
 
-def get_extlist(camera,fn,debug=False):
+def get_extlist(camera,fn,debug=False,choose_ccd=None):
     '''
+    Args:
+      fn: image fn to read hdu from
+      debug: use subset of the ccds
+      choose_ccd: if not None, use only this ccd given
+
     Returns 'mosaic', 'decam', or '90prime'
     '''
     if camera == '90prime':
@@ -1791,6 +1834,9 @@ def get_extlist(camera,fn,debug=False):
     else:
         print('Camera {} not recognized!'.format(camera))
         pdb.set_trace() 
+    if choose_ccd:
+      print('CHOOSING CCD %s' % choose_ccd)
+      extlist= [choose_ccd]
     return extlist
    
  
@@ -1855,7 +1901,8 @@ def measure_image(img_fn, **measureargs):
     assert(camera in camera_check or camera_check in camera)
     
     extlist = get_extlist(camera,img_fn, 
-                          debug=measureargs['debug'])
+                          debug=measureargs['debug'],
+                          choose_ccd=measureargs['choose_ccd'])
     nnext = len(extlist)
 
     if camera == 'decam':
@@ -1956,7 +2003,7 @@ class outputFns(object):
             dobash("cp %s %s" % ( get_bitmask_fn(imgfn), get_bitmask_fn(self.imgfn)))
 
             
-def success(ccds,imgfn, debug=False):
+def success(ccds,imgfn, debug=False, choose_ccd=None):
     num_ccds= dict(decam=60,mosaic=4)
     num_ccds['90prime']=4
     hdu= fitsio.FITS(imgfn)
@@ -1965,6 +2012,8 @@ def success(ccds,imgfn, debug=False):
         return True
     elif debug and len(ccds) >= 1:
         # only 1 ccds needs to be done if debuggin
+        return True
+    elif choose_ccd and len(ccds) >= 1:
         return True
     else:
         return False
@@ -1983,7 +2032,9 @@ def runit(imgfn,zptfn,starfn_photom,starfn_astrom,
     t0= ptime('measure_image',t0)
 
     # Only write if all CCDs are done
-    if success(ccds,imgfn, debug=measureargs['debug']):
+    if success(ccds,imgfn, 
+               debug=measureargs['debug'],
+               choose_ccd=measureargs['choose_ccd']):
         # Write out.
         ccds.write(zptfn)
         # Header <-- fiducial zp,sky,ext, also exptime, pixscale
@@ -2035,6 +2086,7 @@ def get_parser():
     parser.add_argument('--not_on_proj', action='store_true', default=False, help='set when the image is not on project or projecta')
     parser.add_argument('--copy_from_proj', action='store_true', default=False, help='copy image data from proj to scratch before analyzing')
     parser.add_argument('--debug', action='store_true', default=False, help='Write additional files and plots for debugging')
+    parser.add_argument('--choose_ccd', action='store', default=None, help='forced to use only the specified ccd')
     parser.add_argument('--ps1_only', action='store_true', default=False, help='only ps1 (not gaia) for astrometry. For photometry, only ps1 is used no matter what')
     parser.add_argument('--ps1_pattern', action='store', default='/project/projectdirs/cosmo/work/ps1/cats/chunks-qz-star-v3/ps1-%(hp)05d.fits', help='pattern for PS1 catalogues')
     parser.add_argument('--ps1_gaia_pattern', action='store', default='/project/projectdirs/cosmo/work/gaia/chunks-ps1-gaia/chunk-%(hp)05d.fits', help='pattern for PS1-Gaia Matched-only catalogues')
