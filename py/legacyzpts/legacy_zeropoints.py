@@ -1361,8 +1361,7 @@ class Measurer(object):
             phot.delete_column('iref')
             ref.rename('ra_ok', 'ra')
             ref.rename('dec_ok', 'dec')
-                
-            phot.ra_fit,phot.dec_fit = self.wcs.pixelxy2radec(phot.x1, phot.y1)
+
             phot.raoff = (ref.ra - phot.ra_fit) * np.cos(np.deg2rad(ref.dec)) * 3600.
             phot.decoff = (ref.dec - phot.dec_fit) * 3600.
             phot.psfmag = -2.5*np.log10(phot.flux / exptime) + zp0
@@ -1622,6 +1621,8 @@ class Measurer(object):
         cal.psfsum = psfsum
         cal.iref = Istar
         cal.to_np_arrays()
+        cal.ra_fit,cal.dec_fit = self.wcs.pixelxy2radec(cal.x1 + 1.,
+                                                        cal.y1 + 1.)
         return cal
 
     def get_psfex_model(self):
