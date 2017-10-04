@@ -995,7 +995,14 @@ class Measurer(object):
         b= np.array(d2d) >= minsep
         return b
 
-    def run(self, ext=None):
+    def run(self, ext=None, save_xy=False):
+        """Computes statistics for 1 CCD
+        
+        Args: 
+          ext: ccdname
+          save_xy: save daophot x,y and x,y after various cuts to dict and save
+            to json
+        """
         self.set_hdu(ext)
         # 
         t0= Time()
@@ -1162,6 +1169,11 @@ class Measurer(object):
             return ccds, _stars_table()
         t0= ptime('detect-stars',t0)
 
+        if save_xy:
+          xy_dict= {'dao_x':obj['xcentroid'].data,
+                    'dao_y':obj['ycentroid'].data}
+      
+
         # 1st round of cuts:  
         # stars too close to CCD edges which can have outlying cnts
         minsep = 1. + self.skyrad[1] #1'' buffer after 10 arcsec, same as Arjuns
@@ -1176,6 +1188,10 @@ class Measurer(object):
             print('No sources away from edges, crash')
             return ccds, _stars_table()
 
+        if save_xy:
+          xy_dict.update({'1st_x':obj['xcentroid'].data,
+                          '1st_y':obj['ycentroid'].data})
+        
         # Do aperture photometry in a fixed aperture but using either local (in
         # an annulus around each star) or global sky-subtraction.
         print('Performing aperture photometry')
@@ -1271,6 +1287,10 @@ class Measurer(object):
         #apskyflux= apskyflux[istar].data
         #apskyflux_perpix= apskyflux_perpix[istar].data
 
+        if save_xy:
+          xy_dict.update({'2nd_x':obj['xcentroid'].data,
+                          '2nd_y':obj['ycentroid'].data})
+
         # 3rd Optional Cut: SN
         if self.sn_min or self.sn_max:
             sn= apflux.data / np.sqrt(apskyflux)
@@ -1355,6 +1375,10 @@ class Measurer(object):
               (ccds['nmatch_photom'], self.match_radius))
         t0= ptime('photometry match',t0)
 
+        if save_xy:
+          xy_dict.update({'photom_x':obj['xcentroid'][m1].data,
+                          'photom_y':obj['ycentroid'][m1].data})
+
         # Initialize 
         stars_photom = _stars_table(nstars= ccds['nmatch_photom'])
         self.add_info_to_stars_table(stars_photom,ccds,m1,
@@ -1398,7 +1422,11 @@ class Measurer(object):
         print('Astrometry: matched %s sources within %.1f arcsec' % 
               (ccds['nmatch_astrom'], self.match_radius))
         t0= ptime('astrometry match',t0)
-        
+       
+        if save_xy:
+          xy_dict.update({'astrom_x':obj['xcentroid'][m1].data,
+                          'astrom_y':obj['ycentroid'][m1].data})
+
         # Initialize
         stars_astrom = _stars_table(nstars= ccds['nmatch_astrom'])
         self.add_info_to_stars_table(stars_astrom,ccds,m1,
@@ -1457,6 +1485,11 @@ class Measurer(object):
         print('Transparency %.4f' % (ccds['transp'],))
         print('Astrometry: %d stars' % ccds['nmatch_astrom'])
         print('Offsets (arcsec) RA=%.6f, Dec=%.6f' % (ccds['raoff'], ccds['decoff'])) 
+        if save_xy:
+          from legacyzpts.common import writejson
+          for key in xy_dict.keys():
+            xy_dict[key]= list(xy_dict[key])
+          writejson(xy_dict,'xy_%s_%s.json' % (self.expnum,ext))
 
         t0= ptime('all-computations-for-this-ccd',t0)
         # Plots for comparing to Arjuns zeropoints*.ps
@@ -1874,7 +1907,8 @@ def measure_image(img_fn, **measureargs):
     all_stars_photom = []
     all_stars_astrom = []
     for ext in extlist:
-        ccds, stars_photom, stars_astrom = measure.run(ext)
+        ccds, stars_photom, stars_astrom = measure.run(ext,
+                save_xy=measureargs['debug'])
         t0= ptime('measured-ext-%s' % ext,t0)
         all_ccds.append(ccds)
         all_stars_photom.append(stars_photom)
