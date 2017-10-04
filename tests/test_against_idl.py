@@ -18,11 +18,11 @@ from test_against_common import PlotDifference,differenceChecker
 
 
 DOWNLOAD_DIR='http://portal.nersc.gov/project/desi/users/kburleigh/legacyzpts'
-CAMERAS= ['decam','mosaic','bok']
+CAMERAS= ['decam','mosaic','90prime']
 
 FN_SUFFIX= {"decam":"c4d",
             "mosaic": "k4m",
-            "bok":"bs4"}
+            "90prime":"ksb"}
 
 def get_output_dir(case=None):
   """return path to directory for outputs
@@ -84,26 +84,35 @@ class LoadData(object):
     assert(len(zpt.legacy.data) == len(zpt.idl.data) )
     return zpt 
 
-  def zpts_new(self,camera='decam',indir='ps1_gaia'):
+  def zpts_new(self,camera='decam',indir='ps1_gaia',
+               prod=False):
     """
     Args:
       indir: the testoutput directory to read from
+      prod: tests written to testoutput/ dir, if True it will look for production run
+        outputs which are assumed to be copied to prodoutput/ dir
     """
     assert(camera in CAMERAS)
     assert(indir in ['ps1_gaia','ps1_only'])
 
+    testoutput= 'testoutput'
+    if prod:
+      testoutput= testoutput.replace('test','prod')
     leg_dir= os.path.join(os.path.dirname(__file__),
-                          'testoutput',camera,
+                          testoutput,camera,
                           indir,'against_idl')
     print('leg_dir=%s' % leg_dir)
     leg_fns= glob(os.path.join(leg_dir,
                                '*%s*-zpt.fits' % 
                                   FN_SUFFIX[camera]))
-                               
+    if camera in ['decam','mosaic']:
+      zeropoint_patt= 'zeropoint-%s*.fits' %\
+                         FN_SUFFIX[camera]
+    elif camera in ['90prime']:
+      zeropoint_patt= 'bass-zpt-all-2016dec06.fits'
     idl_fns= glob(os.path.join(get_data_dir(),
                                'good_idlzpts_data',
-                               'zeropoint-%s*.fits' %
-                                  FN_SUFFIX[camera]))
+                               zeropoint_patt))
     assert(len(leg_fns) > 0 and len(idl_fns) > 0)
     zpt= ZptResiduals(camera=camera,
                       savedir= leg_dir,
@@ -226,12 +235,14 @@ class CheckDifference(object):
 
 
 def test_zpt_table(camera='decam',indir='ps1_gaia',
-                   plot=False):
+                   plot=False,prod=False):
   """Convert -zpt to idl names and units then compare to IDL zeropoint- table
   
   Args:
     camera:
     indir:
+    prod: tests written to testoutput/ dir, if True it will look for production run
+      outputs which are assumed to be copied to prodoutput/ dir
     plot: set to True to make plot of all quantities with 
       non-zero differences
   """
@@ -239,16 +250,25 @@ def test_zpt_table(camera='decam',indir='ps1_gaia',
   assert(camera in CAMERAS)
   assert(indir in ['ps1_gaia','ps1_only'])
   # Load and Match legacyzpts to IDLzpts
-  zpts= LoadData().zpts_new(camera=camera,indir=indir)
+  zpts= LoadData().zpts_new(camera=camera,indir=indir,
+                            prod=prod)
   #return zpts
   cols= cols_for_converted_zpt_table(which='numeric')
+  ignore_cols= ['avsky','fwhm']
+  if camera == '90prime':
+    ignore_cols+= ['expnum']
+  for col in ignore_cols:
+    cols.remove(col)
   differenceChecker(data=zpts.legacy.data, ref=zpts.idl.data,
                     cols=cols, camera=camera,
                     legacyzpts_product='zpt')   
   if plot:
     cols= cols_for_converted_zpt_table(which='nonzero_diff')
+    ignore_cols= ['avsky','fwhm']
+    for col in ignore_cols:
+      cols.remove(col)
     PlotDifference(legacyzpts_product='zpt',camera=camera,
-                   indir=indir,against='idl',
+                   indir=indir,prod=prod, against='idl',
                    x=zpts.idl.data, y=zpts.legacy.data, 
                    cols= cols,
                    xname='IDL',yname='Legacy')
@@ -319,16 +339,23 @@ if __name__ == "__main__":
   
   
   # Default settings
-  plot=False
-  test_zpt_table(camera='decam',indir='ps1_gaia',plot=plot)
-  for star_table in ['photom','astrom']:
-    test_star_table(camera='decam',indir='ps1_gaia',
-                    star_table=star_table,plot=plot)
+  plot=True
+  prod=True
+  #test_zpt_table(camera='decam',indir='ps1_gaia',
+  #               plot=plot,prod=prod)
+  #for star_table in ['photom','astrom']:
+  #  test_star_table(camera='decam',indir='ps1_gaia',
+  #                  star_table=star_table,plot=plot)
   
-  #test_zpt_table(camera='mosaic',indir='ps1_gaia',plot=plot)
+  #test_zpt_table(camera='mosaic',indir='ps1_gaia',
+  #               plot=plot,prod=prod)
   #for star_table in ['photom','astrom']:
   #  test_star_table(camera='mosaic',indir='ps1_gaia',
   #                  star_table=star_table,plot=plot)
+  
+  test_zpt_table(camera='90prime',indir='ps1_gaia',
+                 plot=plot,prod=prod)
+  
   
   #test_decam_stars_new(indir='ps1_gaia')
   # eBOSS DR5

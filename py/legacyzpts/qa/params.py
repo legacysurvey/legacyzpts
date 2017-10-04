@@ -33,7 +33,7 @@ def col2plotname(key):
 
 
 def get_fiducial(camera=None):
-    assert(camera in ['decam','mosaic'])
+    assert(camera in ['decam','mosaic','90prime'])
     obj= EmptyClass()
     obj.camera = camera 
     obj.desi_mags_1pass= defaultdict(lambda: defaultdict(dict))
@@ -78,6 +78,13 @@ def get_fiducial(camera=None):
             for band in obj.bands:
                 obj.desi_mags_1pass[psf_or_gal][band]= obj.desi_mags[psf_or_gal][band] \
                                                         - 2.5*np.log10(3**0.5)
+    elif camera == '90prime':
+        obj.bands=['g','r']
+        obj.pixscale= 0.470
+        obj.zp0 =  dict(g = 26.93,r = 27.01,z = 26.552) # ADU/sec
+        obj.sky0 = dict(g = 22.04,r = 20.91,z = 18.46) # AB mag/arcsec^2
+        obj.bothuman_list= ['bot']
+
     obj.fwhm0= 1.3 #arcsec
     # Build all other bot_avg,human_avg,fixed lists
     obj.bothuman_avg_list= ['%s_avg' % b for b in obj.bothuman_list]

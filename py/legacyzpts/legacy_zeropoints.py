@@ -658,7 +658,7 @@ def convert_zeropoints_table(T, camera=None):
       T.set('skyrms', T.skyrms * T.exptime / T.gain)
       T.set('zpt',T.zpt - 2.5*np.log10(T.gain))
       T.set('zptavg',T.zptavg - 2.5*np.log10(T.gain))
-    elif camera == "mosaic":
+    elif camera in ['mosaic','90prime']:
       T.set('fwhm', T.fwhm * pix)
       T.set('fwhm_cp', T.fwhm_cp * pix)
     # Append 'ccd' to name

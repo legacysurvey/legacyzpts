@@ -127,7 +127,7 @@ class LegacyZpts(object):
         else:
             self.savedir= './'
             #self.outdir='/global/cscratch1/sd/kaylanb/observing_paper_zptfixes'
-        assert(camera in ['decam','mosaic'])
+        assert(camera in ['decam','mosaic','90prime'])
         self.fid= params.get_fiducial(camera=self.camera)
 
     def get_merge_fn(self):

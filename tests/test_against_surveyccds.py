@@ -44,11 +44,14 @@ class LoadData(object):
                              'surveyccds.tar.gz'), 
                 get_data_dir())
 
-  def legacypipe_matched_surveyccds(self,camera='decam',indir='ps1_gaia'):
+  def legacypipe_matched_surveyccds(self,camera='decam',indir='ps1_gaia',
+                                    prod=False):
     """returns matched -legacypipe table to DR3/4 surveyccds table for that camera
 
     Args:
       indir: the testoutput directory to read from
+      prod: tests written to testoutput/ dir, if True it will look for production run
+        outputs which are assumed to be copied to prodoutput/ dir
 
     Returns:
       leg,ccds: the -legacypipe, survey-ccds tables
@@ -56,8 +59,11 @@ class LoadData(object):
     assert(camera in CAMERAS)
     assert(indir in ['ps1_gaia','ps1_only'])
     # -legacypipe table
+    testoutput= 'testoutput'
+    if prod:
+      testoutput= testoutput.replace('test','prod')
     leg_dir= os.path.join(os.path.dirname(__file__),
-                          'testoutput',camera,
+                          testoutput,camera,
                           indir,'against_surveyccds')
     patt= os.path.join(leg_dir,
                        '*%s*-legacypipe.fits' % 
@@ -91,18 +97,20 @@ class LoadData(object):
 ############
 
 def test_legacypipe_table(camera='decam',indir='ps1_gaia', 
-                          plot=False):
+                          plot=False, prod=False):
     """checks that difference between legacypipe and surveyccds sufficiently small
     Args:
       camera: CAMERAS
       indir: the testoutput directory to read from
+      prod: tests written to testoutput/ dir, if True it will look for production run
+        outputs which are assumed to be copied to prodoutput/ dir
     """
     print("TESTING LEGACYPIPE")
     assert(camera in CAMERAS)
     assert(indir in ['ps1_gaia','ps1_only'])
     # Matched tables
     leg,ccds= LoadData().legacypipe_matched_surveyccds(camera=camera,
-                                                       indir=indir)
+                                                       indir=indir, prod=prod)
     # Check differences
     cols= cols_for_legacypipe_table(which='numeric')
     not_in_surveyccds= ['skyrms']
@@ -116,10 +124,12 @@ def test_legacypipe_table(camera='decam',indir='ps1_gaia',
     # Plot
     if plot:
       cols= cols_for_legacypipe_table(which='nonzero_diff')
+      not_in_surveyccds= ['skyrms']
       for col in not_in_surveyccds:
+        print('removing col=%s' % col)
         cols.remove(col)
       PlotDifference(legacyzpts_product='legacypipe',
-                     camera=camera,indir=indir,
+                     camera=camera,indir=indir,prod=prod,
                      against='surveyccds',
                      x=ccds, y=leg, cols=cols, 
                      xname='Surveyccds',yname='Legacy')
@@ -127,13 +137,14 @@ def test_legacypipe_table(camera='decam',indir='ps1_gaia',
 
 
 if __name__ == "__main__":
-  plot=False
+  plot=True
+  prod=True
   #test_legacypipe_table(camera='decam',indir='ps1_gaia',
-  #                      plot=plot)
-  #test_legacypipe_table(camera='mosaic',indir='ps1_gaia',
-  #                      plot=plot)
+  #                      plot=plot,prod=prod)
+  test_legacypipe_table(camera='mosaic',indir='ps1_gaia',
+                        plot=plot, prod=prod)
   test_legacypipe_table(camera='90prime',indir='ps1_gaia',
-                        plot=plot)
+                        plot=plot,prod=prod)
   
   #test_legacypipe_table(camera='decam',indir='ps1_only')
   #test_legacypipe_table(camera='decam',indir='ps1_only')
