@@ -844,21 +844,37 @@ class Measurer(object):
         mask, junk = fitsio.read(dqfn, ext=self.ext, header=True)
         return mask
 
-    def get_image_mask(self,img,bitmask):
-        '''img -- oki or ooi
-        bitmask -- ood'''
-        mask = np.zeros(img.shape).astype(np.int8) 
-        # Any flagged pixel
-        mask[bitmask > 0]= 1
-        # Old way of doing things was saturation threshold
-        #if saturated_bitmask:
-        #    if self.camera == 'decam':
-        #        sat_level = 160000. # e-
-        #    else:
-        #        sat_level= 50000. # e- 
-        #    mask[img > sat_level]= 1
-        #    return mask
-        return mask
+    def create_zero_one_mask(self,bitmask,good=[]):
+        """Return zero_one_mask arraygiven a bad pixel map and good pix values
+        bitmask: ood image
+        good: list of values to treat as good in the bitmask
+        """
+        # 0 == good, 1 == bad
+        zero_one_mask= bitmask.copy()
+        for val in good:
+          zero_one_mask[zero_one_mask == val]= 0 
+        zero_one_mask[zero_one_mask > 0]= 1
+        return zero_one_mask
+
+    def get_zero_one_mask(self,bitmask,good=[]):
+        """Convert bitmask into a zero and ones mask, 1 = bad, 0 = good
+        bitmask: ood image
+        good: (optional) list of values to treat as good in the bitmask
+          default is to use appropiate values for the camera
+        """
+        if len(good) == 0:
+          # Defaults
+          if self.camera == 'decam':
+            # 7 = transient
+            good=[7]
+          elif self.camera == 'mosaic':
+            # 5 is truly a cosmic ray
+            good=[]
+          elif self.camera == '90prime':
+            # 5 can be really bad for a good image because these are subtracted
+            # and interpolated stats
+            good= []
+        return self.create_zero_one_mask(bitmask,good=good)
 
     def sensible_sigmaclip(self, arr, nsigma = 4.0):
         '''sigmaclip returns unclipped pixels, lo,hi, where lo,hi are the
@@ -1015,7 +1031,8 @@ class Measurer(object):
         else:
             img,hdr= self.read_image() 
             bitmask= self.read_bitmask()
-        img_mask= self.get_image_mask(img,bitmask)
+        img_mask= self.get_zero_one_mask(bitmask)
+        img_mask_5= self.get_zero_one_mask(bitmask,good=[5])
         t0= ptime('read image, bitmask',t0)
         # Initialize 
         ccds = _ccds_table(self.camera)
@@ -1247,6 +1264,9 @@ class Measurer(object):
 
         # Remove stars if saturated within 5 pixels of centroid
         ap_for_mask = CircularAperture((obj['xcentroid'], obj['ycentroid']), 5.)
+        raise ValueError
+        if self.camera == '90prime':
+          img_mask[img_mask == 5]= 0.
         phot_for_mask = aperture_photometry(img_mask, ap_for_mask)
         flux_for_mask = phot_for_mask['aperture_sum'] 
         # Aperture mags
@@ -1264,15 +1284,28 @@ class Measurer(object):
                   (flux_for_mask == 0) &
                   (apmags > 12.) &
                   (apmags < 30.))
-        if self.camera != '90prime':
-          istar= ((istar) &
-                  (b_isolated == True))
+        #if self.camera != '90prime':
+        istar= ((istar) &
+                (b_isolated == True))
         print('2nd round of cuts')
         print("positive ap flux: %d/%d" % (len(obj[apflux.data > 0]),len(obj))  )
         print("no masked pixels in ap: %d/%d" % (len(obj[flux_for_mask.data == 0]),len(obj)) )
         print("ap mag > 12: %d/%d" % (len(obj[apmags > 12.]),len(obj)) )
         print("ap mag < 30: %d/%d" % (len(obj[apmags < 30.]),len(obj)) )
         print("isolated source: %d/%d" % (len(obj[b_isolated]),len(obj)) )
+        if save_xy:
+          # x,y of those THROWN away
+          xy_dict.update({'hasbadpix_x':obj[flux_for_mask.data != 0]['xcentroid'].data,
+                          'hasbadpix_y':obj[flux_for_mask.data != 0]['ycentroid'].data})
+          xy_dict.update({'notiso_x':obj[b_isolated == False]['xcentroid'].data,
+                          'notiso_y':obj[b_isolated == False]['ycentroid'].data})
+        print("positive ap flux: %d/%d" % (len(obj[apflux.data > 0]),len(obj))  )
+        print("no masked pixels in ap: %d/%d" % (len(obj[flux_for_mask.data == 0]),len(obj)) )
+        print("ap mag > 12: %d/%d" % (len(obj[apmags > 12.]),len(obj)) )
+        print("ap mag < 30: %d/%d" % (len(obj[apmags < 30.]),len(obj)) )
+        print("isolated source: %d/%d" % (len(obj[b_isolated]),len(obj)) )
+ 
+        
         obj = obj[istar]
         objra, objdec = self.wcs.pixelxy2radec(obj['xcentroid']+1, obj['ycentroid']+1)
         apflux = apflux[istar]
@@ -1295,11 +1328,7 @@ class Measurer(object):
         #apskyflux= apskyflux[istar].data
         #apskyflux_perpix= apskyflux_perpix[istar].data
 
-        if save_xy:
-          xy_dict.update({'2nd_x':obj['xcentroid'].data,
-                          '2nd_y':obj['ycentroid'].data})
-
-        # 3rd Optional Cut: SN
+       # 3rd Optional Cut: SN
         if self.sn_min or self.sn_max:
             sn= apflux.data / np.sqrt(apskyflux)
             if self.sn_min:
@@ -1811,6 +1840,8 @@ def get_extlist(camera,fn,debug=False):
     '''
     if camera == '90prime':
         extlist = ['CCD1', 'CCD2', 'CCD3', 'CCD4']
+        if debug:
+          extlist = ['CCD2']
     elif camera == 'mosaic':
         extlist = ['CCD1', 'CCD2', 'CCD3', 'CCD4']
     elif camera == 'decam':

@@ -60,13 +60,13 @@ def plot_xy(ax,xs=None,ys=None,
 def plot_xy_json(ax,xy_json_fn,camera=None):
     from legacyzpts.common import loadjson
     XY= loadjson(xy_json_fn)
-    colors= ['y','m','b','w','r']
+    colors= ['m','b','w','y','r']
     assert(camera in ['decam','90prime','mosaic'])
     pix_scale= {"mosaic":0.260,
                 "decam":0.262,
                 "90prime":0.470}[camera]
     # isolated if NN is >= 11 arcsec
-    for key,color,r_arcsec in zip(['dao','photom'],colors,[11,15]):
+    for key,color,r_arcsec in zip(['dao','hasbadpix','notiso','photom'],colors,[7.,10.,13.,16.]):
       plot_xy(ax,xs=XY['%s_x' % key],ys=XY['%s_y' % key],
               color=color,r_pixels=r_arcsec/pix_scale)
       
@@ -92,7 +92,10 @@ def plot_ccd(camera,imgfn,ccdname,
   plt.xlim(xx1,xx2)
   plt.ylim(yy1,yy2)
   savefn= os.path.basename(imgfn).replace('.fits','').replace('.fz','')
-  savefn= '%s_%s_x%d-%d_y%d-%d.png' % (savefn,ccdname,xx1,xx2,yy1,yy2)
+  extra=''
+  if xy_json_fn:
+    extra= 'xypts'
+  savefn= '%s_%s_%s_x%d-%d_y%d-%d.png' % (savefn,ccdname,extra,xx1,xx2,yy1,yy2)
   savefn= os.path.join(savedir,savefn)
   plt.savefig(savefn,dpi=200)
   plt.close()
@@ -106,7 +109,7 @@ def test_camera(camera='decam'):
   indir= 'ps1_gaia'
   ccds= {'decam':['N4','S4'],
          'mosaic':['CCD' + str(i) for i in [1,2,3,4]],
-         '90prime':['CCD' + str(i) for i in [1,2,3,4]]}
+         '90prime':['CCD' + str(i) for i in [2]]}
   prefix= {'decam':'small_c4d',
            'mosaic':'k4m',
            '90prime':'ksb'}
@@ -136,6 +139,12 @@ def test_camera(camera='decam'):
       zpts.cut( np.char.strip(zpts.ccdname) == ccdname)
       W,H= zpts.width[0],zpts.height[0]
       
+      plot_ccd(camera,fn,ccdname,
+               xy_json_fn=None,
+               xx1=0,xx2=H-1,yy1=0,yy2=W-1,
+               #xx1=1000,xx2=2000,yy1=0,yy2=500,
+               savedir=zpts_dir)
+
       plot_ccd(camera,fn,ccdname,
                xy_json_fn=xy_json_fn,
                xx1=0,xx2=H-1,yy1=0,yy2=W-1,
