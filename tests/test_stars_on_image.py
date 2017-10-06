@@ -15,6 +15,29 @@ FN_SUFFIX= {"decam":"c4d",
             "mosaic": "k4m",
             "90prime":"bs4"}
 
+def victory_plot_bass_ccd2():
+  zpt= lambda ps1mag_minus_apmag: np.median(sigmaclip(ps1mag_minus_apmag, low=2.5, high=2.5)[0])
+  hdu = fits.open('ksb_160711_070206_ooi_r_v1_CCD2_all_stars.fits')
+  a=hdu[1].data
+
+  i= (a['is_iso']) & (a['good_flux_and_mag']) & (a['no_badpix_in_ap_0'])
+  plt.scatter(a['ps1_mag'][i],a['ps1_mag'][i]-a['apmag'][i],c='g')
+  i= (a['is_iso']) & (a['good_flux_and_mag']) & (a['no_badpix_in_ap_0_5']) & (a['no_badpix_in_ap_0'] == False)
+  plt.scatter(a['ps1_mag'][i],a['ps1_mag'][i]-a['apmag'][i],c='k')
+  i= (a['is_iso']) & (a['good_flux_and_mag']) & (a['no_badpix_in_ap_0'])
+  val=zpt(a['ps1_mag'][i]-a['apmag'][i])
+  plt.axhline(val,c='g',ls='--',label='%.2f (reject 5)' % val)
+  i= (a['is_iso']) & (a['good_flux_and_mag']) & (a['no_badpix_in_ap_0_5']) & (a['no_badpix_in_ap_0'] == False)
+  val=zpt(a['ps1_mag'][i]-a['apmag'][i])
+  plt.axhline(val,c='k',ls='--',label='%.2f (keep 5)' % val)
+  val=-1.92
+  plt.axhline(val,c='r',ls='--',label='%.2f (IDL ccdzpt - 27.01)' % val)
+  plt.legend(loc='lower right')
+  plt.xlabel('PS1 mag')
+  plt.ylabel('PS1 - Legacyzpt')
+  plt.title('ksb_160711_070206_ooi_r_v1.fits.fz, CCD2')
+  plt.savefig('bam.png',dpi=200)
+
 
 def imgs2fits(images,name):
     '''images -- list of numpy 2D arrays'''
