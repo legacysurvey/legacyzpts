@@ -179,7 +179,7 @@ Once your satisfied that all zeropoints outputs have been created, you need to m
 export file_list=done_legacypipe.txt
 find $zpts_out/$name_for_run/decam -name "*-legacypipe.fits" > $file_list
 export outname=merged_legacypipe.fits
-python $zpts_code/legacyzpts/py/legacy_zeropoints_merge.py --file_list $file_list --nproc 1 --outname $outname
+python $zpts_code/legacyzpts/py/legacyzpts/legacy_zeropoints_merge.py --file_list $file_list --nproc 1 --outname $outname
 ```
 
 But this could take FOREVER, so do it with MPI on N compute nodes
