@@ -1054,12 +1054,11 @@ class Measurer(object):
         if self.camera == 'decam':
             # Simultaneous image,bitmask read
             # funpack optional (funpack = slower!)
-            hdr, img, bitmask = self.read_image_and_bitmask(funpack=False)
+            hdr, self.img, self.bitmask = self.read_image_and_bitmask(funpack=False)
         else:
-            img,hdr= self.read_image() 
-            bitmask= self.read_bitmask()
-        img_mask= self.get_zero_one_mask(bitmask)
-        t0= ptime('read image, bitmask',t0)
+            self.img,hdr= self.read_image() 
+            self.bitmask= self.read_bitmask()
+        t0= ptime('read image',t0)
         # Initialize 
         ccds = _ccds_table(self.camera)
         if STAGING_CAMERAS[self.camera] in self.fn:
@@ -1145,7 +1144,7 @@ class Measurer(object):
         print('Band {}, Exptime {}, Airmass {}'.format(self.band, exptime, airmass))
 
         # WCS: 1-indexed so pixel pixelxy2radec(1,1) corresponds to img[0,0]
-        H, W = img.shape
+        H, W = self.img.shape
         ccdra, ccddec = self.wcs.pixelxy2radec((W+1) / 2.0, (H + 1) / 2.0)
         ccds['ra'] = ccdra   # [degree]
         ccds['dec'] = ccddec # [degree]
@@ -1166,10 +1165,9 @@ class Measurer(object):
         # negative sky.
         sky0 = self.sky(self.band)
         zp0 = self.zeropoint(self.band)
-        kext = self.extinction(self.band)
         print('Computing the sky background.')
-        sky_img, skymed, skyrms = self.get_sky_and_sigma(img)
-        img_sub_sky= img - sky_img
+        sky_img, skymed, skyrms = self.get_sky_and_sigma(self.img)
+        img_sub_sky= self.img - sky_img
 
         #fn= 'N4.fits' 
         #fitsio.write(fn,img_sub_sky,extname='N4')
@@ -1198,29 +1196,43 @@ class Measurer(object):
                             threshold=self.det_thresh * skyrms,
                             sharplo=0.2, sharphi=1.0, roundlo=-1.0, roundhi=1.0,
                             exclude_border=False)
-        obj= dao(img)
+        obj= dao(self.img)
         if len(obj) < 20:
             dao.threshold /= 2.
-            obj= dao(img)
+            obj= dao(self.img)
             if len(obj) < 20:
               print('Crash, < 20 sources detected')
               return ccds, _stars_table()
+        t0= ptime('detect-stars',t0)
+
+        # We for sure know that sources near edge could be bad
+        edge_sep = 1. + self.skyrad[1] 
+        edge_sep_px = edge_sep/self.pixscale
+        wid,ht= self.img.shape[1],self.img.shape[0] 
+        away_from_edge= (
+                 (obj['xcentroid'] > edge_sep_px) &
+                 (obj['xcentroid'] < wid - edge_sep_px) &
+                 (obj['ycentroid'] > edge_sep_px) &
+                 (obj['ycentroid'] < ht - edge_sep_px))
+        obj= obj[away_from_edge] 
+
+
         objra, objdec = self.wcs.pixelxy2radec(obj['xcentroid']+1, obj['ycentroid']+1)
         nobj = len(obj)
-        print('{} sources detected with detection threshold {}-sigma'.format(nobj, self.det_thresh))
+        print('{} sources detected with detection threshold {}-sigma minus edge sources'.format(nobj, self.det_thresh))
         ccds['nstarfind']= nobj
-
-        if nobj == 0:
-        t0= ptime('detect-stars',t0)
 
         if save_xy:
           # Arrays of length number of all daophot found sources
-          all_stars= {}
-          all_stars['x']= obj['xcentroid'].data
-          all_stars['y']=obj['ycentroid'].data
-          all_stars['ra']= objra
-          all_stars['dec']= objdec
-
+          all_xy= fits_table()
+          all_xy.set('x', obj['xcentroid'].data)
+          all_xy.set('y', obj['ycentroid'].data)
+          all_xy.set('ra', objra)
+          all_xy.set('dec', objdec)
+          all_xy.writeto('%s_%s_all_xy.fits' % 
+                  (os.path.basename(self.fn).replace('.fits','').replace('.fz',''),
+                   ext))
+         
         # Load PS1 and PS1-Gaia Catalogues 
         # We will only used detected sources that have PS1 or PS1-gaia matches
         # So cut to this super set immediately
@@ -1253,15 +1265,18 @@ class Measurer(object):
                       match_radec(objra, objdec, ps1.ra_ok, ps1.dec_ok, 
                                   self.match_radius/3600.0,
                                   nearest=True)
+        t0= ptime('matching-for-photometer',t0)
         stars_photom= self.do_Photometry(obj[matched['photom_obj']],
                                          ps1[matched['photom_ref']],
-                                         ccds=ccds, all_stars=all_stars)
+                                         ccds=ccds, save_xy=save_xy)
+        t0= ptime('photutils-photometry',t0)
         
         # Astrometry
         matched['astrom_obj'], matched['astrom_ref'], _ = \
                          match_radec(objra, objdec, ps1_gaia.gaia_ra, ps1_gaia.gaia_dec, 
                                      self.match_radius/3600.0,
                                      nearest=True)
+        t0= ptime('matching-for-astrometry',t0)
         if ((self.ps1_only) |
             (len(matched['astrom_obj']) < 20)):
           # Either have Gaia pot holes or are forcing PS1
@@ -1278,6 +1293,7 @@ class Measurer(object):
                              ref_ra= ps1_gaia.gaia_ra[matched['astrom_ref']],
                              ref_dec= ps1_gaia.gaia_dec[matched['astrom_ref']],
                              ccds=ccds)
+        t0= ptime('did-astrometry',t0)
         
         # FWHM
         # Tractor on specific SN sources 
@@ -1285,8 +1301,8 @@ class Measurer(object):
                                self.aprad / self.pixscale)
         skyphot = aperture_photometry(sky_img, ap)
         skyflux = skyphot['aperture_sum'].data
-        t0= ptime('sky_img aperture photometry',t0)
         star_SN= stars_photom['apflux'].data / np.sqrt(stars_photom['apflux'].data + skyflux)
+        t0= ptime('photutils-photometry-SN',t0)
  
         # Brightest N stars
         sn_cut= ((star_SN >= 10.) &
@@ -1318,14 +1334,7 @@ class Measurer(object):
         print('Transparency %.4f' % (ccds['transp'],))
         print('Astrometry: %d stars' % ccds['nmatch_astrom'])
         print('Offsets (arcsec) RA=%.6f, Dec=%.6f' % (ccds['raoff'], ccds['decoff'])) 
-        if save_xy:
-          from legacyzpts.common import writejson
-          for key in xy_dict.keys():
-            xy_dict[key]= list(xy_dict[key])
-          writejson(xy_dict,'%s_xy_%s.json' % 
-                  (os.path.basename(self.fn).replace('.fits','').replace('.fz',''),
-                   ext))
-
+        
         t0= ptime('all-computations-for-this-ccd',t0)
         # Plots for comparing to Arjuns zeropoints*.ps
         if self.verboseplots:
@@ -1333,70 +1342,70 @@ class Measurer(object):
             t0= ptime('made-plots',t0)
         return ccds, stars_photom, stars_astrom
 
-    def do_Photometry(self, obj,ps1, ccds,all_stars=None):
+    def do_Photometry(self, obj,ps1, ccds,
+                      save_xy=False):
         """Measure zeropoint relative to PS1
         
         Args:
           obj: ps1-matched sources detected with dao phot
           ps1: ps1 source matched to obj
           ccds: partially filled _ccds_table
-          all_stars: if not None, it is a dict that will store
-            apmag and ps1mag for each set of obj cuts
-            used to assess whether obj sources removed really do
-            have outlying photometric properties
+          save_xy: if True save a fits table containing 
+            ps1_mag and apmag for matches sources and associated
+            photometric cuts
 
         Returns:
           stars_photom: fits table for stars
         """
         print('Photometry on %s stars' % len(ps1))
         objra, objdec = self.wcs.pixelxy2radec(obj['xcentroid']+1, obj['ycentroid']+1)
-        cuts,phot= self.get_photometric_cuts(obj,cuts_only=False,
-                                             all_stars=all_stars)
+        cuts,phot= self.get_photometric_cuts(obj,cuts_only=False)
         assert(len(phot['apflux']) == len(obj))
-        final_cut= ((cuts['away_from_edge']) &
-                    (cuts['good_flux_and_mag']) &
+        final_cut= ((cuts['good_flux_and_mag']) &
                     (cuts['no_badpix_in_ap_0']) &
                     (cuts['is_iso']))
         if len(obj[final_cut]) == 0:
             print('Fail: No stars after final cuts: photometry')
-            return ccds, _stars_table()
-
-        #def indices_to_bool(indices, array_length):
-        #  """converts indices, array w/length <= array_length, into bool array w/length = array_length"""
-        #  assert(len(indices) <= array_length)
-        #  bool_arr= np.zeros(array_length,bool)
-        #  bool_arr[indices]= True
-        #  return bool_arr
+            return _stars_table()
 
         # Stars table
         ccds['nmatch_photom'] = len(obj[final_cut])
         print('Photometry %s stars after obj cuts' % ccds['nmatch_photom'])
-        t0= ptime('photometry match',t0)
 
         stars_photom = _stars_table(nstars= ccds['nmatch_photom'])
         stars_photom['apmag'] = phot['apmags'][final_cut]
         stars_photom['ps1_mag'] = ps1.legacy_survey_mag[final_cut]
  
         if save_xy:
-          # ps1 and apmag for each of the cuts
-          [matched['photom_ref']]
-          get_matched_ps1_obj_mags(self,keep,objra,objdec,apmags,ps1):
-          all_info['is_ps1_match']= indices_to_bool(matched['photom_obj'], len(objra))
-          all_info['is_ps1gaia_match']= indices_to_bool(matched['astrom_obj'], len(objra))
+          # Save ps1_mag and apmag for every matched source
+          all_stars=fits_table()
+          all_stars.set('apmag', phot['apmags'].data)
+          all_stars.set('ps1_mag', ps1.legacy_survey_mag)
+          all_stars.set('match_x', obj['xcentroid'].data)
+          all_stars.set('match_y', obj['ycentroid'].data)
+          all_stars.set('match_ra', objra)
+          all_stars.set('match_dec', objdec)
+          # Then bool cuts for the above arrays
+          for key in cuts.keys():
+            all_stars.set(key, cuts[key])
+          # Avoid memoryview write error
+          for col in all_stars.get_columns(): 
+            all_stars.set(col,np.array(all_stars.get(col)))
+          all_stars.writeto('%s_%s_all_stars.fits' % 
+                  (os.path.basename(self.fn).replace('.fits','').replace('.fz',''),
+                   self.ccdname))
 
         # Add additional info
         self.add_ccd_info_to_stars_table(stars_photom,
-                                         ccds,exptime)
+                                         ccds)
         star_kwargs= {"keep": final_cut,
                       "obj":obj,
                       "objra":objra,
                       "objdec":objdec,
                       "apflux":phot['apflux'],
                       "apskyflux":phot['apskyflux'],
-                      "apskyflux_perpix":phot['apskyflux_perpix'],
-                      "zp0":zp0,
-                      "exptime":exptime}
-        self.add_obj_info_to_stars_table(stars,**star_kwargs)
+                      "apskyflux_perpix":phot['apskyflux_perpix']}
+        self.add_obj_info_to_stars_table(stars_photom,**star_kwargs)
         for ps1_band,ps1_iband in zip(['g','r','i','z'],[0,1,2,3]):
             stars_photom['ps1_%s' % ps1_band]= ps1.median[final_cut, ps1_iband]       
         # Zeropoint
@@ -1404,8 +1413,10 @@ class Measurer(object):
         dmag, _, _ = sigmaclip(stars_photom['dmagall'], low=2.5, high=2.5)
         dmagmed = np.median(dmag)
         dmagsig = np.std(dmag)  # agrees with IDL codes, they just compute std
+        zp0 = self.zeropoint(self.band)
+        kext = self.extinction(self.band)
         zptmed = zp0 + dmagmed
-        transp = 10.**(-0.4 * (zp0 - zptmed - kext * (airmass - 1.0)))
+        transp = 10.**(-0.4 * (zp0 - zptmed - kext * (self.airmass - 1.0)))
         ccds['phoff'] = dmagmed
         ccds['phrms'] = dmagsig
         ccds['zpt'] = zptmed
@@ -1426,30 +1437,27 @@ class Measurer(object):
         print('Astrometry on %s stars' % len(obj))
         # Cut to obj with good photometry
         cuts= self.get_photometric_cuts(obj,cuts_only=True)
-        final_cut= ((cuts['away_from_edge']) &
-                    (cuts['good_flux_and_mag']) &
+        final_cut= ((cuts['good_flux_and_mag']) &
                     (cuts['no_badpix_in_ap_0']) &
                     (cuts['is_iso']))
         if len(obj[final_cut]) == 0:
             print('Fail: No stars after final cuts: astrometry')
-            return ccds, _stars_table()
-
-
+            return _stars_table()
 
         ccds['nmatch_astrom'] = len(obj[final_cut])
         print('Astrometry: matched %s sources within %.1f arcsec' % 
               (ccds['nmatch_astrom'], self.match_radius))
-        t0= ptime('astrometry match',t0)
        
         # Initialize
         stars_astrom = _stars_table(nstars= ccds['nmatch_astrom'])
         self.add_ccd_info_to_stars_table(stars_astrom,
-                                         ccds,exptime)
+                                         ccds)
         # Fill
-        objra, objdec = self.wcs.pixelxy2radec(obj['xcentroid']+1, obj['ycentroid']+1)
-        stars_astrom['radiff'] = (ref_ra - objra) * \
+        objra, objdec = self.wcs.pixelxy2radec(obj[final_cut]['xcentroid']+1, 
+                                               obj[final_cut]['ycentroid']+1)
+        stars_astrom['radiff'] = (ref_ra[final_cut] - objra) * \
                                   np.cos(np.deg2rad( objdec )) * 3600.0
-        stars_astrom['decdiff'] = (ref_dec - objdec) * 3600.0
+        stars_astrom['decdiff'] = (ref_dec[final_cut] - objdec) * 3600.0
         
         ccds['raoff'] = np.median(stars_astrom['radiff'])
         ccds['decoff'] = np.median(stars_astrom['decdiff'])
@@ -1471,7 +1479,7 @@ class Measurer(object):
 
         Returns:
           two dicts, cuts and phot
-          cuts: keys are ['away_from_edge''good_flux_and_mag',
+          cuts: keys are ['good_flux_and_mag',
                           'no_badpix_in_ap_0','no_badpix_in_ap_0_5','is_iso']
           phot: keys are ["apflux","apmags","apskyflux","apskyflux_perpix"]
         """
@@ -1493,13 +1501,12 @@ class Measurer(object):
             apflux = apphot['aperture_sum'] - apskyflux
         else:
             # ON image not sky subtracted image
-            apphot = aperture_photometry(img, ap)
+            apphot = aperture_photometry(self.img, ap)
             apflux = apphot['aperture_sum']
             # Placeholders
             #apskyflux= apflux.copy()
             #apskyflux.fill(0.)
             #apskyflux_perpix= apskyflux.copy()
-        t0= ptime('aperture-photometry',t0)
         # Get close enough sky/pixel in sky annulus
         # Take cutout of size ~ rout x rout, use same pixels in this slice for sky level
         rin,rout= self.skyrad[0]/self.pixscale, self.skyrad[1]/self.pixscale
@@ -1516,7 +1523,7 @@ class Measurer(object):
             xc,yc= int(x),int(y)
             x_sl= slice(xc-rad,xc+rad+1)
             y_sl= slice(yc-rad,yc+rad+1)
-            cutout= img[y_sl,x_sl]
+            cutout= self.img[y_sl,x_sl]
             assert(cutout.shape == use_for_sky.shape)
             from astropy.stats import sigma_clipped_stats
             mean, median, std = sigma_clipped_stats(cutout[use_for_sky], sigma=3.0, iters=5)
@@ -1524,24 +1531,12 @@ class Measurer(object):
             apskyflux_perpix.append( mode_est )
         apskyflux_perpix = np.array(apskyflux_perpix) # cnts / pixel
         apskyflux= apskyflux_perpix * ap.area() # cnts / 7'' aperture
-        t0= ptime('local-sky-photometry',t0)
 
         # Aperture flux, mags
         apflux= apflux - apskyflux
-        apmags= - 2.5 * np.log10(apflux.data) + zp0 + 2.5 * np.log10(exptime)
+        zp0 = self.zeropoint(self.band)
+        apmags= - 2.5 * np.log10(apflux.data) + zp0 + 2.5 * np.log10(self.exptime)
         
-        if save_xy:
-          all_info['apmag']= apmags 
-
-        # 1st round of cuts: sources near CCD edges 
-        edge_sep = 1. + self.skyrad[1] 
-        edge_sep_px = edge_sep/self.pixscale
-        wid,ht= img.shape[1],img.shape[0] 
-        cuts['away_from_edge'] = (
-                 (obj['xcentroid'] > edge_sep_px) &
-                 (obj['xcentroid'] < wid - edge_sep_px) &
-                 (obj['ycentroid'] > edge_sep_px) &
-                 (obj['ycentroid'] < ht - edge_sep_px))
         #obj = obj[istar]
         #if len(obj) == 0:
         #    print('No sources away from edges, crash')
@@ -1549,11 +1544,13 @@ class Measurer(object):
 
         # Remove stars if saturated within 5 pixels of centroid
         ap_for_mask = CircularAperture((obj['xcentroid'], obj['ycentroid']), 5.)
+
+        img_mask= self.get_zero_one_mask(self.bitmask)
         phot_for_mask = aperture_photometry(img_mask, ap_for_mask)
         flux_for_mask = phot_for_mask['aperture_sum'] 
         
         # Additional mask for testing
-        img_mask_5= self.get_zero_one_mask(bitmask,good=[5])
+        img_mask_5= self.get_zero_one_mask(self.bitmask,good=[5])
         phot_for_mask_5 = aperture_photometry(img_mask_5, ap_for_mask)
         flux_for_mask_5 = phot_for_mask_5['aperture_sum'] 
         
@@ -1572,9 +1569,9 @@ class Measurer(object):
         cuts['is_iso']= b_isolated
         
         print('2nd round of cuts')
-        print("flux > 0 & 12 < mag < 30: %d/%d" % (len(obj[good_flux_and_mag]),len(obj))  )
-        print("no masked pixels in ap: %d/%d" % (len(obj[flux_for_mask.data == 0]),len(obj)) )
-        print("isolated source: %d/%d" % (len(obj[b_isolated]),len(obj)) )
+        print("flux > 0 & 12 < mag < 30: %d/%d" % (len(obj[cuts['good_flux_and_mag']]),len(obj))  )
+        print("no masked pixels in ap: %d/%d" % (len(obj[cuts['no_badpix_in_ap_0']]),len(obj)) )
+        print("isolated source: %d/%d" % (len(obj[cuts['is_iso']]),len(obj)) )
       
         if cuts_only:
           return cuts
@@ -1585,16 +1582,12 @@ class Measurer(object):
                 "apskyflux_perpix":apskyflux_perpix}
           return cuts, phot
 
-
-
-    def add_ccd_info_to_stars_table(self,stars,
-                                    ccds,exptime):
+    def add_ccd_info_to_stars_table(self,stars,ccds):
       """Adds info to stars table that is inferable from ccd header
       
       Args:
         stars: the stars table
         ccds: ccds table
-        exptime: exptime
       """
       stars['image_filename'] =ccds['image_filename']
       stars['image_hdu']= ccds['image_hdu'] 
@@ -1605,14 +1598,13 @@ class Measurer(object):
       stars['filter'] = self.band
       stars['ccdname'] = self.ccdname
       stars['gain'] = self.gain
-      stars['exptime'] = exptime
+      stars['exptime'] = self.exptime
       stars['nmatch'] = ccds['nmatch'] 
  
     def add_obj_info_to_stars_table(self,stars,
                                     keep,obj,
                                     objra,objdec,
-                                    apflux,apskyflux,apskyflux_perpix,
-                                    zp0,exptime):
+                                    apflux,apskyflux,apskyflux_perpix):
       """Adds arrays from obj to stars table
       
       Args:
@@ -1620,7 +1612,6 @@ class Measurer(object):
         keep: bool array of obj indices to include in stars table 
         obj: 
         objra,objdec,apflux,apskyflux,apskyflux_perpix:
-        zp0,exptime:
       """
       assert(len(stars) == len(obj[keep]))
       stars['x'] = obj['xcentroid'][keep]
@@ -1906,6 +1897,8 @@ def get_extlist(camera,fn,debug=False):
           extlist = ['CCD2']
     elif camera == 'mosaic':
         extlist = ['CCD1', 'CCD2', 'CCD3', 'CCD4']
+        if debug:
+          extlist = ['CCD2']
     elif camera == 'decam':
         hdu= fitsio.FITS(fn)
         extlist= [hdu[i].get_extname() for i in range(1,len(hdu))]
