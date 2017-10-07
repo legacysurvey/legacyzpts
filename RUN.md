@@ -155,6 +155,15 @@ Coming soon
 * --night option for legacy_zeropoints, which will run all exposures for that night 
 
 ### Managing your qdo production run
+There are two key scripts for inspecting the outputs, they are in `legacyzpts/py/legacyzpts/runmanager/`
+ 1) legacyzpts/py/legacyzpts/runmanager/status.py 
+  * lists log files for QDO succeeded, failed, and running jobs
+  * parses log files for failed jobs for known failure modes and remakes lists for associated modes
+  * add new regex commands to this script as you document new failure modes
+ 2) legacyzpts/py/legacyzpts/runmanager/run_ccd.py
+  * runs a single CCD for an image for a given camera
+  * you can find some error you dont understand in the log*.txt files, then use run_ccd.py to reproduce it
+
 Manage your qdo production run with `legacyzpts/py/legacyzpts/runmanager/status.py`. List the log files associated with each QDO state "succeeded, failed, running", and list the errors in each log file with
 ```sh
 export name_for_run=ebossDR5

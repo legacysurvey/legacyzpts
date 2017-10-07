@@ -54,83 +54,6 @@ STAGING_CAMERAS={'decam':'decam',
                  '90prime':'bok'}
 
 
-######## 
-# stdouterr_redirected() is from Ted Kisner
-# Every mpi task (zeropoint file) gets its own stdout file
-#import time
-#from contextlib import contextmanager
-#
-#@contextmanager
-#def stdouterr_redirected(to=os.devnull, comm=None):
-#    '''assign unique log file to each mpi task
-#
-#    Based on http://stackoverflow.com/questions/5081657
-#    
-#    Example:
-#    import os
-#    with stdouterr_redirected(to=filename):
-#    print("from Python")
-#    os.system("echo non-Python applications are also supported")
-#    '''
-#    sys.stdout.flush()
-#    sys.stderr.flush()
-#    fd = sys.stdout.fileno()
-#    fde = sys.stderr.fileno()
-#
-#    ##### assert that Python and C stdio write using the same file descriptor
-#    ####assert libc.fileno(ctypes.c_void_p.in_dll(libc, "stdout")) == fd == 1
-#
-#    def _redirect_stdout(to):
-#        sys.stdout.close() # + implicit flush()
-#        os.dup2(to.fileno(), fd) # fd writes to 'to' file
-#        sys.stdout = os.fdopen(fd, 'w') # Python writes to fd
-#        sys.stderr.close() # + implicit flush()
-#        os.dup2(to.fileno(), fde) # fd writes to 'to' file
-#        sys.stderr = os.fdopen(fde, 'w') # Python writes to fd
-#        
-#    with os.fdopen(os.dup(fd), 'w') as old_stdout:
-#        if (comm is None) or (comm.rank == 0):
-#            print("Begin log redirection to {} at {}".format(to, time.asctime()))
-#        sys.stdout.flush()
-#        sys.stderr.flush()
-#        pto = to
-#        if comm is None:
-#            if not os.path.exists(os.path.dirname(pto)):
-#                os.makedirs(os.path.dirname(pto))
-#            with open(pto, 'w') as file:
-#                _redirect_stdout(to=file)
-#        else:
-#            pto = "{}_{}".format(to, comm.rank)
-#            with open(pto, 'w') as file:
-#                _redirect_stdout(to=file)
-#        try:
-#            yield # allow code to be run with the redirected stdout
-#        finally:
-#            sys.stdout.flush()
-#            sys.stderr.flush()
-#            _redirect_stdout(to=old_stdout) # restore stdout.
-#                                            # buffering and flags such as
-#                                            # CLOEXEC may be different
-#            if comm is not None:
-#                # concatenate per-process files
-#                comm.barrier()
-#                if comm.rank == 0:
-#                    with open(to, 'w') as outfile:
-#                        for p in range(comm.size):
-#                            outfile.write("================= Process {} =================\n".format(p))
-#                            fname = "{}_{}".format(to, p)
-#                            with open(fname) as infile:
-#                                outfile.write(infile.read())
-#                            os.remove(fname)
-#                comm.barrier()
-#
-#            if (comm is None) or (comm.rank == 0):
-#                print("End log redirection to {} at {}".format(to, time.asctime()))
-#            sys.stdout.flush()
-#            sys.stderr.flush()
-#            
-#    return
-
 def try_mkdir(dir):
     try:
         os.makedirs(dir)
@@ -236,6 +159,7 @@ def _ccds_table(camera='decam'):
 
     '''
     cols = [
+        ('err_message', 'S30'), # error message if known error occurs for a ccd
         ('image_filename', 'S100'), # image filename, including the subdirectory
         ('image_hdu', '>i2'),      # integer extension number
         ('camera', 'S7'),          # camera name
@@ -288,9 +212,8 @@ def _ccds_table(camera='decam'):
         ('skyrms_clip_sm', '>f4'),    # sky variance [electron/pix]                   [=ccdskyrms in decstat]
         ('skyrms_sigma', '>f4'),    # sky variance [electron/pix]                   [=ccdskyrms in decstat]
         #('medskysub', '>f4'),    # sky variance [electron/pix]                   [=ccdskyrms in decstat]
-        ('nstarfind', '>i2'),    # number of PS1-matched stars                   [=ccdnmatch in decstat]
-        ('nstar', '>i2'),     # number of detected stars                      [=ccdnstar in decstat]
-        ('nmatch', '>i2'),    # number of PS1-matched stars                   [=ccdnmatch in decstat]
+        ('nmatch_photom', '>i2'),    # number of PS1-matched stars                   [=ccdnmatch in decstat]
+        ('nmatch_astrom', '>i2'),    # number of PS1(-Gaia)-matched stars                   [=ccdnmatch in decstat]
         ('mdncol', '>f4'),    # median g-i color of PS1-matched main-sequence stars [=ccdmdncol in decstat]
         ('phoff', '>f4'),     # photometric offset relative to PS1 (mag)      [=ccdphoff in decstat]
         ('phrms', '>f4'),     # photometric rms relative to PS1 (mag)         [=ccdphrms in decstat]
@@ -1021,22 +944,25 @@ class Measurer(object):
                 (ps1.nmag_ok[:, 2] > 0) &
                 (gicolor > 0.4) & 
                 (gicolor < 2.7))
-
-    def get_matched_ps1_obj_mags(self,keep,objra,objdec,apmags,ps1):
-        """for a given obj cut, return matched ps1 and obj mags
+   
+    def return_on_error(self,err_message='',
+                        ccds=None, stars_photom=None, stars_astrom=None):
+        """Sets ccds table err message, zpt to nan, and returns appropriately for self.run() 
         
-        Returns:
-          apmag, ps1_mag: tuple, apmag is mag of source, ps1_mag is 
-            ps1_mag in legacy survey camera's system
+        Args: 
+         err_message: length <= 30 
+         ccds, stars_photom, stars_astrom: (optional) tables partially filled by run() 
         """
-        # Match to PS1
-        assert(len(objra[keep]) > 0) 
-        m1, m2, _ = match_radec(objra[keep], objdec[keep], ps1.ra_ok, ps1.dec_ok, 
-                                self.match_radius/3600.0,
-                                nearest=True)
-        assert(len(objra[m1]) > 0) 
-        return apmags[keep][m1], ps1.legacy_survey_mag[m2]
-
+        assert(len(err_message) > 0 & len(err_message) <= 30)
+        if ccds is None:
+          ccds= _ccds_table(self.camera)
+        if stars_photom is None:
+          stars_photom= _stars_table()
+        if stars_astrom is None:
+          stars_astrom= _stars_table()
+        ccds['err_message']= err_message
+        ccds['zpt']= np.nan
+        return ccds, stars_photom, stars_astrom
 
     def run(self, ext=None, save_xy=False):
         """Computes statistics for 1 CCD
@@ -1045,7 +971,13 @@ class Measurer(object):
           ext: ccdname
           save_xy: save daophot x,y and x,y after various cuts to dict and save
             to json
+        
+        Returns:
+          ccds, stars_photom, stars_astrom
         """
+        if (self.camera == 'decam') & (ext == 'S7'):
+          self.return_on_error(err_mesisage='S7')
+        
         self.set_hdu(ext)
         # 
         t0= Time()
@@ -1201,8 +1133,7 @@ class Measurer(object):
             dao.threshold /= 2.
             obj= dao(self.img)
             if len(obj) < 20:
-              print('Crash, < 20 sources detected')
-              return ccds, _stars_table()
+              self.return_on_error('< 20 sources detected',ccds=ccds)
         t0= ptime('detect-stars',t0)
 
         # We for sure know that sources near edge could be bad
@@ -1215,8 +1146,6 @@ class Measurer(object):
                  (obj['ycentroid'] > edge_sep_px) &
                  (obj['ycentroid'] < ht - edge_sep_px))
         obj= obj[away_from_edge] 
-
-
         objra, objdec = self.wcs.pixelxy2radec(obj['xcentroid']+1, obj['ycentroid']+1)
         nobj = len(obj)
         print('{} sources detected with detection threshold {}-sigma minus edge sources'.format(nobj, self.det_thresh))
@@ -1266,9 +1195,12 @@ class Measurer(object):
                                   self.match_radius/3600.0,
                                   nearest=True)
         t0= ptime('matching-for-photometer',t0)
-        stars_photom= self.do_Photometry(obj[matched['photom_obj']],
+        stars_photom,err= self.do_Photometry(obj[matched['photom_obj']],
                                          ps1[matched['photom_ref']],
                                          ccds=ccds, save_xy=save_xy)
+        if len(err) > 0:
+          self.return_on_error(err,ccds=ccds,
+                               stars_photom=stars_photom)
         t0= ptime('photutils-photometry',t0)
         
         # Astrometry
@@ -1281,18 +1213,22 @@ class Measurer(object):
             (len(matched['astrom_obj']) < 20)):
           # Either have Gaia pot holes or are forcing PS1
           # use ps1
-          stars_astrom= self.do_Astrometry(
-                             obj[matched['photom_obj']],
-                             ref_ra= ps1.ra_ok[matched['photom_ref']],
-                             ref_dec= ps1.dec_ok[matched['photom_ref']],
-                             ccds=ccds)
+          stars_astrom,err= self.do_Astrometry(
+                               obj[matched['photom_obj']],
+                               ref_ra= ps1.ra_ok[matched['photom_ref']],
+                               ref_dec= ps1.dec_ok[matched['photom_ref']],
+                               ccds=ccds)
         else:
           # Use gaia
-          stars_astrom= self.do_Astrometry(
-                             obj[matched['astrom_obj']],
-                             ref_ra= ps1_gaia.gaia_ra[matched['astrom_ref']],
-                             ref_dec= ps1_gaia.gaia_dec[matched['astrom_ref']],
-                             ccds=ccds)
+          stars_astrom,err= self.do_Astrometry(
+                               obj[matched['astrom_obj']],
+                               ref_ra= ps1_gaia.gaia_ra[matched['astrom_ref']],
+                               ref_dec= ps1_gaia.gaia_dec[matched['astrom_ref']],
+                               ccds=ccds)
+        if len(err) > 0:
+          self.return_on_error(err,ccds=ccds,
+                               stars_photom=stars_photom,
+                               stars_astrom=stars_astrom)
         t0= ptime('did-astrometry',t0)
         
         # FWHM
@@ -1356,6 +1292,8 @@ class Measurer(object):
 
         Returns:
           stars_photom: fits table for stars
+          err_message: '' if okay, 'some error text' otherwise, this will end up being
+            stored in ccds['err_message']
         """
         print('Photometry on %s stars' % len(ps1))
         objra, objdec = self.wcs.pixelxy2radec(obj['xcentroid']+1, obj['ycentroid']+1)
@@ -1365,8 +1303,7 @@ class Measurer(object):
                     (cuts['no_badpix_in_ap_0']) &
                     (cuts['is_iso']))
         if len(obj[final_cut]) == 0:
-            print('Fail: No stars after final cuts: photometry')
-            return _stars_table()
+            return _stars_table(),'photometry failed, no stars after cuts'
 
         # Stars table
         ccds['nmatch_photom'] = len(obj[final_cut])
@@ -1420,8 +1357,9 @@ class Measurer(object):
         ccds['phoff'] = dmagmed
         ccds['phrms'] = dmagsig
         ccds['zpt'] = zptmed
-        ccds['transp'] = transp      
-        return stars_photom
+        ccds['transp'] = transp 
+        # star,empty string tuple if succeeded
+        return stars_photom,''
 
     def do_Astrometry(self, obj,ref_ra,ref_dec, ccds):
         """Measure ra,dec offsets from Gaia or PS1
@@ -1433,6 +1371,8 @@ class Measurer(object):
         
         Returns:
           stars_astrom: fits table for stars
+          err_message: '' if okay, 'some error text' otherwise, this will end up being
+            stored in ccds['err_message']
         """
         print('Astrometry on %s stars' % len(obj))
         # Cut to obj with good photometry
@@ -1441,8 +1381,7 @@ class Measurer(object):
                     (cuts['no_badpix_in_ap_0']) &
                     (cuts['is_iso']))
         if len(obj[final_cut]) == 0:
-            print('Fail: No stars after final cuts: astrometry')
-            return _stars_table()
+            return _stars_table(),'Astromety failed, no stars after cuts'
 
         ccds['nmatch_astrom'] = len(obj[final_cut])
         print('Astrometry: matched %s sources within %.1f arcsec' % 
@@ -1467,7 +1406,7 @@ class Measurer(object):
         ccds['rarms'] = getrms(ra_clip)
         dec_clip, _, _ = sigmaclip(stars_astrom['decdiff'], low=3., high=3.)
         ccds['decrms'] = getrms(dec_clip)
-        return stars_astrom
+        return stars_astrom,''
 
     def get_photometric_cuts(self,obj,cuts_only):
         """Do aperture photometry and create a photometric cut base on those measurements
@@ -1591,8 +1530,6 @@ class Measurer(object):
       """
       stars['image_filename'] =ccds['image_filename']
       stars['image_hdu']= ccds['image_hdu'] 
-      stars['width']= ccds['width'] 
-      stars['height']= ccds['height'] 
       stars['expnum'] = self.expnum
       stars['expid'] = self.expid
       stars['filter'] = self.band
@@ -1887,8 +1824,13 @@ class NinetyPrimeMeasurer(Measurer):
         return wcs_pv2sip_hdr(self.hdr) # PV distortion
 
 
-def get_extlist(camera,fn,debug=False):
+def get_extlist(camera,fn,debug=False,choose_ccd=None):
     '''
+    Args:
+      fn: image fn to read hdu from
+      debug: use subset of the ccds
+      choose_ccd: if not None, use only this ccd given
+
     Returns 'mosaic', 'decam', or '90prime'
     '''
     if camera == '90prime':
@@ -1914,6 +1856,9 @@ def get_extlist(camera,fn,debug=False):
     else:
         print('Camera {} not recognized!'.format(camera))
         pdb.set_trace() 
+    if choose_ccd:
+      print('CHOOSING CCD %s' % choose_ccd)
+      extlist= [choose_ccd]
     return extlist
    
  
@@ -1978,7 +1923,8 @@ def measure_image(img_fn, **measureargs):
     assert(camera in camera_check or camera_check in camera)
     
     extlist = get_extlist(camera,img_fn, 
-                          debug=measureargs['debug'])
+                          debug=measureargs['debug'],
+                          choose_ccd=measureargs['choose_ccd'])
     nnext = len(extlist)
 
     if camera == 'decam':
@@ -2080,18 +2026,20 @@ class outputFns(object):
             dobash("cp %s %s" % ( get_bitmask_fn(imgfn), get_bitmask_fn(self.imgfn)))
 
             
-def success(ccds,imgfn, debug=False):
-    num_ccds= dict(decam=60,mosaic=4)
-    num_ccds['90prime']=4
-    hdu= fitsio.FITS(imgfn)
-    #if len(ccds) >= num_ccds.get(camera,0):
-    if len(ccds) == len(hdu)-1:
-        return True
-    elif debug and len(ccds) >= 1:
-        # only 1 ccds needs to be done if debuggin
-        return True
-    else:
-        return False
+#def success(ccds,imgfn, debug=False, choose_ccd=None):
+#    num_ccds= dict(decam=60,mosaic=4)
+#    num_ccds['90prime']=4
+#    hdu= fitsio.FITS(imgfn)
+#    #if len(ccds) >= num_ccds.get(camera,0):
+#    if len(ccds) == len(hdu)-1:
+#        return True
+#    elif debug and len(ccds) >= 1:
+#        # only 1 ccds needs to be done if debuggin
+#        return True
+#    elif choose_ccd and len(ccds) >= 1:
+#        return True
+#    else:
+#        return False
 
 
 def runit(imgfn,zptfn,starfn_photom,starfn_astrom,
@@ -2107,27 +2055,29 @@ def runit(imgfn,zptfn,starfn_photom,starfn_astrom,
     t0= ptime('measure_image',t0)
 
     # Only write if all CCDs are done
-    if success(ccds,imgfn, debug=measureargs['debug']):
-        # Write out.
-        ccds.write(zptfn)
-        # Header <-- fiducial zp,sky,ext, also exptime, pixscale
-        hdulist = fits_astropy.open(zptfn, mode='update')
-        prihdr = hdulist[0].header
-        for key,val in extra_info.items():
-            prihdr[key] = val
-        hdulist.close() # Save changes
-        print('Wrote {}'.format(zptfn))
-        # zpt --> Legacypipe table
-        create_legacypipe_table(zptfn, camera=measureargs['camera'])
-        # Two stars tables
-        stars_photom.write(starfn_photom)
-        stars_astrom.write(starfn_astrom)
-        print('Wrote 2 stars tables\n%s\n%s' % 
-              (starfn_photom,starfn_astrom))
-        # Clean up
-        t0= ptime('write-results-to-fits',t0)
-    else:
-        print('FAILED, only %d CCDs, %s' % (len(ccds),imgfn_proj))
+    #if success(ccds,imgfn, 
+    #           debug=measureargs['debug'],
+    #           choose_ccd=measureargs['choose_ccd']):
+    # Write out.
+    ccds.write(zptfn)
+    # Header <-- fiducial zp,sky,ext, also exptime, pixscale
+    hdulist = fits_astropy.open(zptfn, mode='update')
+    prihdr = hdulist[0].header
+    for key,val in extra_info.items():
+        prihdr[key] = val
+    hdulist.close() # Save changes
+    print('Wrote {}'.format(zptfn))
+    # zpt --> Legacypipe table
+    create_legacypipe_table(zptfn, camera=measureargs['camera'])
+    # Two stars tables
+    stars_photom.write(starfn_photom)
+    stars_astrom.write(starfn_astrom)
+    print('Wrote 2 stars tables\n%s\n%s' % 
+          (starfn_photom,starfn_astrom))
+    # Clean up
+    t0= ptime('write-results-to-fits',t0)
+    #else:
+    #    print('FAILED, only %d CCDs, %s' % (len(ccds),imgfn))
     if measureargs['copy_from_proj'] & os.path.exists(imgfn): 
         # Safegaurd against removing stuff on /project
         assert(not 'project' in imgfn)
@@ -2159,6 +2109,7 @@ def get_parser():
     parser.add_argument('--not_on_proj', action='store_true', default=False, help='set when the image is not on project or projecta')
     parser.add_argument('--copy_from_proj', action='store_true', default=False, help='copy image data from proj to scratch before analyzing')
     parser.add_argument('--debug', action='store_true', default=False, help='Write additional files and plots for debugging')
+    parser.add_argument('--choose_ccd', action='store', default=None, help='forced to use only the specified ccd')
     parser.add_argument('--ps1_only', action='store_true', default=False, help='only ps1 (not gaia) for astrometry. For photometry, only ps1 is used no matter what')
     parser.add_argument('--ps1_pattern', action='store', default='/project/projectdirs/cosmo/work/ps1/cats/chunks-qz-star-v3/ps1-%(hp)05d.fits', help='pattern for PS1 catalogues')
     parser.add_argument('--ps1_gaia_pattern', action='store', default='/project/projectdirs/cosmo/work/gaia/chunks-ps1-gaia/chunk-%(hp)05d.fits', help='pattern for PS1-Gaia Matched-only catalogues')

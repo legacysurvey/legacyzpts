@@ -167,8 +167,6 @@ def test_90prime(inSurveyccds=False, ps1_only=False):
     #                      outdir=outdir)
     
 
-
-
 if __name__ == "__main__":
   # Run on images, compare to IDL zeropoints
   #test_decam(inSurveyccds=False, ps1_only=False)
@@ -179,9 +177,4 @@ if __name__ == "__main__":
   #test_mosaic(inSurveyccds=True, ps1_only=False)
   test_90prime(inSurveyccds=True, ps1_only=False)
  
-  #test_decam(inSurveyccds=False, ps1_only=True)
-  #test_mosaic(inSurveyccds=False, ps1_only=True)
-  
-  #test_decam(inSurveyccds=True, ps1_only=True)
-  #test_mosaic(inSurveyccds=True, ps1_only=True)
 
