@@ -118,8 +118,9 @@ before_script:
 script:
   - cd $HOME/legacyzpts
   - pytest -v tests/test_run.py::test_main 
-  - pytest -v tests/test_against_surveyccds.py::test_main 
-  - pytest -v tests/test_against_idl.py::test_main
+  - find tests/testoutput
+  #- pytest -v tests/test_against_surveyccds.py::test_main 
+  #- pytest -v tests/test_against_idl.py::test_main
   #- coverage run --source py/legacyzpts tests/test_run.py
 
 after_success:
