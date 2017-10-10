@@ -2291,7 +2291,8 @@ def measure_image(img_fn, **measureargs):
     all_ccds = vstack(all_ccds)
     all_stars_photom = vstack(all_stars_photom)
     all_stars_astrom = vstack(all_stars_astrom)
-    all_ccds['zptavg'] = np.median(all_ccds['zpt'])
+    zpts = all_ccds['zpt']
+    all_ccds['zptavg'] = np.median(zpts[np.isfinite(zpts)])
 
     t0= ptime('measure-image-%s' % img_fn,t0)
     return all_ccds, all_stars_photom, all_stars_astrom, extra_info
