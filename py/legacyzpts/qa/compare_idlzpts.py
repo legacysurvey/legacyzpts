@@ -37,143 +37,6 @@ from legacyzpts.legacy_zeropoints import convert_stars_table
 
 mygray='0.6'
 
-def sn_not_matched_by_arjun(extra_search,arjun_fn):
-    from glob import glob 
-    from astrometry.libkd.spherematch import match_radec
-    # Load arjun's stars
-    arj=fits_table(arjun_fn)
-    hdu_to_ccdname= {'35':'N4 ','28':'S4 ','50':'N19','10':'S22'}
-    # Loop over extra.pkl files
-    extra_fns= glob(extra_search)
-    for fn in extra_fns:
-        with open(fn,'r') as foo:
-            extra= pickle.load(foo)
-        keep= arj.extname == hdu_to_ccdname[str(extra['hdu'])]
-        # daofind
-        m1, m2, d12 = match_radec(extra['ra'],extra['dec'],arj.ccd_ra,arj.ccd_dec,1./3600.0,nearest=True)
-        not_m1= np.ones(len(extra['ra']),bool)
-        not_m1[m1]=False
-        print('ccdname %s, hdu %d' % (hdu_to_ccdname[str(extra['hdu'])],extra['hdu']))
-        print('Arjun doesnt find %d stars that I do' % np.where(not_m1)[0].size)
-        sn= extra['apflux'] / np.sqrt(extra['apskyflux'])
-        print('These stars have: x,y,SN WHERE X,Y ARE HORIZ,VERT')
-        for x,y,s in zip(extra['x'][not_m1],extra['y'][not_m1],sn[not_m1]):
-            print('%d, %d, %.1f' % (x,y,s))
-            
-
-
-
-def number_matches_by_cut(extra_search,arjun_fn):
-    # Load arjun's stars
-    arj=fits_table(arjun_fn)
-    hdu_to_ccdname= {'35':'N4 ','28':'S4 ','50':'N19','10':'S22'}
-    # Loop over extra.pkl files
-    extra_fns= glob(extra_search)
-    for fn in extra_fns:
-        with open(fn,'r') as foo:
-            extra= pickle.load(foo)
-        keep= arj.extname == hdu_to_ccdname[str(extra['hdu'])]
-        print('ccdname %s' % hdu_to_ccdname[str(extra['hdu'])])
-        # daofind
-        m1, m2, d12 = match_radec(extra['dao_ra'],extra['dao_dec'],arj.ccd_ra,arj.ccd_dec,1./3600.0,nearest=True)
-        print('daofind', len(m1),len(arj[keep]))
-        # cleaning cuts
-        for key in ['apmags','apflux','b_isolated','separation','bit_flux']:
-            cut=extra[key]
-            m1, m2, d12 = match_radec(extra['dao_ra'][cut],extra['dao_dec'][cut],arj.ccd_ra,arj.ccd_dec,1./3600.0,nearest=True)
-            print(key, len(m1),len(arj[keep]))
-        # gaia match
-        m1, m2, d12 = match_radec(extra['ra'],extra['dec'],arj.ccd_ra,arj.ccd_dec,1./3600.0,nearest=True) 
-        print('gaia match', len(m1),len(arj[keep]))
-
-
-def imgs2fits(images,name):
-    '''images -- list of numpy 2D arrays'''
-    assert('.fits' in name)
-    hdu = fitsio.FITS(name,'rw')
-    for image in images:
-        hdu.write(image)
-    hdu.close()
-    print('Wrote %s' % name)
-
-def imshow_stars_on_ccds(extra_fn, arjun_fn=None,
-                         xx1=0,xx2=4096-1,yy1=0,yy2=2048-1,
-                         img_or_badpix='img'):
-    assert(img_or_badpix in ['img','badpix'])
-    from matplotlib.patches import Circle,Wedge
-    from matplotlib.collections import PatchCollection
-    fig,ax=plt.subplots(figsize=(20,10))
-    with open(extra_fn,'r') as foo:
-        extra= pickle.load(foo)
-    if img_or_badpix == 'img':
-        img= fitsio.read(extra['proj_fn'], ext=extra['hdu'], header=False)
-        vmin=np.percentile(img,q=0.5);vmax=np.percentile(img,q=99.5)
-    elif img_or_badpix == 'badpix':
-        img= fitsio.read(extra['proj_fn'].replace('oki','ood').replace('ooi','ood'),
-                         ext=extra['hdu'], header=False)
-        vmin,vmax = None,None
-        img[img > 0] = 1
-        img[img == 0] = 2
-        img[img == 1] = 0
-        img[img == 2] = 1
-    # Load arjun's stars
-    if arjun_fn:
-        #assert(hdu) #must be specified to match to ccdname
-        arjun=fits_table(arjun_fn)
-        hdu_to_ccdname= {'35':'N4 ','28':'S4 ','50':'N19','10':'S22'}
-        #hdu_to_ccdname= {'34':'N4 ','27':'S4 ','49':'N19','9':'S22'}
-        keep= arjun.extname == hdu_to_ccdname[str(extra['hdu'])]
-        extra['arjun_x']= arjun.ccd_x[keep]
-        extra['arjun_y']= arjun.ccd_y[keep]
-        extra['arjun_ra']= arjun.ccd_ra[keep]
-        extra['arjun_dec']= arjun.ccd_dec[keep]
-    ax.imshow(img.T, interpolation='none', origin='lower',cmap='gray',vmin=vmin,vmax=vmax)
-    ax.tick_params(direction='out')
-    aprad_pix= 10/2./0.262
-    drad= aprad_pix / 4
-    #aprad_pix= 100.
-    #for x,y,color,r in [(extra['daofind_x'],extra['daofind_y'],'y',aprad_pix),
-    #                  (extra['mycuts_x'],extra['mycuts_y'],'b',aprad_pix + 1.25*drad),
-    #                  (extra['x'],extra['y'],'m',aprad_pix + 2.5*drad)]:
-    #iso= extra['b_isolated']
-    #m1, m2, d12 = match_radec(extra['dao_ra'][iso],extra['dao_dec'][iso],extra['arjun_ra'],extra['arjun_dec'],1./3600.0,nearest=True)
-    for x,y,color,r in [(extra['arjun_x'],extra['arjun_y'],'y',aprad_pix),
-                        (extra['x'],extra['y'],'m',2*aprad_pix)]:
-    #for x,y,color,r in [(extra['1st_x'],extra['1st_y'],'y',aprad_pix),
-    #                    (extra['2nd_x'],extra['2nd_y'],'m',2*aprad_pix)]:
-    #key2,key3 = 'apflux','bit_flux' 
-    #key2,key3 = 'b_isolated','apmags' 
-    #key2,key3 = 'b_isolated','separation' 
-    #for x,y,color,r in [(extra['dao_x_5'],extra['dao_y_5'],'y',aprad_pix),
-    #                    (extra['dao_x_5'][extra[key2]],extra['dao_y_5'][extra[key2]],'b',aprad_pix + 1.25*drad),
-    #                    (extra['dao_x_5'][extra[key3]],extra['dao_y_5'][extra[key3]],'m',aprad_pix + 2.5*drad)]:
-        # img transpose used, so reverse x,y
-        #circles=[ Circle((y1, x1), rad) for x1, y1 in zip(x, y) ]
-        patches=[ Wedge((y1, x1), r + drad, 0, 360,drad) for x1, y1 in zip(x, y) ]
-        coll = PatchCollection(patches, color=color) #,alpha=1)
-        ax.add_collection(coll)
-        #plt.scatter(y,x,facecolors='none',edgecolors=color,marker='o',s=rad,linewidth=5.,rasterized=True)
-    plt.xlim(xx1,xx2)
-    plt.ylim(yy1,yy2)
-    savefn= '%s_%s_x%d-%d_y%d-%d.png' % (img_or_badpix,extra['hdu'],xx1,xx2,yy1,yy2)
-    #savefn= '%s_%s.png' % (img_or_badpix,extra['hdu'])
-    plt.savefig(savefn)
-    plt.close()
-    print('Wrote %s' % savefn)
-
-def run_imshow_stars(search,arjun_fn):
-    from glob import glob 
-    extra_fns= glob(search)
-    for fn in extra_fns:
-        #for xx1,xx2,yy1,yy2 in [(300,700,600,1000),
-        #                              (3200,3700,0,500),
-        #                              (2400,2800,0,500)]:
-        #    imshow_stars_on_ccds(fn,arjun_fn,img_or_badpix='img',
-        #                         xx1=xx1,xx2=xx2,yy1=yy1,yy2=yy2)
-        imshow_stars_on_ccds(fn,arjun_fn=arjun_fn, img_or_badpix='img')
-        #imshow_stars_on_ccds(fn,arjun_fn=None, img_or_badpix='badpix')
-    print('Finished run_imshow_stars')
-
 def stellarlocus(x,a,b,c,d,e):
     '''
     Arjun's stellarlocus2.pro fitting to I-W1, R-I
@@ -445,7 +308,8 @@ class ZptResiduals(Residuals):
 
     def convert_legacy(self):
         # Converts to idl names, units
-        self.legacy.data= convert_zeropoints_table(self.legacy.data)
+        self.legacy.data= convert_zeropoints_table(self.legacy.data,
+                                                   camera=self.camera)
 
 
     def get_numeric_keys(self):
@@ -482,84 +346,13 @@ class ZptResiduals(Residuals):
     #        pass
     #    return xlim_dict      
 
-    def plot_residuals(self,doplot=None,
-                       ms=100,
-                       use_keys=None,ylim_dict=None):
-        '''two plots of everything numberic between legacy zeropoints and Arjun's
-        1) x vs. y-x 
-        2) x vs. y/x
-
-        Args:
-          use_keys= only plot these cols
-          ylim_dict: +/- ylim for each col
-        '''
-        #raise ValueError
-        assert(doplot in ['diff','div'])
-        # All keys and any ylims to use
-        cols= self.get_numeric_keys()
-        #ylim= self.get_defaultdict_ylim(doplot=doplot,ylim=ylim)
-        #xlim= self.get_defaultdict_xlim(doplot=doplot,xlim=xlim)
-        # Plot
-        FS=25
-        eFS=FS+5
-        tickFS=FS
-        bands= np.sort(list(set(self.legacy.data.filter)))
-        ccdnums= set(self.legacy.data.ccdnum)
-        for cnt,col in enumerate(cols):
-            if use_keys:
-                if not col in use_keys:
-                    print('skipping col=%s' % col)
-                    continue
-            # Plot
-            fig,ax= plt.subplots(3,1,figsize=(10,15))
-            plt.subplots_adjust(hspace=0.2,wspace=0.)
-            # Loop over bands, hdus
-            for row,band in zip( range(3), bands ):
-                for ccdnum,color in zip(ccdnums,['g','r','m','b','k','y']*12):
-                    keep= (self.legacy.data.filter == band)*\
-                          (self.legacy.data.ccdnum == ccdnum)
-                    if np.where(keep)[0].size > 0:
-                        x= self.idl.data.get( col )[keep]
-                        xlabel= 'IDL'
-                        if doplot == 'diff':
-                            y= self.legacy.data.get(col)[keep] - self.idl.data.get(col)[keep]
-                            y_horiz= 0
-                            ylabel= 'Legacy - IDL'
-                        elif doplot == 'div':
-                            y= self.legacy.data.get(col)[keep] / self.idl.data.get(col)[keep]
-                            y_horiz= 1
-                            ylabel= 'Legacy / IDL'
-                        myscatter(ax[row],x,y,color=color,m='o',s=ms,alpha=0.75) 
-                        ax[row].axhline(y_horiz,color='k',linestyle='dashed',linewidth=1)
-                        #ax[row].text(0.025,0.88,idl_key,
-                        #             va='center',ha='left',transform=ax[cnt].transAxes,fontsize=20)
-                        ylab= ax[row].set_ylabel(ylabel,fontsize=FS)
-                # Label grz
-                ax[row].text(0.9,0.9,band, 
-                             transform=ax[row].transAxes,
-                             fontsize=FS)
-            xlab = ax[row].set_xlabel(xlabel,fontsize=FS)
-            supti= ax[0].set_title(col,fontsize=FS)
-            for row in range(3):
-                ax[row].tick_params(axis='both', labelsize=tickFS)
-                if ylim_dict.get(col,None):
-                    ax[row].set_ylim(ylim_dict[col])
-                #if xlim[col]:
-                #    ax[row].set_xlim(xlim[col])
-            savefn=os.path.join(self.savedir,
-                                "zeropointresiduals_%s_%s.png" % 
-                                    (doplot,col))
-            plt.savefig(savefn, bbox_extra_artists=[supti,xlab,ylab], 
-                        bbox_inches='tight')
-            plt.close() 
-            print("wrote %s" % savefn)
-
 
 class StarResiduals(Residuals): 
     """Matches star data to idl and plots residuals
 
     Args:
       camera: decam,mosaic,90prime
+      star table: two tables, photom and astrom
       savedir: has to write merged zpts file somewhere
       leg_list: list of legacy zpt files
       idl_list: list of idl zpt files
@@ -567,6 +360,7 @@ class StarResiduals(Residuals):
 
     Attributes:
       camera: decam,mosaic,90prime
+      star table: two tables, photom and astrom
       savedir: has to write merged zpts file somewhere
       leg: LegacyZpt object for legacy table
       idl: ditto for idl table
@@ -588,13 +382,16 @@ class StarResiduals(Residuals):
     star.plot_residuals(doplot='diff')
     """
 
-    def __init__(self,camera='decam',savedir='./',
+    def __init__(self,camera='decam',star_table=None,
+                 savedir='./',
                  leg_list=[],
                  idl_list=[],
                  loadable=False):
         super(StarResiduals, self).__init__(camera,savedir,
                                             leg_list,idl_list,
-                                            loadable)    
+                                            loadable) 
+        assert(star_table in ['photom','astrom'])
+        self.star_table= star_table
     
     def read_json(self, json_fn):
         """return dict"""
@@ -628,17 +425,19 @@ class StarResiduals(Residuals):
     def convert_legacy(self):
         """Converts legay star table to to idl names, units"""
         self.legacy.data= convert_stars_table(self.legacy.data,
-                                              camera=self.legacy.camera)
+                                              camera=self.legacy.camera,
+                                              star_table=self.star_table
+                                              )
 
-    def get_numeric_keys(self):
-        idl_keys= \
-            ['ccd_x','ccd_y','ccd_ra','ccd_dec',
-             'ccd_mag','ccd_sky',
-             'raoff','decoff',
-             'magoff',
-             'nmatch',
-             'gmag','ps1_g','ps1_r','ps1_i','ps1_z']
-        return idl_keys
+    #def get_numeric_keys(self):
+    #    idl_keys= \
+    #        ['ccd_x','ccd_y','ccd_ra','ccd_dec',
+    #         'ccd_mag','ccd_sky',
+    #         'raoff','decoff',
+    #         'magoff',
+    #         'nmatch',
+    #         'gmag','ps1_g','ps1_r','ps1_i','ps1_z']
+    #    return idl_keys
 
     #def get_defaultdict_ylim(self,doplot,ylim=None):
     #    ylim_dict=defaultdict(lambda: ylim)

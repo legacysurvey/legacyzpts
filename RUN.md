@@ -8,10 +8,6 @@ mkdir $zpts_code
 cd $zpts_code
 git clone https://github.com/legacysurvey/legacyzpts.git
 git clone https://github.com/legacysurvey/legacypipe.git
-cd legacypipe
-git fetch
-git checkout dr5_wobiwan
-git checkout 5134bc49240ba py/legacyanalysis/ps1cat.py
 ```
 
 ### Python environment
@@ -47,13 +43,22 @@ qdo list
 ```
 you should now see a list of the qdo queues
 
-### Unit tests
-Run the tests with
+### Run the test suite
+Generate all the legacyzpts outputs for 3 DECam exposures (1 per band and just 2 CCDs), 1 Mosaic3 exposure, and 2 90Prime exposures (1 per band) 
 ```sh
 cd $zpts_code/legacyzpts
-pytest tests/
+#pytest tests/test_legacyzpts_runs.py
+python tests/test_legacyzpts_runs.py
 ```
-which should print "3 passed in <blah> seconds"
+
+Once that completes, check that all computed quantities are very close to the matched values in the original IDL zeropoints files and in the survey-ccds files from DR3 and DR4.
+```sh
+#pytest tests/test_against_idl.py
+#pytest tests/test_against_surveyccds.py
+python tests/test_against_idl.py
+python tests/test_against_surveyccds.py
+```
+That should print out a ton of info, showing the residuals in ccdzpt, skycounts, ccdnmatch, etc.
 
 ### Production Runs
 
@@ -150,6 +155,15 @@ Coming soon
 * --night option for legacy_zeropoints, which will run all exposures for that night 
 
 ### Managing your qdo production run
+There are two key scripts for inspecting the outputs, they are in `legacyzpts/py/legacyzpts/runmanager/`
+ 1) legacyzpts/py/legacyzpts/runmanager/status.py 
+  * lists log files for QDO succeeded, failed, and running jobs
+  * parses log files for failed jobs for known failure modes and remakes lists for associated modes
+  * add new regex commands to this script as you document new failure modes
+ 2) legacyzpts/py/legacyzpts/runmanager/run_ccd.py
+  * runs a single CCD for an image for a given camera
+  * you can find some error you dont understand in the log*.txt files, then use run_ccd.py to reproduce it
+
 Manage your qdo production run with `legacyzpts/py/legacyzpts/runmanager/status.py`. List the log files associated with each QDO state "succeeded, failed, running", and list the errors in each log file with
 ```sh
 export name_for_run=ebossDR5
@@ -174,7 +188,7 @@ Once your satisfied that all zeropoints outputs have been created, you need to m
 export file_list=done_legacypipe.txt
 find $zpts_out/$name_for_run/decam -name "*-legacypipe.fits" > $file_list
 export outname=merged_legacypipe.fits
-python $zpts_code/legacyzpts/py/legacy_zeropoints_merge.py --file_list $file_list --nproc 1 --outname $outname
+python $zpts_code/legacyzpts/py/legacyzpts/legacy_zeropoints_merge.py --file_list $file_list --nproc 1 --outname $outname
 ```
 
 But this could take FOREVER, so do it with MPI on N compute nodes
