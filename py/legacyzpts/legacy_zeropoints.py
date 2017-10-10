@@ -975,22 +975,11 @@ class Measurer(object):
         Returns:
           ccds, stars_photom, stars_astrom
         """
-        if (self.camera == 'decam') & (ext == 'S7'):
-            return self.return_on_error(err_message='S7')
-        
         self.set_hdu(ext)
         # 
         t0= Time()
         t0= ptime('Measuring CCD=%s from image=%s' % (self.ccdname,self.fn),t0)
 
-        if self.camera == 'decam':
-            # Simultaneous image,bitmask read
-            # funpack optional (funpack = slower!)
-            hdr, self.img, self.bitmask = self.read_image_and_bitmask(funpack=False)
-        else:
-            self.img,hdr= self.read_image() 
-            self.bitmask= self.read_bitmask()
-        t0= ptime('read image',t0)
         # Initialize 
         ccds = _ccds_table(self.camera)
         if STAGING_CAMERAS[self.camera] in self.fn:
@@ -1076,11 +1065,25 @@ class Measurer(object):
         print('Band {}, Exptime {}, Airmass {}'.format(self.band, exptime, airmass))
 
         # WCS: 1-indexed so pixel pixelxy2radec(1,1) corresponds to img[0,0]
-        H, W = self.img.shape
+        H = ccds['height']
+        W = ccds['width']
         ccdra, ccddec = self.wcs.pixelxy2radec((W+1) / 2.0, (H + 1) / 2.0)
         ccds['ra'] = ccdra   # [degree]
         ccds['dec'] = ccddec # [degree]
         t0= ptime('header-info',t0)
+
+        if (self.camera == 'decam') & (ext == 'S7'):
+            return self.return_on_error(err_message='S7', ccds=ccds)
+
+        if self.camera == 'decam':
+            # Simultaneous image,bitmask read
+            # funpack optional (funpack = slower!)
+            hdr, self.img, self.bitmask = self.read_image_and_bitmask(funpack=False)
+        else:
+            self.img,hdr= self.read_image() 
+            self.bitmask= self.read_bitmask()
+        t0= ptime('read image',t0)
+
 
         # Test WCS again IDL, WCS is 1-indexed
         #x_pix= [1,img.shape[0]/2,img.shape[0]]
@@ -1131,21 +1134,22 @@ class Measurer(object):
         ps1_gaia = ps1cat(ccdwcs=self.wcs,
                           pattern= self.ps1_gaia_pattern).get_stars(magrange=None)
         assert(len(ps1_gaia.columns()) > len(ps1.columns())) 
-        # PS1 cuts
-        ps1.cut( self.get_ps1_cuts(ps1) )
-        ps1_gaia.cut( self.get_ps1_cuts(ps1_gaia) )
-        # Convert to Legacy Survey mags
-        colorterm = self.colorterm_ps1_to_observed(ps1.median, self.band)
         ps1band = ps1cat.ps1band[self.band]
-        ps1.legacy_survey_mag = ps1.median[:, ps1band] + colorterm
-        # Add gaia ra,dec
-        ps1_gaia.set('gaia_dec', ps1_gaia.dec_ok - ps1_gaia.ddec/3600000.)
-        ps1_gaia.set('gaia_ra', ps1_gaia.ra_ok - 
-                                ps1_gaia.dra/3600000./np.cos(np.deg2rad( ps1_gaia.gaia_dec )))
-
-        # same for ps1_gaia -- but clip the color term because we don't clip the g-i color.
-        colorterm = self.colorterm_ps1_to_observed(ps1_gaia.median, self.band)
-        ps1_gaia.legacy_survey_mag = ps1_gaia.median[:, ps1band] + np.clip(colorterm, -1., +1.)
+        # PS1 cuts
+        if len(ps1):
+            ps1.cut( self.get_ps1_cuts(ps1) )
+            # Convert to Legacy Survey mags
+            colorterm = self.colorterm_ps1_to_observed(ps1.median, self.band)
+            ps1.legacy_survey_mag = ps1.median[:, ps1band] + colorterm
+        if len(ps1_gaia):
+            ps1_gaia.cut( self.get_ps1_cuts(ps1_gaia) )
+            # Add gaia ra,dec
+            ps1_gaia.set('gaia_dec', ps1_gaia.dec_ok - ps1_gaia.ddec/3600000.)
+            ps1_gaia.set('gaia_ra', ps1_gaia.ra_ok - 
+                         ps1_gaia.dra/3600000./np.cos(np.deg2rad( ps1_gaia.gaia_dec )))
+            # same for ps1_gaia -- but clip the color term because we don't clip the g-i color.
+            colorterm = self.colorterm_ps1_to_observed(ps1_gaia.median, self.band)
+            ps1_gaia.legacy_survey_mag = ps1_gaia.median[:, ps1band] + np.clip(colorterm, -1., +1.)
         
         if not psfex:
             # Detect stars on the image.  
