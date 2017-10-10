@@ -14,7 +14,7 @@ from legacyzpts.qa.compare_idlzpts import ZptResiduals, StarResiduals
 from legacyzpts.fetch import fetch_targz
 from legacyzpts.legacy_zeropoints import cols_for_converted_zpt_table,cols_for_converted_star_table
 
-from test_against_common import PlotDifference,differenceChecker 
+from tests.test_against_common import PlotDifference,differenceChecker
 
 
 DOWNLOAD_DIR='http://portal.nersc.gov/project/desi/users/kburleigh/legacyzpts'

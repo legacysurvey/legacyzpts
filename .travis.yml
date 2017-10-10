@@ -100,7 +100,6 @@ before_script:
     - find $MYCODE/tractor
     - python -c "import sys; print('$MYCODE/tractor/lib/python%i.%i/site-packages' % sys.version_info[:2])"
     - export PYTHONPATH=$(python -c "import sys; print('$MYCODE/tractor/lib/python%i.%i/site-packages' % sys.version_info[:2])"):${PYTHONPATH}
-    - echo PYTHONPATH is $PYTHONPATH
     - cd $HOME && python -c "import tractor; print(tractor.__file__)"
     - mkdir -p $HOME/dust/maps
     - (cd $HOME/dust/maps && wget -c http://portal.nersc.gov/project/cosmo/temp/dstn/travis-ci/maps/SFD_dust_4096_ngp.fits)
@@ -113,6 +112,8 @@ before_script:
     - export PYTHONPATH=$HOME/theValidator:$PYTHONPATH
     - cd $HOME && git clone https://github.com/legacysurvey/legacyzpts.git
     - export PYTHONPATH=$HOME/legacyzpts/py:$PYTHONPATH
+    - export PYTHONPATH=${PYTHONPATH}:.
+    - echo PYTHONPATH is $PYTHONPATH
 
 script:
   - cd $HOME/legacyzpts
