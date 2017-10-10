@@ -339,22 +339,22 @@ if __name__ == "__main__":
   
   
   # Default settings
-  plot=True
-  prod=True
-  #test_zpt_table(camera='decam',indir='ps1_gaia',
-  #               plot=plot,prod=prod)
+  plot=False
+  production=False
+  test_zpt_table(camera='decam',indir='ps1_gaia',
+                 plot=plot,prod=production)
   #for star_table in ['photom','astrom']:
   #  test_star_table(camera='decam',indir='ps1_gaia',
   #                  star_table=star_table,plot=plot)
   
-  #test_zpt_table(camera='mosaic',indir='ps1_gaia',
-  #               plot=plot,prod=prod)
+  test_zpt_table(camera='mosaic',indir='ps1_gaia',
+                 plot=plot,prod=production)
   #for star_table in ['photom','astrom']:
   #  test_star_table(camera='mosaic',indir='ps1_gaia',
   #                  star_table=star_table,plot=plot)
   
   test_zpt_table(camera='90prime',indir='ps1_gaia',
-                 plot=plot,prod=prod)
+                 plot=plot,prod=production)
   
   
   #test_decam_stars_new(indir='ps1_gaia')

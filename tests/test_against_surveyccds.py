@@ -138,13 +138,13 @@ def test_legacypipe_table(camera='decam',indir='ps1_gaia',
 
 if __name__ == "__main__":
   plot=False
-  prod=False
-  #test_legacypipe_table(camera='decam',indir='ps1_gaia',
-  #                      plot=plot,prod=prod)
+  production=False
+  test_legacypipe_table(camera='decam',indir='ps1_gaia',
+                        plot=plot,prod=production)
   test_legacypipe_table(camera='mosaic',indir='ps1_gaia',
                         plot=plot, prod=prod)
-  #test_legacypipe_table(camera='90prime',indir='ps1_gaia',
-  #                      plot=plot,prod=prod)
+  test_legacypipe_table(camera='90prime',indir='ps1_gaia',
+                        plot=plot,prod=production)
   
   #test_legacypipe_table(camera='decam',indir='ps1_only')
   #test_legacypipe_table(camera='decam',indir='ps1_only')

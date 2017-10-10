@@ -173,8 +173,8 @@ if __name__ == "__main__":
   #test_mosaic(inSurveyccds=False, ps1_only=False)
   
   # Run on images, compare to survey-ccds
-  #test_decam(inSurveyccds=True, ps1_only=False)
-  #test_mosaic(inSurveyccds=True, ps1_only=False)
+  test_decam(inSurveyccds=True, ps1_only=False)
+  test_mosaic(inSurveyccds=True, ps1_only=False)
   test_90prime(inSurveyccds=True, ps1_only=False)
  
 
