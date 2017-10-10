@@ -1007,6 +1007,19 @@ class Measurer(object):
         ccds['airmass'] = self.airmass
         ccds['gain'] = self.gain
         ccds['pixscale'] = self.pixscale
+        
+        if (self.camera == 'decam') & (ext == 'S7'):
+            return self.return_on_error(err_message='S7', ccds=ccds)
+
+        if self.camera == 'decam':
+            # Simultaneous image,bitmask read
+            # funpack optional (funpack = slower!)
+            hdr, self.img, self.bitmask = self.read_image_and_bitmask(funpack=False)
+        else:
+            self.img,hdr= self.read_image() 
+            self.bitmask= self.read_bitmask()
+        t0= ptime('read image',t0)
+        
         # From CP Header
         hdrVal={}
         # values we want
@@ -1071,19 +1084,6 @@ class Measurer(object):
         ccds['ra'] = ccdra   # [degree]
         ccds['dec'] = ccddec # [degree]
         t0= ptime('header-info',t0)
-
-        if (self.camera == 'decam') & (ext == 'S7'):
-            return self.return_on_error(err_message='S7', ccds=ccds)
-
-        if self.camera == 'decam':
-            # Simultaneous image,bitmask read
-            # funpack optional (funpack = slower!)
-            hdr, self.img, self.bitmask = self.read_image_and_bitmask(funpack=False)
-        else:
-            self.img,hdr= self.read_image() 
-            self.bitmask= self.read_bitmask()
-        t0= ptime('read image',t0)
-
 
         # Test WCS again IDL, WCS is 1-indexed
         #x_pix= [1,img.shape[0]/2,img.shape[0]]

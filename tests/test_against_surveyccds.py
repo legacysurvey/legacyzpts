@@ -23,7 +23,11 @@ from legacyzpts.fetch import fetch_targz
 from legacyzpts.common import merge_tables_fns
 from legacyzpts.legacy_zeropoints import cols_for_legacypipe_table
 
-from tests.test_against_common import get_tolerance,PlotDifference,differenceChecker 
+if __name__ == "__main__":
+  from test_against_common import get_tolerance,PlotDifference,differenceChecker 
+else:
+  # pytest
+  from tests.test_against_common import get_tolerance,PlotDifference,differenceChecker 
 
 
 DOWNLOAD_DIR='http://portal.nersc.gov/project/desi/users/kburleigh/legacyzpts'

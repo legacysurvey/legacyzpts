@@ -14,8 +14,11 @@ from legacyzpts.qa.compare_idlzpts import ZptResiduals, StarResiduals
 from legacyzpts.fetch import fetch_targz
 from legacyzpts.legacy_zeropoints import cols_for_converted_zpt_table,cols_for_converted_star_table
 
-from tests.test_against_common import PlotDifference,differenceChecker
-
+if __name__ == "__main__":
+  from test_against_common import get_tolerance,PlotDifference,differenceChecker 
+else:
+  # pytest
+  from tests.test_against_common import get_tolerance,PlotDifference,differenceChecker 
 
 DOWNLOAD_DIR='http://portal.nersc.gov/project/desi/users/kburleigh/legacyzpts'
 CAMERAS= ['decam','mosaic','90prime']
