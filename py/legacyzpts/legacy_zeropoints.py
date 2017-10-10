@@ -976,7 +976,7 @@ class Measurer(object):
           ccds, stars_photom, stars_astrom
         """
         if (self.camera == 'decam') & (ext == 'S7'):
-          self.return_on_error(err_message='S7')
+            return self.return_on_error(err_message='S7')
         
         self.set_hdu(ext)
         # 
@@ -1163,7 +1163,7 @@ class Measurer(object):
                 dao.threshold /= 2.
                 obj= dao(self.img)
                 if len(obj) < 20:
-                  self.return_on_error('< 20 sources detected',ccds=ccds)
+                    return self.return_on_error('< 20 sources detected',ccds=ccds)
             t0= ptime('detect-stars',t0)
     
             # We for sure know that sources near edge could be bad
@@ -1205,8 +1205,8 @@ class Measurer(object):
                                              ps1[matched['photom_ref']],
                                              ccds=ccds, save_xy=save_xy)
             if len(err) > 0:
-              self.return_on_error(err,ccds=ccds,
-                                   stars_photom=stars_photom)
+                return self.return_on_error(err,ccds=ccds,
+                                            stars_photom=stars_photom)
             t0= ptime('photutils-photometry',t0)
             
             # Astrometry
@@ -1232,9 +1232,9 @@ class Measurer(object):
                                    ref_dec= ps1_gaia.gaia_dec[matched['astrom_ref']],
                                    ccds=ccds)
             if len(err) > 0:
-              self.return_on_error(err,ccds=ccds,
-                                   stars_photom=stars_photom,
-                                   stars_astrom=stars_astrom)
+                return self.return_on_error(err,ccds=ccds,
+                                            stars_photom=stars_photom,
+                                            stars_astrom=stars_astrom)
             t0= ptime('did-astrometry',t0)
             
             # FWHM
@@ -1305,6 +1305,11 @@ class Measurer(object):
             phot.psfmag = -2.5*np.log10(phot.flux / exptime) + zp0
     
             dmagall = ref.legacy_survey_mag - phot.psfmag
+            if not np.all(np.isfinite(dmagall)):
+                print(np.sum(np.logical_not(np.isfinite(dmagall))), 'stars have NaN mags; ignoring')
+                dmagall = dmagall[np.isfinite(dmagall)]
+                print('Continuing with', len(dmagall), 'stars')
+
             dmag, _, _ = sigmaclip(dmagall, low=2.5, high=2.5)
             ndmag = len(dmag)
             dmagmed = np.median(dmag)
@@ -1359,6 +1364,8 @@ class Measurer(object):
             # Astrometry
             if self.ps1_only or len(ps1_gaia) < 20:
                 # Keep the PS1 results for astrometry
+                if not self.ps1_only:
+                    print('PS1/Gaia match catalog has only', len(ps1_gaia), 'stars - using PS1 for astrometry')
                 stars_astrom = None
             else:
                 # Fast-track "phot" results within 1".
@@ -2268,9 +2275,13 @@ def measure_image(img_fn, **measureargs):
     for ext in extlist:
         ccds, stars_photom, stars_astrom = measure.run(ext, psfex=psfex, save_xy=measureargs['debug'])
         t0= ptime('measured-ext-%s' % ext,t0)
-        all_ccds.append(ccds)
-        all_stars_photom.append(stars_photom)
-        all_stars_astrom.append(stars_astrom)
+
+        if ccds is not None:
+            all_ccds.append(ccds)
+        if stars_photom is not None:
+            all_stars_photom.append(stars_photom)
+        if stars_astrom is not None:
+            all_stars_astrom.append(stars_astrom)
 
     # Compute the median zeropoint across all the CCDs.
     all_ccds = vstack(all_ccds)
