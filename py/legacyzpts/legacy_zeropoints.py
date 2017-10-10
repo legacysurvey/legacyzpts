@@ -1137,7 +1137,7 @@ class Measurer(object):
         # Convert to Legacy Survey mags
         colorterm = self.colorterm_ps1_to_observed(ps1.median, self.band)
         ps1band = ps1cat.ps1band[self.band]
-        ps1.legacy_survey_mag, ps1.median[:, ps1band] + colorterm
+        ps1.legacy_survey_mag = ps1.median[:, ps1band] + colorterm
         # Add gaia ra,dec
         ps1_gaia.set('gaia_dec', ps1_gaia.dec_ok - ps1_gaia.ddec/3600000.)
         ps1_gaia.set('gaia_ra', ps1_gaia.ra_ok - 
@@ -1291,7 +1291,7 @@ class Measurer(object):
             # PS1 for photometry
 
             # FIXME --- check this
-            flux0 = 10.**((zp0 - ps1.mag) / 2.5) * exptime
+            flux0 = 10.**((zp0 - ps1.legacy_survey_mag) / 2.5) * exptime
             ierr = 1.0/np.sqrt(sky_img)
             phot = self.tractor_fit_sources(ps1.ra_ok, ps1.dec_ok, flux0,
                                             img_sub_sky, ierr, psf)
@@ -1304,12 +1304,13 @@ class Measurer(object):
             phot.decoff = (ref.dec - phot.dec_fit) * 3600.
             phot.psfmag = -2.5*np.log10(phot.flux / exptime) + zp0
     
-            dmagall = ref.mag - phot.psfmag
+            dmagall = ref.legacy_survey_mag - phot.psfmag
             dmag, _, _ = sigmaclip(dmagall, low=2.5, high=2.5)
             ndmag = len(dmag)
             dmagmed = np.median(dmag)
             dmagsig = np.std(dmag)
             zptmed = zp0 + dmagmed
+            kext = self.extinction(self.band)
             transp = 10.**(-0.4 * (zp0 - zptmed - kext * (airmass - 1.0)))
     
             print('Tractor PsfEx-fitting results for PS1:')
@@ -1328,7 +1329,7 @@ class Measurer(object):
 
             phot.ra_ps1 = ref.ra
             phot.dec_ps1 = ref.dec
-            phot.ps1_mag = ref.mag
+            phot.ps1_mag = ref.legacy_survey_mag
             for band in 'griz':
                 i = ps1cat.ps1band.get(band, None)
                 if i is None:
@@ -1371,7 +1372,7 @@ class Measurer(object):
                 refs = []
                 if len(I):
                     photmatch = fits_table()
-                    for col in ['x0','y0','x1','y1','flux','psfsum']:
+                    for col in ['x0','y0','x1','y1','flux','psfsum','ra_fit','dec_fit']:
                         photmatch.set(col, phot.get(col)[J])
                     photref = ps1_gaia[I]
                     unmatched = np.ones(len(ps1_gaia), bool)
@@ -1381,13 +1382,14 @@ class Measurer(object):
                     refs.append(photref)
 
                 if len(ps1_gaia):
-                    flux0 = 10.**((zp0 - ps1_gaia.mag) / 2.5) * exptime
+                    flux0 = 10.**((zp0 - ps1_gaia.legacy_survey_mag) / 2.5) * exptime
                     astrom = self.tractor_fit_sources(ps1_gaia.gaia_ra, ps1_gaia.gaia_dec, flux0,
                                                       img_sub_sky, ierr, psf)
-                    ref = ps1_gaia[astrom.iref]
-                    astrom.delete_column('iref')
-                    fits.append(astrom)
-                    refs.append(ref)
+                    if len(astrom):
+                        ref = ps1_gaia[astrom.iref]
+                        astrom.delete_column('iref')
+                        fits.append(astrom)
+                        refs.append(ref)
 
                 # Merge the fast-tracked and newly-fit results.
                 if len(fits) == 2:
@@ -1404,7 +1406,7 @@ class Measurer(object):
                 astrom.decoff = (ref.dec - astrom.dec_fit) * 3600.
                 astrom.psfmag = -2.5*np.log10(astrom.flux / exptime) + zp0
 
-                dmagall = ref.mag - astrom.psfmag
+                dmagall = ref.legacy_survey_mag - astrom.psfmag
                 dmag, _, _ = sigmaclip(dmagall, low=2.5, high=2.5)
                 ndmag = len(dmag)
                 dmagmed = np.median(dmag)
@@ -1558,8 +1560,8 @@ class Measurer(object):
         cal.flux = FLUX
         cal.psfsum = psfsum
         cal.iref = Istar
-        cal.ra_fit,cal.dec_fit = self.wcs.pixelxy2radec(cal.x1 + 1, cal.y1 + 1)
         cal.to_np_arrays()
+        cal.ra_fit,cal.dec_fit = self.wcs.pixelxy2radec(cal.x1 + 1, cal.y1 + 1)
         return cal
 
     def get_psfex_model(self):
