@@ -724,8 +724,8 @@ class Measurer(object):
                 val= self.primhdr[key]
             except KeyError:
                 val= -1
+                print('WARNING! not in primhdr: %s' % key) 
             setattr(self, key.lower(),val)
-            print('WARNING! not in primhdr %s' % key) 
 
         if kwargs['camera'] in ['decam','mosaic']:
           self.expnum= self.primhdr['EXPNUM']
@@ -976,7 +976,7 @@ class Measurer(object):
           ccds, stars_photom, stars_astrom
         """
         if (self.camera == 'decam') & (ext == 'S7'):
-          self.return_on_error(err_mesisage='S7')
+          self.return_on_error(err_message='S7')
         
         self.set_hdu(ext)
         # 
