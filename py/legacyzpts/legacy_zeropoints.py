@@ -1026,8 +1026,8 @@ class Measurer(object):
         for ccd_col in ['width','height','fwhm_cp']:
           # Possible keys in hdr for these values
           for key in self.cp_header_keys[ccd_col]:
-            if key in hdr.keys():
-              hdrVal[ccd_col]= hdr[key]
+            if key in self.hdr.keys():
+              hdrVal[ccd_col]= self.hdr[key]
               break
         for ccd_col in ['width','height','fwhm_cp']:
           if ccd_col in hdrVal.keys():
@@ -1051,9 +1051,9 @@ class Measurer(object):
         notneeded_cols= ['avsky']
         for ccd_col in ['avsky', 'crpix1', 'crpix2', 'crval1', 'crval2', 
                         'cd1_1','cd1_2', 'cd2_1', 'cd2_2']:
-          if ccd_col.upper() in hdr.keys():
-            print('CP Header: %s = ' % ccd_col,hdr[ccd_col])
-            ccds[ccd_col]= hdr[ccd_col]
+          if ccd_col.upper() in self.hdr.keys():
+            print('CP Header: %s = ' % ccd_col,self.hdr[ccd_col])
+            ccds[ccd_col]= self.hdr[ccd_col]
           else:
             if ccd_col in notneeded_cols:
               ccds[ccd_col]= np.nan
@@ -1078,8 +1078,9 @@ class Measurer(object):
         print('Band {}, Exptime {}, Airmass {}'.format(self.band, exptime, airmass))
 
         # WCS: 1-indexed so pixel pixelxy2radec(1,1) corresponds to img[0,0]
-        H = ccds['height']
-        W = ccds['width']
+        H = ccds['height'].data[0]
+        W = ccds['width'].data[0]
+        print('Image size:', W,H)
         ccdra, ccddec = self.wcs.pixelxy2radec((W+1) / 2.0, (H + 1) / 2.0)
         ccds['ra'] = ccdra   # [degree]
         ccds['dec'] = ccddec # [degree]
@@ -1666,7 +1667,11 @@ class Measurer(object):
                    self.ccdname))
 
         # Add additional info
+<<<<<<< HEAD
         stars_photom['nmatch']= ccds['nmatch_photom']
+=======
+        ccds['nmatch'] = ccds['nmatch_photom']
+>>>>>>> 18e9c77... grab header values from self.hdr; first element of width and height columns
         self.add_ccd_info_to_stars_table(stars_photom,
                                          ccds)
         star_kwargs= {"keep": final_cut,
