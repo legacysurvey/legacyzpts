@@ -1333,6 +1333,7 @@ class Measurer(object):
                    self.ccdname))
 
         # Add additional info
+        stars_photom['nmatch']= ccds['nmatch_photom']
         self.add_ccd_info_to_stars_table(stars_photom,
                                          ccds)
         star_kwargs= {"keep": final_cut,
@@ -1389,6 +1390,7 @@ class Measurer(object):
        
         # Initialize
         stars_astrom = _stars_table(nstars= ccds['nmatch_astrom'])
+        stars_astrom['nmatch']= ccds['nmatch_astrom']
         self.add_ccd_info_to_stars_table(stars_astrom,
                                          ccds)
         # Fill
@@ -1536,7 +1538,6 @@ class Measurer(object):
       stars['ccdname'] = self.ccdname
       stars['gain'] = self.gain
       stars['exptime'] = self.exptime
-      stars['nmatch'] = ccds['nmatch'] 
  
     def add_obj_info_to_stars_table(self,stars,
                                     keep,obj,
@@ -1836,7 +1837,7 @@ def get_extlist(camera,fn,debug=False,choose_ccd=None):
     if camera == '90prime':
         extlist = ['CCD1', 'CCD2', 'CCD3', 'CCD4']
         if debug:
-          extlist = ['CCD2']
+          extlist = ['CCD1']
     elif camera == 'mosaic':
         extlist = ['CCD1', 'CCD2', 'CCD3', 'CCD4']
         if debug:
@@ -1845,7 +1846,7 @@ def get_extlist(camera,fn,debug=False,choose_ccd=None):
         hdu= fitsio.FITS(fn)
         extlist= [hdu[i].get_extname() for i in range(1,len(hdu))]
         if debug:
-          extlist = ['N4','S4'] #, 'S22','N19']
+          extlist = ['N4'] #,'S4', 'S22','N19']
         #extlist = ['S29', 'S31', 'S25', 'S26', 'S27', 'S28', 'S20', 'S21', 'S22',
         #           'S23', 'S24', 'S14', 'S15', 'S16', 'S17', 'S18', 'S19', 'S8',
         #           'S9', 'S10', 'S11', 'S12', 'S13', 'S1', 'S2', 'S3', 'S4', 'S5',

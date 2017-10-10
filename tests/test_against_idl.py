@@ -100,7 +100,10 @@ class LoadData(object):
       testoutput= testoutput.replace('test','prod')
     leg_dir= os.path.join(os.path.dirname(__file__),
                           testoutput,camera,
-                          indir,'against_idl')
+                          indir)
+    if camera in ['decam','mosaic']:
+      # Different idl zeropoints and surveyccds images
+      leg_dir= os.path.join(leg_dir,'against_idl')
     print('leg_dir=%s' % leg_dir)
     leg_fns= glob(os.path.join(leg_dir,
                                '*%s*-zpt.fits' % 
@@ -246,7 +249,7 @@ def test_zpt_table(camera='decam',indir='ps1_gaia',
     plot: set to True to make plot of all quantities with 
       non-zero differences
   """
-  print("TESTING ZPT")
+  print("TESTING ZPT %s" % camera)
   assert(camera in CAMERAS)
   assert(indir in ['ps1_gaia','ps1_only'])
   # Load and Match legacyzpts to IDLzpts
@@ -332,13 +335,7 @@ def test_star_table(camera='decam',indir='ps1_gaia',
 #  assert(True)
 
 
-
-if __name__ == "__main__":
-  #test_decam_zpts_old_but_good()
-  #test_decam_stars_old_but_good()
-  
-  
-  # Default settings
+def test_main():
   plot=False
   production=False
   test_zpt_table(camera='decam',indir='ps1_gaia',
@@ -356,18 +353,17 @@ if __name__ == "__main__":
   test_zpt_table(camera='90prime',indir='ps1_gaia',
                  plot=plot,prod=production)
   
-  
-  #test_decam_stars_new(indir='ps1_gaia')
   # eBOSS DR5
   #test_zpt_table(camera='decam',indir='ps1_only')
   #test_decam_stars_new(indir='ps1_only')
   
-  #test_zpt_table(camera='mosaic',indir='ps1_gaia')
-  #test_mosaic_stars_new(indir='ps1_gaia')
-  #test_decam_stars_new(indir='ps1_gaia')
-  # eBOSS DR5
-  #test_zpt_table(camera='decam',indir='ps1_only')
-  #test_decam_stars_new(indir='ps1_only')
+
+if __name__ == "__main__":
+  #test_decam_zpts_old_but_good()
+  #test_decam_stars_old_but_good()
   
-  #test_zpt_table(camera='mosaic',indir='ps1_gaia')
-  #test_mosaic_stars_new(indir='ps1_gaia')
+  # Default settings
+  test_main()
+ 
+  
+

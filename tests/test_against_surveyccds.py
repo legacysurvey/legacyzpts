@@ -23,7 +23,7 @@ from legacyzpts.fetch import fetch_targz
 from legacyzpts.common import merge_tables_fns
 from legacyzpts.legacy_zeropoints import cols_for_legacypipe_table
 
-from test_against_common import get_tolerance,PlotDifference,differenceChecker 
+from tests.test_against_common import get_tolerance,PlotDifference,differenceChecker 
 
 
 DOWNLOAD_DIR='http://portal.nersc.gov/project/desi/users/kburleigh/legacyzpts'
@@ -64,7 +64,10 @@ class LoadData(object):
       testoutput= testoutput.replace('test','prod')
     leg_dir= os.path.join(os.path.dirname(__file__),
                           testoutput,camera,
-                          indir,'against_surveyccds')
+                          indir)
+    if camera in ['decam','mosaic']:
+      # Different idl zeropoints and surveyccds images
+      leg_dir= os.path.join(leg_dir,'against_surveyccds')
     patt= os.path.join(leg_dir,
                        '*%s*-legacypipe.fits' % 
                           FN_SUFFIX[camera])
@@ -105,7 +108,7 @@ def test_legacypipe_table(camera='decam',indir='ps1_gaia',
       prod: tests written to testoutput/ dir, if True it will look for production run
         outputs which are assumed to be copied to prodoutput/ dir
     """
-    print("TESTING LEGACYPIPE")
+    print("TESTING LEGACYPIPE %s" % camera)
     assert(camera in CAMERAS)
     assert(indir in ['ps1_gaia','ps1_only'])
     # Matched tables
@@ -135,16 +138,17 @@ def test_legacypipe_table(camera='decam',indir='ps1_gaia',
                      xname='Surveyccds',yname='Legacy')
     assert(True)
 
-
-if __name__ == "__main__":
+def test_main():
   plot=False
   production=False
   test_legacypipe_table(camera='decam',indir='ps1_gaia',
                         plot=plot,prod=production)
   test_legacypipe_table(camera='mosaic',indir='ps1_gaia',
-                        plot=plot, prod=prod)
+                        plot=plot, prod=production)
   test_legacypipe_table(camera='90prime',indir='ps1_gaia',
                         plot=plot,prod=production)
-  
-  #test_legacypipe_table(camera='decam',indir='ps1_only')
-  #test_legacypipe_table(camera='decam',indir='ps1_only')
+ 
+
+if __name__ == "__main__":
+  test_main()
+ 

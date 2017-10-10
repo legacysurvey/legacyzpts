@@ -129,23 +129,20 @@ def test_mosaic(inSurveyccds=False, ps1_only=False):
     #run_and_check_outputs(image_list=[fns[0]], cmd_line=cmd_line,
     #                      outdir=outdir)
 
-def test_90prime(inSurveyccds=False, ps1_only=False):
+def test_90prime(ps1_only=False):
     """Runs at least 1 CCD per band
+    
+    Note: Unlike decam and mosaic, the same BASS images are in the
+      surveyccds and idl zeropoints files so don't make a against_
+      idl and surveyccds dir
 
     Args:
-      inSurveyccds: True to run CCDs that are in the surveyccds file for DR3 or DR4
-        False will be used to test again idl zeropoints instead of surveyccds
       ps1_only: True to use ps1 for astrometry and photometry
     """
-    print('RUNNING LEGACYZPTS: default settings')
+    print('RUNNING LEGACYZPTS: 90prime')
     download_ccds()
-    if inSurveyccds:
-      uniq_dir= 'against_surveyccds'
-      img_patt= 'ksb_160711_*_ooi_*.fits.fz'
-    else:
-      uniq_dir= 'against_idl'
-      raise ValueError('%s not supported yet' % uniq_dir)
-      img_patt= 'k4m*170221_072831*ooi*.fits.fz'
+    uniq_dir= ''
+    img_patt= 'ksb*160711_070206*ooi*.fits.fz'
     if ps1_only:
       ps1_gaia_dir= 'ps1_only'
       extra_args= ['--ps1_only']
@@ -166,15 +163,18 @@ def test_90prime(inSurveyccds=False, ps1_only=False):
     #run_and_check_outputs(image_list=[fns[0]], cmd_line=cmd_line,
     #                      outdir=outdir)
     
-
-if __name__ == "__main__":
-  # Run on images, compare to IDL zeropoints
-  #test_decam(inSurveyccds=False, ps1_only=False)
-  #test_mosaic(inSurveyccds=False, ps1_only=False)
+def test_main():
+  # *-zpt vs. IDL zeropoints
+  test_decam(inSurveyccds=False, ps1_only=False)
+  test_mosaic(inSurveyccds=False, ps1_only=False)
   
-  # Run on images, compare to survey-ccds
+  # *-legacypipe.fits vs. survey-ccds
   test_decam(inSurveyccds=True, ps1_only=False)
   test_mosaic(inSurveyccds=True, ps1_only=False)
-  test_90prime(inSurveyccds=True, ps1_only=False)
+  
+  # Same image for surveyccds and idl zeropoints
+  test_90prime(ps1_only=False)
  
 
+if __name__ == "__main__":
+  test_main()
