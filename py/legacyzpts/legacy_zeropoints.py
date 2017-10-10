@@ -1008,18 +1008,6 @@ class Measurer(object):
         ccds['gain'] = self.gain
         ccds['pixscale'] = self.pixscale
         
-        if (self.camera == 'decam') & (ext == 'S7'):
-            return self.return_on_error(err_message='S7', ccds=ccds)
-
-        if self.camera == 'decam':
-            # Simultaneous image,bitmask read
-            # funpack optional (funpack = slower!)
-            hdr, self.img, self.bitmask = self.read_image_and_bitmask(funpack=False)
-        else:
-            self.img,hdr= self.read_image() 
-            self.bitmask= self.read_bitmask()
-        t0= ptime('read image',t0)
-        
         # From CP Header
         hdrVal={}
         # values we want
@@ -1097,6 +1085,18 @@ class Measurer(object):
         #        foo.write('x=%d y=%d ra=%.9f dec=%.9f\n' % (i[0],i[1],i[2],i[3]))
         #return ccds, _stars_table()
         
+        if (self.camera == 'decam') & (ext == 'S7'):
+            return self.return_on_error(err_message='S7', ccds=ccds)
+
+        if self.camera == 'decam':
+            # Simultaneous image,bitmask read
+            # funpack optional (funpack = slower!)
+            hdr, self.img, self.bitmask = self.read_image_and_bitmask(funpack=False)
+        else:
+            self.img,hdr= self.read_image() 
+            self.bitmask= self.read_bitmask()
+        t0= ptime('read image',t0)
+
         # Measure the sky brightness and (sky) noise level.  Need to capture
         # negative sky.
         sky0 = self.sky(self.band)
@@ -1667,11 +1667,7 @@ class Measurer(object):
                    self.ccdname))
 
         # Add additional info
-<<<<<<< HEAD
         stars_photom['nmatch']= ccds['nmatch_photom']
-=======
-        ccds['nmatch'] = ccds['nmatch_photom']
->>>>>>> 18e9c77... grab header values from self.hdr; first element of width and height columns
         self.add_ccd_info_to_stars_table(stars_photom,
                                          ccds)
         star_kwargs= {"keep": final_cut,
