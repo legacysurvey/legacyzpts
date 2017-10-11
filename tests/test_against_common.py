@@ -38,9 +38,9 @@ def get_tolerance(camera=None,
     for key in ['ccdraoff','ccddecoff']:
       pm[key]= 0.15 
     for key in ['ccdnmatch']:
-      pm[key]= 100
+      pm[key]= 150
     for key in ['fwhm', 'seeing']:
-      pm[key]= 0.15/pix_scale # Pixels is default unit
+      pm[key]= 0.3/pix_scale # Pixels is default unit
       if key == 'seeing': # idl units are arcsec
         pm[key] *= pix_scale
     # zpt keys

@@ -684,6 +684,13 @@ class Measurer(object):
         self.fn = fn
         self.debug= kwargs.get('debug')
         self.outdir= kwargs.get('outdir')
+        if kwargs['calibdir']:
+          self.calibdir= kwargs['calibdir']
+        else:
+          self.calibdir= os.getenv('LEGACY_SURVEY_DIR',None)
+          if self.calibdir is None:
+            raise ValueError('LEGACY_SURVEY_DIR not set and --calibdir not given')
+          self.calibdir= os.path.join(self.calibdir,'calib')
 
         self.aper_sky_sub = aper_sky_sub
         self.calibrate = calibrate
@@ -1579,10 +1586,9 @@ class Measurer(object):
     def get_psfex_model(self):
         import tractor
 
-        calibdir = 'calib'
         expstr = '%08i' % self.expnum
         # Look for merged PsfEx file
-        fn = os.path.join(calibdir, self.camera, 'psfex-merged', expstr[:5],
+        fn = os.path.join(self.calibdir, self.camera, 'psfex-merged', expstr[:5],
                           '%s-%s.fits' % (self.camera, expstr))
         print('Looking for PsfEx file', fn)
         if os.path.exists(fn):
@@ -1602,7 +1608,7 @@ class Measurer(object):
                 return psf
 
         # Look for single-CCD PsfEx file
-        fn = os.path.join(calibdir, self.camera, 'psfex', expstr[:5], expstr,
+        fn = os.path.join(self.calibdir, self.camera, 'psfex', expstr[:5], expstr,
                           '%s-%s-%s.fits' % (self.camera, expstr, self.ext))
         print('Reading PsfEx file', fn)
         psf = tractor.PixelizedPsfEx(fn)
@@ -2471,6 +2477,8 @@ def get_parser():
                         help='set to > 1 if using legacy-zeropoints-mpiwrapper.py')
     parser.add_argument('--psf', default=False, action='store_true',
                         help='Use PsfEx model for astrometry & photometry')
+    parser.add_argument('--calibdir', default=None, action='store',
+                        help='if None will use LEGACY_SURVEY_DIR/calib, e.g. /global/cscratch1/sd/desiproc/dr5-new/calib')
     return parser
 
 
