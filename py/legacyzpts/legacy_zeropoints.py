@@ -214,10 +214,13 @@ def _ccds_table(camera='decam'):
         #('medskysub', '>f4'),    # sky variance [electron/pix]                   [=ccdskyrms in decstat]
         ('nmatch_photom', '>i2'),    # number of PS1-matched stars                   [=ccdnmatch in decstat]
         ('nmatch_astrom', '>i2'),    # number of PS1(-Gaia)-matched stars                   [=ccdnmatch in decstat]
+        ('goodps1', '>i2'),    # number of good PS1 stars 
+        ('goodps1_wbadpix5', '>i2'),    # number of good PS1 stars with aperature having >= 1 badpix=5 pixel
         ('mdncol', '>f4'),    # median g-i color of PS1-matched main-sequence stars [=ccdmdncol in decstat]
         ('phoff', '>f4'),     # photometric offset relative to PS1 (mag)      [=ccdphoff in decstat]
         ('phrms', '>f4'),     # photometric rms relative to PS1 (mag)         [=ccdphrms in decstat]
         ('zpt', '>f4'),       # median/mean zeropoint (mag)                   [=ccdzpt in decstat]
+        ('zpt_wbadpix5', '>f4'), # median/mean zeropoint (mag) including sources with badpix=5
         ('transp', '>f4'),    # transparency                                  [=ccdtransp in decstat]
         ('raoff', '>f4'),     # median RA offset (arcsec)                     [=ccdraoff in decstat]
         ('decoff', '>f4'),    # median Dec offset (arcsec)                    [=ccddecoff in decstat]
@@ -684,13 +687,15 @@ class Measurer(object):
         self.fn = fn
         self.debug= kwargs.get('debug')
         self.outdir= kwargs.get('outdir')
-        if kwargs['calibdir']:
-          self.calibdir= kwargs['calibdir']
-        else:
-          self.calibdir= os.getenv('LEGACY_SURVEY_DIR',None)
-          if self.calibdir is None:
-            raise ValueError('LEGACY_SURVEY_DIR not set and --calibdir not given')
-          self.calibdir= os.path.join(self.calibdir,'calib')
+
+        if kwargs['psf']:
+          if kwargs['calibdir']:
+            self.calibdir= kwargs['calibdir']
+          else:
+            self.calibdir= os.getenv('LEGACY_SURVEY_DIR',None)
+            if self.calibdir is None:
+              raise ValueError('LEGACY_SURVEY_DIR not set and --calibdir not given')
+            self.calibdir= os.path.join(self.calibdir,'calib')
 
         self.aper_sky_sub = aper_sky_sub
         self.calibrate = calibrate
@@ -792,8 +797,8 @@ class Measurer(object):
         good: (optional) list of values to treat as good in the bitmask
           default is to use appropiate values for the camera
         """
+        # Defaults
         if len(good) == 0:
-          # Defaults
           if self.camera == 'decam':
             # 7 = transient
             good=[7]
@@ -1160,6 +1165,20 @@ class Measurer(object):
             ps1_gaia.legacy_survey_mag = ps1_gaia.median[:, ps1band] + np.clip(colorterm, -1., +1.)
         
         if not psfex:
+            # badpix5 test, all good PS1 
+            if self.camera in ['90prime','mosaic']:
+              _, ps1_x, ps1_y = self.wcs.radec2pixelxy(ps1.ra_ok,ps1.dec_ok)
+              ps1_x-= 1.
+              ps1_y-= 1.
+              ap_for_ps1 = CircularAperture((ps1_x, ps1_y), 5.)
+              # special mask, only gt 0 where badpix eq 5
+              img_mask_5= np.zeros(self.bitmask.shape, dtype=self.bitmask.dtype)
+              img_mask_5[self.bitmask == 5]= 1
+              phot_for_mask_5 = aperture_photometry(img_mask_5, ap_for_ps1)
+              flux_for_mask_5 = phot_for_mask_5['aperture_sum'] 
+              ccds['goodps1']= len(ps1)
+              ccds['goodps1_wbadpix5']= len(ps1[flux_for_mask_5.data > 0])
+
             # Detect stars on the image.  
             # 10 sigma, sharpness, roundness all same as IDL zeropoints (also the defaults)
             # Exclude_border=True removes the stars with centroid on or out of ccd edge
@@ -1279,7 +1298,7 @@ class Measurer(object):
             print('FWHM med=%f, std=%f, std_med=%f' % (np.median(fwhms),np.std(fwhms),np.std(fwhms)/len(sample['x'])))
             #ccds['seeing'] = self.pixscale * np.median(fwhms)
             t0= ptime('Tractor fit FWHM to %d/%d stars' % (len(sample['x']),len(stars_photom)), t0) 
-    
+              
             # RESULTS
             print("RESULTS %s" % ext)
             print('Photometry: %d stars' % ccds['nmatch_photom'])
@@ -1699,6 +1718,21 @@ class Measurer(object):
         ccds['phrms'] = dmagsig
         ccds['zpt'] = zptmed
         ccds['transp'] = transp 
+
+        # Badpix 5 test
+        if self.camera in ['90prime','mosaic']:
+          # good sources but treat badpix=5 as OK
+          final_cut= ((cuts['good_flux_and_mag']) &
+                      (cuts['no_badpix_in_ap_0_5']) &
+                      (cuts['is_iso']))
+          dmagall= ps1.legacy_survey_mag[final_cut] - phot['apmags'][final_cut]
+          dmag, _, _ = sigmaclip(dmagall, low=2.5, high=2.5)
+          dmagmed = np.median(dmag)
+          zp0 = self.zeropoint(self.band)
+          kext = self.extinction(self.band)
+          zptmed = zp0 + dmagmed
+          ccds['zpt_wbadpix5'] = zptmed
+
         # star,empty string tuple if succeeded
         return stars_photom,''
 
@@ -2178,6 +2212,7 @@ def get_extlist(camera,fn,debug=False,choose_ccd=None):
         extlist = ['CCD1', 'CCD2', 'CCD3', 'CCD4']
         if debug:
           extlist = ['CCD1']
+          #extlist = ['CCD1','CCD2']
     elif camera == 'mosaic':
         extlist = ['CCD1', 'CCD2', 'CCD3', 'CCD4']
         if debug:

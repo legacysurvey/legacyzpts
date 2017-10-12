@@ -176,12 +176,12 @@ def test_90prime(ps1_only=False):
     
 def test_main():
   # *-zpt vs. IDL zeropoints
-  test_decam(inSurveyccds=False, ps1_only=False)
-  test_mosaic(inSurveyccds=False, ps1_only=False)
+  #test_decam(inSurveyccds=False, ps1_only=False)
+  #test_mosaic(inSurveyccds=False, ps1_only=False)
   
   # *-legacypipe.fits vs. survey-ccds
-  test_decam(inSurveyccds=True, ps1_only=False)
-  test_mosaic(inSurveyccds=True, ps1_only=False)
+  #test_decam(inSurveyccds=True, ps1_only=False)
+  #test_mosaic(inSurveyccds=True, ps1_only=False)
   
   # Same image for surveyccds and idl zeropoints
   test_90prime(ps1_only=False)
@@ -196,5 +196,5 @@ def test_main_psfex():
              psfex=True)
 
 if __name__ == "__main__":
-  #test_main()
-  test_main_psfex()
+  test_main()
+  #test_main_psfex()
