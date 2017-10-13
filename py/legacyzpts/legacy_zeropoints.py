@@ -214,10 +214,13 @@ def _ccds_table(camera='decam'):
         #('medskysub', '>f4'),    # sky variance [electron/pix]                   [=ccdskyrms in decstat]
         ('nmatch_photom', '>i2'),    # number of PS1-matched stars                   [=ccdnmatch in decstat]
         ('nmatch_astrom', '>i2'),    # number of PS1(-Gaia)-matched stars                   [=ccdnmatch in decstat]
+        ('goodps1', '>i2'),    # number of good PS1 stars 
+        ('goodps1_wbadpix5', '>i2'),    # number of good PS1 stars with aperature having >= 1 badpix=5 pixel
         ('mdncol', '>f4'),    # median g-i color of PS1-matched main-sequence stars [=ccdmdncol in decstat]
         ('phoff', '>f4'),     # photometric offset relative to PS1 (mag)      [=ccdphoff in decstat]
         ('phrms', '>f4'),     # photometric rms relative to PS1 (mag)         [=ccdphrms in decstat]
         ('zpt', '>f4'),       # median/mean zeropoint (mag)                   [=ccdzpt in decstat]
+        ('zpt_wbadpix5', '>f4'), # median/mean zeropoint (mag) including sources with badpix=5
         ('transp', '>f4'),    # transparency                                  [=ccdtransp in decstat]
         ('raoff', '>f4'),     # median RA offset (arcsec)                     [=ccdraoff in decstat]
         ('decoff', '>f4'),    # median Dec offset (arcsec)                    [=ccddecoff in decstat]
@@ -685,6 +688,15 @@ class Measurer(object):
         self.debug= kwargs.get('debug')
         self.outdir= kwargs.get('outdir')
 
+        if kwargs['psf']:
+          if kwargs['calibdir']:
+            self.calibdir= kwargs['calibdir']
+          else:
+            self.calibdir= os.getenv('LEGACY_SURVEY_DIR',None)
+            if self.calibdir is None:
+              raise ValueError('LEGACY_SURVEY_DIR not set and --calibdir not given')
+            self.calibdir= os.path.join(self.calibdir,'calib')
+
         self.aper_sky_sub = aper_sky_sub
         self.calibrate = calibrate
         
@@ -724,8 +736,8 @@ class Measurer(object):
                 val= self.primhdr[key]
             except KeyError:
                 val= -1
+                print('WARNING! not in primhdr: %s' % key) 
             setattr(self, key.lower(),val)
-            print('WARNING! not in primhdr %s' % key) 
 
         if kwargs['camera'] in ['decam','mosaic']:
           self.expnum= self.primhdr['EXPNUM']
@@ -785,8 +797,8 @@ class Measurer(object):
         good: (optional) list of values to treat as good in the bitmask
           default is to use appropiate values for the camera
         """
+        # Defaults
         if len(good) == 0:
-          # Defaults
           if self.camera == 'decam':
             # 7 = transient
             good=[7]
@@ -964,7 +976,7 @@ class Measurer(object):
         ccds['zpt']= np.nan
         return ccds, stars_photom, stars_astrom
 
-    def run(self, ext=None, save_xy=False):
+    def run(self, ext=None, save_xy=False, psfex=False):
         """Computes statistics for 1 CCD
         
         Args: 
@@ -975,22 +987,11 @@ class Measurer(object):
         Returns:
           ccds, stars_photom, stars_astrom
         """
-        if (self.camera == 'decam') & (ext == 'S7'):
-          self.return_on_error(err_mesisage='S7')
-        
         self.set_hdu(ext)
         # 
         t0= Time()
         t0= ptime('Measuring CCD=%s from image=%s' % (self.ccdname,self.fn),t0)
 
-        if self.camera == 'decam':
-            # Simultaneous image,bitmask read
-            # funpack optional (funpack = slower!)
-            hdr, self.img, self.bitmask = self.read_image_and_bitmask(funpack=False)
-        else:
-            self.img,hdr= self.read_image() 
-            self.bitmask= self.read_bitmask()
-        t0= ptime('read image',t0)
         # Initialize 
         ccds = _ccds_table(self.camera)
         if STAGING_CAMERAS[self.camera] in self.fn:
@@ -1018,14 +1019,15 @@ class Measurer(object):
         ccds['airmass'] = self.airmass
         ccds['gain'] = self.gain
         ccds['pixscale'] = self.pixscale
+        
         # From CP Header
         hdrVal={}
         # values we want
         for ccd_col in ['width','height','fwhm_cp']:
           # Possible keys in hdr for these values
           for key in self.cp_header_keys[ccd_col]:
-            if key in hdr.keys():
-              hdrVal[ccd_col]= hdr[key]
+            if key in self.hdr.keys():
+              hdrVal[ccd_col]= self.hdr[key]
               break
         for ccd_col in ['width','height','fwhm_cp']:
           if ccd_col in hdrVal.keys():
@@ -1049,9 +1051,9 @@ class Measurer(object):
         notneeded_cols= ['avsky']
         for ccd_col in ['avsky', 'crpix1', 'crpix2', 'crval1', 'crval2', 
                         'cd1_1','cd1_2', 'cd2_1', 'cd2_2']:
-          if ccd_col.upper() in hdr.keys():
-            print('CP Header: %s = ' % ccd_col,hdr[ccd_col])
-            ccds[ccd_col]= hdr[ccd_col]
+          if ccd_col.upper() in self.hdr.keys():
+            print('CP Header: %s = ' % ccd_col,self.hdr[ccd_col])
+            ccds[ccd_col]= self.hdr[ccd_col]
           else:
             if ccd_col in notneeded_cols:
               ccds[ccd_col]= np.nan
@@ -1076,7 +1078,9 @@ class Measurer(object):
         print('Band {}, Exptime {}, Airmass {}'.format(self.band, exptime, airmass))
 
         # WCS: 1-indexed so pixel pixelxy2radec(1,1) corresponds to img[0,0]
-        H, W = self.img.shape
+        H = ccds['height'].data[0]
+        W = ccds['width'].data[0]
+        print('Image size:', W,H)
         ccdra, ccddec = self.wcs.pixelxy2radec((W+1) / 2.0, (H + 1) / 2.0)
         ccds['ra'] = ccdra   # [degree]
         ccds['dec'] = ccddec # [degree]
@@ -1093,6 +1097,18 @@ class Measurer(object):
         #        foo.write('x=%d y=%d ra=%.9f dec=%.9f\n' % (i[0],i[1],i[2],i[3]))
         #return ccds, _stars_table()
         
+        if (self.camera == 'decam') & (ext == 'S7'):
+            return self.return_on_error(err_message='S7', ccds=ccds)
+
+        if self.camera == 'decam':
+            # Simultaneous image,bitmask read
+            # funpack optional (funpack = slower!)
+            hdr, self.img, self.bitmask = self.read_image_and_bitmask(funpack=False)
+        else:
+            self.img,hdr= self.read_image() 
+            self.bitmask= self.read_bitmask()
+        t0= ptime('read image',t0)
+
         # Measure the sky brightness and (sky) noise level.  Need to capture
         # negative sky.
         sky0 = self.sky(self.band)
@@ -1117,51 +1133,7 @@ class Measurer(object):
         ccds['skycounts'] = skymed / exptime # [electron/pix]
         ccds['skymag'] = skybr   # [mag/arcsec^2]
         t0= ptime('measure-sky',t0)
-        
-        # Detect stars on the image.  
-        # 10 sigma, sharpness, roundness all same as IDL zeropoints (also the defaults)
-        # Exclude_border=True removes the stars with centroid on or out of ccd edge
-        # Good, but we want to remove with aperture touching ccd edge too
-        print('det_thresh = %d' % self.det_thresh)
-        #threshold=self.det_thresh * stddev_mad,
-        dao = DAOStarFinder(fwhm= hdr_fwhm,
-                            threshold=self.det_thresh * skyrms,
-                            sharplo=0.2, sharphi=1.0, roundlo=-1.0, roundhi=1.0,
-                            exclude_border=False)
-        obj= dao(self.img)
-        if len(obj) < 20:
-            dao.threshold /= 2.
-            obj= dao(self.img)
-            if len(obj) < 20:
-              self.return_on_error('< 20 sources detected',ccds=ccds)
-        t0= ptime('detect-stars',t0)
 
-        # We for sure know that sources near edge could be bad
-        edge_sep = 1. + self.skyrad[1] 
-        edge_sep_px = edge_sep/self.pixscale
-        wid,ht= self.img.shape[1],self.img.shape[0] 
-        away_from_edge= (
-                 (obj['xcentroid'] > edge_sep_px) &
-                 (obj['xcentroid'] < wid - edge_sep_px) &
-                 (obj['ycentroid'] > edge_sep_px) &
-                 (obj['ycentroid'] < ht - edge_sep_px))
-        obj= obj[away_from_edge] 
-        objra, objdec = self.wcs.pixelxy2radec(obj['xcentroid']+1, obj['ycentroid']+1)
-        nobj = len(obj)
-        print('{} sources detected with detection threshold {}-sigma minus edge sources'.format(nobj, self.det_thresh))
-        ccds['nstarfind']= nobj
-
-        if save_xy:
-          # Arrays of length number of all daophot found sources
-          all_xy= fits_table()
-          all_xy.set('x', obj['xcentroid'].data)
-          all_xy.set('y', obj['ycentroid'].data)
-          all_xy.set('ra', objra)
-          all_xy.set('dec', objdec)
-          all_xy.writeto('%s_%s_all_xy.fits' % 
-                  (os.path.basename(self.fn).replace('.fits','').replace('.fz',''),
-                   ext))
-         
         # Load PS1 and PS1-Gaia Catalogues 
         # We will only used detected sources that have PS1 or PS1-gaia matches
         # So cut to this super set immediately
@@ -1175,102 +1147,344 @@ class Measurer(object):
         ps1_gaia = ps1cat(ccdwcs=self.wcs,
                           pattern= self.ps1_gaia_pattern).get_stars(magrange=None)
         assert(len(ps1_gaia.columns()) > len(ps1.columns())) 
-        # PS1 cuts
-        ps1.cut( self.get_ps1_cuts(ps1) )
-        ps1_gaia.cut( self.get_ps1_cuts(ps1_gaia) )
-        # Convert to Legacy Survey mags
-        colorterm = self.colorterm_ps1_to_observed(ps1.median, self.band)
         ps1band = ps1cat.ps1band[self.band]
-        ps1.set('legacy_survey_mag', ps1.median[:, ps1band] + colorterm)
-        # Add gaia ra,dec
-        ps1_gaia.set('gaia_dec', ps1_gaia.dec_ok - ps1_gaia.ddec/3600000.)
-        ps1_gaia.set('gaia_ra', ps1_gaia.ra_ok - 
-                                ps1_gaia.dra/3600000./np.cos(np.deg2rad( ps1_gaia.gaia_dec )))
+        # PS1 cuts
+        if len(ps1):
+            ps1.cut( self.get_ps1_cuts(ps1) )
+            # Convert to Legacy Survey mags
+            colorterm = self.colorterm_ps1_to_observed(ps1.median, self.band)
+            ps1.legacy_survey_mag = ps1.median[:, ps1band] + colorterm
+        if len(ps1_gaia):
+            ps1_gaia.cut( self.get_ps1_cuts(ps1_gaia) )
+            # Add gaia ra,dec
+            ps1_gaia.set('gaia_dec', ps1_gaia.dec_ok - ps1_gaia.ddec/3600000.)
+            ps1_gaia.set('gaia_ra', ps1_gaia.ra_ok - 
+                         ps1_gaia.dra/3600000./np.cos(np.deg2rad( ps1_gaia.gaia_dec )))
+            # same for ps1_gaia -- but clip the color term because we don't clip the g-i color.
+            colorterm = self.colorterm_ps1_to_observed(ps1_gaia.median, self.band)
+            ps1_gaia.legacy_survey_mag = ps1_gaia.median[:, ps1band] + np.clip(colorterm, -1., +1.)
+        
+        if not psfex:
+            # badpix5 test, all good PS1 
+            if self.camera in ['90prime','mosaic']:
+              _, ps1_x, ps1_y = self.wcs.radec2pixelxy(ps1.ra_ok,ps1.dec_ok)
+              ps1_x-= 1.
+              ps1_y-= 1.
+              ap_for_ps1 = CircularAperture((ps1_x, ps1_y), 5.)
+              # special mask, only gt 0 where badpix eq 5
+              img_mask_5= np.zeros(self.bitmask.shape, dtype=self.bitmask.dtype)
+              img_mask_5[self.bitmask == 5]= 1
+              phot_for_mask_5 = aperture_photometry(img_mask_5, ap_for_ps1)
+              flux_for_mask_5 = phot_for_mask_5['aperture_sum'] 
+              ccds['goodps1']= len(ps1)
+              ccds['goodps1_wbadpix5']= len(ps1[flux_for_mask_5.data > 0])
 
-        # Matching
-        matched= {}
-        # Photometry
-        matched['photom_obj'], matched['photom_ref'], _ = \
-                      match_radec(objra, objdec, ps1.ra_ok, ps1.dec_ok, 
-                                  self.match_radius/3600.0,
-                                  nearest=True)
-        t0= ptime('matching-for-photometer',t0)
-        stars_photom,err= self.do_Photometry(obj[matched['photom_obj']],
-                                         ps1[matched['photom_ref']],
-                                         ccds=ccds, save_xy=save_xy)
-        if len(err) > 0:
-          self.return_on_error(err,ccds=ccds,
-                               stars_photom=stars_photom)
-        t0= ptime('photutils-photometry',t0)
-        
-        # Astrometry
-        matched['astrom_obj'], matched['astrom_ref'], _ = \
-                         match_radec(objra, objdec, ps1_gaia.gaia_ra, ps1_gaia.gaia_dec, 
-                                     self.match_radius/3600.0,
-                                     nearest=True)
-        t0= ptime('matching-for-astrometry',t0)
-        if ((self.ps1_only) |
-            (len(matched['astrom_obj']) < 20)):
-          # Either have Gaia pot holes or are forcing PS1
-          # use ps1
-          stars_astrom,err= self.do_Astrometry(
-                               obj[matched['photom_obj']],
-                               ref_ra= ps1.ra_ok[matched['photom_ref']],
-                               ref_dec= ps1.dec_ok[matched['photom_ref']],
-                               ccds=ccds)
-        else:
-          # Use gaia
-          stars_astrom,err= self.do_Astrometry(
-                               obj[matched['astrom_obj']],
-                               ref_ra= ps1_gaia.gaia_ra[matched['astrom_ref']],
-                               ref_dec= ps1_gaia.gaia_dec[matched['astrom_ref']],
-                               ccds=ccds)
-        if len(err) > 0:
-          self.return_on_error(err,ccds=ccds,
-                               stars_photom=stars_photom,
-                               stars_astrom=stars_astrom)
-        t0= ptime('did-astrometry',t0)
-        
-        # FWHM
-        # Tractor on specific SN sources 
-        ap = CircularAperture((stars_photom['x'], stars_photom['y']), 
-                               self.aprad / self.pixscale)
-        skyphot = aperture_photometry(sky_img, ap)
-        skyflux = skyphot['aperture_sum'].data
-        star_SN= stars_photom['apflux'].data / np.sqrt(stars_photom['apflux'].data + skyflux)
-        t0= ptime('photutils-photometry-SN',t0)
- 
-        # Brightest N stars
-        sn_cut= ((star_SN >= 10.) &
-                 (star_SN <= 100.))
-        if len(star_SN[sn_cut]) < 10.:
-          sn_cut= star_SN >= 10.
-          if len(star_SN[sn_cut]) < 10.:
-            sn_cut= np.ones(len(star_SN),bool)
-        i_low_hi= np.argsort(star_SN)[sn_cut] 
-        # brightest stars in sample, at most self.tractor_nstars
-        sample=dict(x= stars_photom['x'][i_low_hi][-self.tractor_nstars:],
-                    y= stars_photom['y'][i_low_hi][-self.tractor_nstars:],
-                    apflux= stars_photom['apflux'][i_low_hi][-self.tractor_nstars:],
-                    sn= star_SN[i_low_hi][-self.tractor_nstars:])
-        #ivar = np.zeros_like(img) + 1.0/sig1**2
-        # Hack! To avoid 1/0 and sqrt(<0) just considering Poisson Stats due to sky
-        ierr = 1.0/np.sqrt(sky_img)
-        fwhms = self.fitstars(img_sub_sky, ierr, sample['x'], sample['y'], sample['apflux'])
-        ccds['fwhm'] = np.median(fwhms) # fwhms= 2.35 * psf.sigmas 
-        print('FWHM med=%f, std=%f, std_med=%f' % (np.median(fwhms),np.std(fwhms),np.std(fwhms)/len(sample['x'])))
-        #ccds['seeing'] = self.pixscale * np.median(fwhms)
-        t0= ptime('Tractor fit FWHM to %d/%d stars' % (len(sample['x']),len(stars_photom)), t0) 
+            # Detect stars on the image.  
+            # 10 sigma, sharpness, roundness all same as IDL zeropoints (also the defaults)
+            # Exclude_border=True removes the stars with centroid on or out of ccd edge
+            # Good, but we want to remove with aperture touching ccd edge too
+            print('det_thresh = %d' % self.det_thresh)
+            #threshold=self.det_thresh * stddev_mad,
+            dao = DAOStarFinder(fwhm= hdr_fwhm,
+                                threshold=self.det_thresh * skyrms,
+                                sharplo=0.2, sharphi=1.0, roundlo=-1.0, roundhi=1.0,
+                                exclude_border=False)
+            obj= dao(self.img)
+            if len(obj) < 20:
+                dao.threshold /= 2.
+                obj= dao(self.img)
+                if len(obj) < 20:
+                    return self.return_on_error('< 20 sources detected',ccds=ccds)
+            t0= ptime('detect-stars',t0)
+    
+            # We for sure know that sources near edge could be bad
+            edge_sep = 1. + self.skyrad[1] 
+            edge_sep_px = edge_sep/self.pixscale
+            wid,ht= self.img.shape[1],self.img.shape[0] 
+            away_from_edge= (
+                     (obj['xcentroid'] > edge_sep_px) &
+                     (obj['xcentroid'] < wid - edge_sep_px) &
+                     (obj['ycentroid'] > edge_sep_px) &
+                     (obj['ycentroid'] < ht - edge_sep_px))
+            obj= obj[away_from_edge] 
+            objra, objdec = self.wcs.pixelxy2radec(obj['xcentroid']+1, obj['ycentroid']+1)
+            nobj = len(obj)
+            print('{} sources detected with detection threshold {}-sigma minus edge sources'.format(nobj, self.det_thresh))
+            ccds['nstarfind']= nobj
+    
+            if save_xy:
+              # Arrays of length number of all daophot found sources
+              all_xy= fits_table()
+              all_xy.set('x', obj['xcentroid'].data)
+              all_xy.set('y', obj['ycentroid'].data)
+              all_xy.set('ra', objra)
+              all_xy.set('dec', objdec)
+              all_xy.writeto('%s_%s_all_xy.fits' % 
+                      (os.path.basename(self.fn).replace('.fits','').replace('.fz',''),
+                       ext))
+         
 
-        # RESULTS
-        print("RESULTS %s" % ext)
-        print('Photometry: %d stars' % ccds['nmatch_photom'])
-        print('Offset (mag) =%.4f, rms=0.4%f' % (ccds['phoff'],ccds['phrms'])) 
-        print('Zeropoint %.4f' % (ccds['zpt'],))
-        print('Transparency %.4f' % (ccds['transp'],))
-        print('Astrometry: %d stars' % ccds['nmatch_astrom'])
-        print('Offsets (arcsec) RA=%.6f, Dec=%.6f' % (ccds['raoff'], ccds['decoff'])) 
+            # Matching
+            matched= {}
+            # Photometry
+            matched['photom_obj'], matched['photom_ref'], _ = \
+                          match_radec(objra, objdec, ps1.ra_ok, ps1.dec_ok, 
+                                      self.match_radius/3600.0,
+                                      nearest=True)
+            t0= ptime('matching-for-photometer',t0)
+            stars_photom,err= self.do_Photometry(obj[matched['photom_obj']],
+                                             ps1[matched['photom_ref']],
+                                             ccds=ccds, save_xy=save_xy)
+            if len(err) > 0:
+                return self.return_on_error(err,ccds=ccds,
+                                            stars_photom=stars_photom)
+            t0= ptime('photutils-photometry',t0)
+            
+            # Astrometry
+            matched['astrom_obj'], matched['astrom_ref'], _ = \
+                             match_radec(objra, objdec, ps1_gaia.gaia_ra, ps1_gaia.gaia_dec, 
+                                         self.match_radius/3600.0,
+                                         nearest=True)
+            t0= ptime('matching-for-astrometry',t0)
+            if ((self.ps1_only) |
+                (len(matched['astrom_obj']) < 20)):
+              # Either have Gaia pot holes or are forcing PS1
+              # use ps1
+              stars_astrom,err= self.do_Astrometry(
+                                   obj[matched['photom_obj']],
+                                   ref_ra= ps1.ra_ok[matched['photom_ref']],
+                                   ref_dec= ps1.dec_ok[matched['photom_ref']],
+                                   ccds=ccds)
+            else:
+              # Use gaia
+              stars_astrom,err= self.do_Astrometry(
+                                   obj[matched['astrom_obj']],
+                                   ref_ra= ps1_gaia.gaia_ra[matched['astrom_ref']],
+                                   ref_dec= ps1_gaia.gaia_dec[matched['astrom_ref']],
+                                   ccds=ccds)
+            if len(err) > 0:
+                return self.return_on_error(err,ccds=ccds,
+                                            stars_photom=stars_photom,
+                                            stars_astrom=stars_astrom)
+            t0= ptime('did-astrometry',t0)
+            
+            # FWHM
+            # Tractor on specific SN sources 
+            ap = CircularAperture((stars_photom['x'], stars_photom['y']), 
+                                   self.aprad / self.pixscale)
+            skyphot = aperture_photometry(sky_img, ap)
+            skyflux = skyphot['aperture_sum'].data
+            star_SN= stars_photom['apflux'].data / np.sqrt(stars_photom['apflux'].data + skyflux)
+            t0= ptime('photutils-photometry-SN',t0)
+     
+            # Brightest N stars
+            sn_cut= ((star_SN >= 10.) &
+                     (star_SN <= 100.))
+            if len(star_SN[sn_cut]) < 10.:
+              sn_cut= star_SN >= 10.
+              if len(star_SN[sn_cut]) < 10.:
+                sn_cut= np.ones(len(star_SN),bool)
+            i_low_hi= np.argsort(star_SN)[sn_cut] 
+            # brightest stars in sample, at most self.tractor_nstars
+            sample=dict(x= stars_photom['x'][i_low_hi][-self.tractor_nstars:],
+                        y= stars_photom['y'][i_low_hi][-self.tractor_nstars:],
+                        apflux= stars_photom['apflux'][i_low_hi][-self.tractor_nstars:],
+                        sn= star_SN[i_low_hi][-self.tractor_nstars:])
+            #ivar = np.zeros_like(img) + 1.0/sig1**2
+            # Hack! To avoid 1/0 and sqrt(<0) just considering Poisson Stats due to sky
+            ierr = 1.0/np.sqrt(sky_img)
+            fwhms = self.fitstars(img_sub_sky, ierr, sample['x'], sample['y'], sample['apflux'])
+            ccds['fwhm'] = np.median(fwhms) # fwhms= 2.35 * psf.sigmas 
+            print('FWHM med=%f, std=%f, std_med=%f' % (np.median(fwhms),np.std(fwhms),np.std(fwhms)/len(sample['x'])))
+            #ccds['seeing'] = self.pixscale * np.median(fwhms)
+            t0= ptime('Tractor fit FWHM to %d/%d stars' % (len(sample['x']),len(stars_photom)), t0) 
+              
+            # RESULTS
+            print("RESULTS %s" % ext)
+            print('Photometry: %d stars' % ccds['nmatch_photom'])
+            print('Offset (mag) =%.4f, rms=0.4%f' % (ccds['phoff'],ccds['phrms'])) 
+            print('Zeropoint %.4f' % (ccds['zpt'],))
+            print('Transparency %.4f' % (ccds['transp'],))
+            print('Astrometry: %d stars' % ccds['nmatch_astrom'])
+            print('Offsets (arcsec) RA=%.6f, Dec=%.6f' % (ccds['raoff'], ccds['decoff'])) 
+    
+        else: # psfex
+            # Now put Gaia stars into the image and re-fit their centroids
+            # and fluxes using the tractor with the PsfEx PSF model.
+    
+            # assume that the CP WCS has gotten us to within a few pixels
+            # of the right answer.  Find Gaia stars, initialize Tractor
+            # sources there, optimize them and see how much they want to
+            # move.
+            psf = self.get_psfex_model()
+            ccds['fwhm'] = psf.fwhm
+
+            # PS1 for photometry
+
+            # FIXME --- check this
+            flux0 = 10.**((zp0 - ps1.legacy_survey_mag) / 2.5) * exptime
+            ierr = 1.0/np.sqrt(sky_img)
+            phot = self.tractor_fit_sources(ps1.ra_ok, ps1.dec_ok, flux0,
+                                            img_sub_sky, ierr, psf)
+            ref = ps1[phot.iref]
+            phot.delete_column('iref')
+            ref.rename('ra_ok', 'ra')
+            ref.rename('dec_ok', 'dec')
+
+            phot.raoff = (ref.ra - phot.ra_fit) * np.cos(np.deg2rad(ref.dec)) * 3600.
+            phot.decoff = (ref.dec - phot.dec_fit) * 3600.
+            phot.psfmag = -2.5*np.log10(phot.flux / exptime) + zp0
+    
+            dmagall = ref.legacy_survey_mag - phot.psfmag
+            if not np.all(np.isfinite(dmagall)):
+                print(np.sum(np.logical_not(np.isfinite(dmagall))), 'stars have NaN mags; ignoring')
+                dmagall = dmagall[np.isfinite(dmagall)]
+                print('Continuing with', len(dmagall), 'stars')
+
+            dmag, _, _ = sigmaclip(dmagall, low=2.5, high=2.5)
+            ndmag = len(dmag)
+            dmagmed = np.median(dmag)
+            dmagsig = np.std(dmag)
+            zptmed = zp0 + dmagmed
+            kext = self.extinction(self.band)
+            transp = 10.**(-0.4 * (zp0 - zptmed - kext * (airmass - 1.0)))
+    
+            print('Tractor PsfEx-fitting results for PS1:')
+            print('RA, Dec offsets (arcsec) relative to Gaia: %.4f, %.4f' %
+                  (np.median(phot.raoff), np.median(phot.decoff)))
+            print('RA, Dec stddev (arcsec) relative to Gaia: %.4f, %.4f' %
+                  (np.std(phot.raoff), np.std(phot.decoff)))
+            print('Mag offset: %.4f' % dmagmed)
+            print('Scatter: %.4f' % dmagsig)
+            print('Number stars used for zeropoint median %d' % ndmag)
+            print('Zeropoint %.4f' % zptmed)
+            print('Transparency %.4f' % transp)
+    
+            for c in ['x0','y0','x1','y1','flux','raoff','decoff']:
+                phot.set(c, phot.get(c).astype(np.float32))
+
+            phot.ra_ps1 = ref.ra
+            phot.dec_ps1 = ref.dec
+            phot.ps1_mag = ref.legacy_survey_mag
+            for band in 'griz':
+                i = ps1cat.ps1band.get(band, None)
+                if i is None:
+                    continue
+                phot.set('ps1_'+band, ref.median[:,i])
+
+            # Convert to astropy Table
+            cols = phot.get_columns()
+            stars_photom = Table([phot.get(c) for c in cols], names=cols)
+
+            # Add to the zeropoints table
+            ccds['raoff'] = np.median(phot.raoff)
+            ccds['decoff'] = np.median(phot.decoff)
+            ccds['rastddev'] = np.std(phot.raoff)
+            ccds['decstddev'] = np.std(phot.decoff)
+            ra_clip, _, _ = sigmaclip(phot.raoff, low=3., high=3.)
+            ccds['rarms'] = getrms(ra_clip)
+            dec_clip, _, _ = sigmaclip(phot.decoff, low=3., high=3.)
+            ccds['decrms'] = getrms(dec_clip)
+            ccds['phoff'] = dmagmed
+            ccds['phrms'] = dmagsig
+            ccds['zpt'] = zptmed
+            ccds['transp'] = transp       
+            ccds['nmatch_photom'] = len(phot)
+            ccds['nmatch_astrom'] = len(phot)
+
+            # Astrometry
+            if self.ps1_only or len(ps1_gaia) < 20:
+                # Keep the PS1 results for astrometry
+                if not self.ps1_only:
+                    print('PS1/Gaia match catalog has only', len(ps1_gaia), 'stars - using PS1 for astrometry')
+                stars_astrom = None
+            else:
+                # Fast-track "phot" results within 1".
+
+                I,J,d = match_radec(ps1_gaia.gaia_ra, ps1_gaia.gaia_dec,
+                                    phot.ra_fit, phot.dec_fit, 1./3600.,
+                                    nearest=True)
+                print(len(I), 'of', len(ps1_gaia), 'PS1/Gaia sources have a match in PS1')
+                
+                fits = []
+                refs = []
+                if len(I):
+                    photmatch = fits_table()
+                    for col in ['x0','y0','x1','y1','flux','psfsum','ra_fit','dec_fit']:
+                        photmatch.set(col, phot.get(col)[J])
+                    photref = ps1_gaia[I]
+                    unmatched = np.ones(len(ps1_gaia), bool)
+                    unmatched[I] = False
+                    ps1_gaia.cut(unmatched)
+                    fits.append(photmatch)
+                    refs.append(photref)
+
+                if len(ps1_gaia):
+                    flux0 = 10.**((zp0 - ps1_gaia.legacy_survey_mag) / 2.5) * exptime
+                    astrom = self.tractor_fit_sources(ps1_gaia.gaia_ra, ps1_gaia.gaia_dec, flux0,
+                                                      img_sub_sky, ierr, psf)
+                    if len(astrom):
+                        ref = ps1_gaia[astrom.iref]
+                        astrom.delete_column('iref')
+                        fits.append(astrom)
+                        refs.append(ref)
+
+                # Merge the fast-tracked and newly-fit results.
+                if len(fits) == 2:
+                    astrom = merge_tables(fits)
+                    ref = merge_tables(refs)
+                else:
+                    astrom = fits[0]
+                    ref = refs[0]
+
+                ref.rename('gaia_ra', 'ra')
+                ref.rename('gaia_dec', 'dec')
+
+                astrom.raoff = (ref.ra - astrom.ra_fit) * np.cos(np.deg2rad(ref.dec)) * 3600.
+                astrom.decoff = (ref.dec - astrom.dec_fit) * 3600.
+                astrom.psfmag = -2.5*np.log10(astrom.flux / exptime) + zp0
+
+                dmagall = ref.legacy_survey_mag - astrom.psfmag
+                dmag, _, _ = sigmaclip(dmagall, low=2.5, high=2.5)
+                ndmag = len(dmag)
+                dmagmed = np.median(dmag)
+                dmagsig = np.std(dmag)
+                zptmed = zp0 + dmagmed
+                transp = 10.**(-0.4 * (zp0 - zptmed - kext * (airmass - 1.0)))
         
+                print('Tractor PsfEx-fitting results for PS1/Gaia:')
+                print('RA, Dec offsets (arcsec) relative to Gaia: %.4f, %.4f' %
+                      (np.median(astrom.raoff), np.median(astrom.decoff)))
+                print('RA, Dec stddev (arcsec) relative to Gaia: %.4f, %.4f' %
+                      (np.std(astrom.raoff), np.std(astrom.decoff)))
+                print('Mag offset: %.4f' % dmagmed)
+                print('Scatter: %.4f' % dmagsig)
+                
+                print('Number stars used for zeropoint median %d' % ndmag)
+                print('Zeropoint %.4f' % zptmed)
+                print('Transparency %.4f' % transp)
+
+                for c in ['x0','y0','x1','y1','flux','raoff','decoff']:
+                    astrom.set(c, astrom.get(c).astype(np.float32))
+                
+                astrom.ra_gaia = ref.ra
+                astrom.dec_gaia = ref.dec
+                astrom.phot_g_mean_mag = ref.phot_g_mean_mag
+                # Convert to astropy Table
+                cols = astrom.get_columns()
+                stars_astrom = Table([astrom.get(c) for c in cols], names=cols)
+
+                # Update the zeropoints table
+                ccds['raoff'] = np.median(astrom.raoff)
+                ccds['decoff'] = np.median(astrom.decoff)
+                ccds['rastddev'] = np.std(astrom.raoff)
+                ccds['decstddev'] = np.std(astrom.decoff)
+                ra_clip, _, _ = sigmaclip(astrom.raoff, low=3., high=3.)
+                ccds['rarms'] = getrms(ra_clip)
+                dec_clip, _, _ = sigmaclip(astrom.decoff, low=3., high=3.)
+                ccds['decrms'] = getrms(dec_clip)
+                ccds['nmatch_astrom'] = len(astrom)
+
         t0= ptime('all-computations-for-this-ccd',t0)
         # Plots for comparing to Arjuns zeropoints*.ps
         if self.verboseplots:
@@ -1278,6 +1492,151 @@ class Measurer(object):
             t0= ptime('made-plots',t0)
         return ccds, stars_photom, stars_astrom
 
+    def tractor_fit_sources(self, ref_ra, ref_dec, ref_flux, img, ierr,
+                            psf, normalize_psf=True):
+        import tractor
+        plots = False
+        if plots:
+            from astrometry.util.plotutils import PlotSequence
+            ps = PlotSequence('astromfit')
+
+        print('Fitting positions & fluxes of %i stars' % len(ref_ra))
+        Istar,X0,X1,Y0,Y1,FLUX,psfsum = [],[],[],[],[],[],[]
+        for istar in range(len(ref_ra)):
+            ok,x,y = self.wcs.radec2pixelxy(ref_ra[istar], ref_dec[istar])
+            x -= 1
+            y -= 1
+            # Fitting radius
+            R = 10
+            H,W = img.shape
+            xlo = int(x - R)
+            ylo = int(y - R)
+            if xlo < 0 or ylo < 0:
+                continue
+            xhi = xlo + R*2
+            yhi = ylo + R*2
+            if xhi >= W or yhi >= H:
+                continue
+            subimg = img[ylo:yhi+1, xlo:xhi+1]
+            # FIXME -- check that ierr is correct
+            subie = ierr[ylo:yhi+1, xlo:xhi+1]
+            subpsf = psf.constantPsfAt(x, y)
+            if normalize_psf:
+                s = np.sum(subpsf.img)
+                # print('Normalizing PsfEx model with sum:', s)
+                subpsf.img /= s
+                psfsum.append(s)
+            else:
+                psfsum.append(1.) # ??
+            tim = tractor.Image(data=subimg, inverr=subie, psf=subpsf)
+            flux0 = ref_flux[istar]
+            #print('Zp0', zp0, 'mag', ref.mag[istar], 'flux', flux0)
+            x0 = x - xlo
+            y0 = y - ylo
+            X0.append(x0 + xlo)
+            Y0.append(y0 + ylo)
+            src = tractor.PointSource(tractor.PixPos(x0, y0),
+                                      tractor.Flux(flux0))
+            tr = tractor.Tractor([tim], [src])
+            tr.freezeParam('images')
+            optargs = dict(priors=False, shared_params=False)
+            # The initial flux estimate doesn't seem to work too well,
+            # so just for plotting's sake, fit flux first
+            src.freezeParam('pos')
+            tr.optimize(**optargs)
+            src.thawParam('pos')
+            #print('Optimizing position of Gaia star', istar)
+
+            if plots:
+                plt.clf()
+                plt.subplot(2,2,1)
+                plt.imshow(subimg, interpolation='nearest', origin='lower')
+                plt.colorbar()
+                plt.subplot(2,2,2)
+                mod = tr.getModelImage(0)
+                plt.imshow(mod, interpolation='nearest', origin='lower')
+                plt.colorbar()
+                plt.subplot(2,2,3)
+                plt.imshow((subimg - mod) * subie, interpolation='nearest', origin='lower')
+                plt.colorbar()
+                plt.suptitle('Before')
+                ps.savefig()
+
+            #print('Initial flux', flux0)
+            for step in range(50):
+                dlnp, x, alpha = tr.optimize(**optargs)
+                #print('delta position', src.pos.x - x0, src.pos.y - y0,
+                #      'flux', src.brightness, 'dlnp', dlnp)
+                if dlnp == 0:
+                    break
+            X1.append(src.pos.x + xlo)
+            Y1.append(src.pos.y + ylo)
+            FLUX.append(src.brightness.getValue())
+            Istar.append(istar)
+            
+            if plots:
+                plt.clf()
+                plt.subplot(2,2,1)
+                plt.imshow(subimg, interpolation='nearest', origin='lower')
+                plt.colorbar()
+                plt.subplot(2,2,2)
+                mod = tr.getModelImage(0)
+                plt.imshow(mod, interpolation='nearest', origin='lower')
+                plt.colorbar()
+                plt.subplot(2,2,3)
+                plt.imshow((subimg - mod) * subie, interpolation='nearest', origin='lower')
+                plt.colorbar()
+                plt.suptitle('After')
+                ps.savefig()
+
+        cal = fits_table()
+        # These x0,y0,x1,y1 are zero-indexed coords.
+        cal.x0 = X0
+        cal.y0 = Y0
+        cal.x1 = X1
+        cal.y1 = Y1
+        cal.flux = FLUX
+        cal.psfsum = psfsum
+        cal.iref = Istar
+        cal.to_np_arrays()
+        cal.ra_fit,cal.dec_fit = self.wcs.pixelxy2radec(cal.x1 + 1, cal.y1 + 1)
+        return cal
+
+    def get_psfex_model(self):
+        import tractor
+
+        expstr = '%08i' % self.expnum
+        # Look for merged PsfEx file
+        fn = os.path.join(self.calibdir, self.camera, 'psfex-merged', expstr[:5],
+                          '%s-%s.fits' % (self.camera, expstr))
+        print('Looking for PsfEx file', fn)
+        if os.path.exists(fn):
+            T = fits_table(fn)
+            I, = np.nonzero((T.expnum == self.expnum) *
+                            np.array([c.strip() == self.ext for c in T.ccdname]))
+            if len(I) == 1:
+                Ti = T[I[0]]
+                # Remove any padding
+                degree = Ti.poldeg1
+                # number of terms in polynomial
+                ne = (degree + 1) * (degree + 2) // 2
+                Ti.psf_mask = Ti.psf_mask[:ne, :Ti.psfaxis1, :Ti.psfaxis2]
+                psfex = tractor.PsfExModel(Ti=Ti)
+                psf = tractor.PixelizedPsfEx(None, psfex=psfex)
+                psf.fwhm = Ti.psf_fwhm
+                return psf
+
+        # Look for single-CCD PsfEx file
+        fn = os.path.join(self.calibdir, self.camera, 'psfex', expstr[:5], expstr,
+                          '%s-%s-%s.fits' % (self.camera, expstr, self.ext))
+        print('Reading PsfEx file', fn)
+        psf = tractor.PixelizedPsfEx(fn)
+
+        import fitsio
+        hdr = fitsio.read_header(fn, ext=1)
+        psf.fwhm = hdr['PSF_FWHM']
+        return psf
+    
     def do_Photometry(self, obj,ps1, ccds,
                       save_xy=False):
         """Measure zeropoint relative to PS1
@@ -1333,6 +1692,7 @@ class Measurer(object):
                    self.ccdname))
 
         # Add additional info
+        stars_photom['nmatch']= ccds['nmatch_photom']
         self.add_ccd_info_to_stars_table(stars_photom,
                                          ccds)
         star_kwargs= {"keep": final_cut,
@@ -1358,6 +1718,21 @@ class Measurer(object):
         ccds['phrms'] = dmagsig
         ccds['zpt'] = zptmed
         ccds['transp'] = transp 
+
+        # Badpix 5 test
+        if self.camera in ['90prime','mosaic']:
+          # good sources but treat badpix=5 as OK
+          final_cut= ((cuts['good_flux_and_mag']) &
+                      (cuts['no_badpix_in_ap_0_5']) &
+                      (cuts['is_iso']))
+          dmagall= ps1.legacy_survey_mag[final_cut] - phot['apmags'][final_cut]
+          dmag, _, _ = sigmaclip(dmagall, low=2.5, high=2.5)
+          dmagmed = np.median(dmag)
+          zp0 = self.zeropoint(self.band)
+          kext = self.extinction(self.band)
+          zptmed = zp0 + dmagmed
+          ccds['zpt_wbadpix5'] = zptmed
+
         # star,empty string tuple if succeeded
         return stars_photom,''
 
@@ -1389,6 +1764,7 @@ class Measurer(object):
        
         # Initialize
         stars_astrom = _stars_table(nstars= ccds['nmatch_astrom'])
+        stars_astrom['nmatch']= ccds['nmatch_astrom']
         self.add_ccd_info_to_stars_table(stars_astrom,
                                          ccds)
         # Fill
@@ -1536,7 +1912,6 @@ class Measurer(object):
       stars['ccdname'] = self.ccdname
       stars['gain'] = self.gain
       stars['exptime'] = self.exptime
-      stars['nmatch'] = ccds['nmatch'] 
  
     def add_obj_info_to_stars_table(self,stars,
                                     keep,obj,
@@ -1836,7 +2211,8 @@ def get_extlist(camera,fn,debug=False,choose_ccd=None):
     if camera == '90prime':
         extlist = ['CCD1', 'CCD2', 'CCD3', 'CCD4']
         if debug:
-          extlist = ['CCD2']
+          extlist = ['CCD1']
+          #extlist = ['CCD1','CCD2']
     elif camera == 'mosaic':
         extlist = ['CCD1', 'CCD2', 'CCD3', 'CCD4']
         if debug:
@@ -1845,7 +2221,7 @@ def get_extlist(camera,fn,debug=False,choose_ccd=None):
         hdu= fitsio.FITS(fn)
         extlist= [hdu[i].get_extname() for i in range(1,len(hdu))]
         if debug:
-          extlist = ['N4','S4'] #, 'S22','N19']
+          extlist = ['N4'] #,'S4', 'S22','N19']
         #extlist = ['S29', 'S31', 'S25', 'S26', 'S27', 'S28', 'S20', 'S21', 'S22',
         #           'S23', 'S24', 'S14', 'S15', 'S16', 'S17', 'S18', 'S19', 'S8',
         #           'S9', 'S10', 'S11', 'S12', 'S13', 'S1', 'S2', 'S3', 'S4', 'S5',
@@ -1942,19 +2318,24 @@ def measure_image(img_fn, **measureargs):
     all_ccds = []
     all_stars_photom = []
     all_stars_astrom = []
+    psfex = measureargs['psf']
     for ext in extlist:
-        ccds, stars_photom, stars_astrom = measure.run(ext,
-                save_xy=measureargs['debug'])
+        ccds, stars_photom, stars_astrom = measure.run(ext, psfex=psfex, save_xy=measureargs['debug'])
         t0= ptime('measured-ext-%s' % ext,t0)
-        all_ccds.append(ccds)
-        all_stars_photom.append(stars_photom)
-        all_stars_astrom.append(stars_astrom)
+
+        if ccds is not None:
+            all_ccds.append(ccds)
+        if stars_photom is not None:
+            all_stars_photom.append(stars_photom)
+        if stars_astrom is not None:
+            all_stars_astrom.append(stars_astrom)
 
     # Compute the median zeropoint across all the CCDs.
     all_ccds = vstack(all_ccds)
     all_stars_photom = vstack(all_stars_photom)
     all_stars_astrom = vstack(all_stars_astrom)
-    all_ccds['zptavg'] = np.median(all_ccds['zpt'])
+    zpts = all_ccds['zpt']
+    all_ccds['zptavg'] = np.median(zpts[np.isfinite(zpts)])
 
     t0= ptime('measure-image-%s' % img_fn,t0)
     return all_ccds, all_stars_photom, all_stars_astrom, extra_info
@@ -2129,6 +2510,10 @@ def get_parser():
                         help='Use this option when deriving the photometric transformation equations.')
     parser.add_argument('--nproc', type=int,action='store',default=1,
                         help='set to > 1 if using legacy-zeropoints-mpiwrapper.py')
+    parser.add_argument('--psf', default=False, action='store_true',
+                        help='Use PsfEx model for astrometry & photometry')
+    parser.add_argument('--calibdir', default=None, action='store',
+                        help='if None will use LEGACY_SURVEY_DIR/calib, e.g. /global/cscratch1/sd/desiproc/dr5-new/calib')
     return parser
 
 

@@ -30,15 +30,15 @@ def get_tolerance(camera=None,
   if camera == 'decam':
     # legacypipe keys
     for key in ['ccdzpt']: #cczpt strict
-      pm[key]= 0.2 
+      pm[key]= 0.007
     for key in ['zpt']: # Average ccdzpt not as strict
-      pm[key]= 0.16
+      pm[key]= 0.1
     for key in ['ra','dec','ra_bore','dec_bore']:
       pm[key]= 0.5/3600 
     for key in ['ccdraoff','ccddecoff']:
       pm[key]= 0.15 
     for key in ['ccdnmatch']:
-      pm[key]= 100
+      pm[key]= 150
     for key in ['fwhm', 'seeing']:
       pm[key]= 0.3/pix_scale # Pixels is default unit
       if key == 'seeing': # idl units are arcsec
@@ -53,9 +53,9 @@ def get_tolerance(camera=None,
     for key in ['ccdphrms']:
       pm[key]= 0.08
     for key in ['ccdskymag']:
-      pm[key]= 0.26
+      pm[key]= 0.1
     for key in ['ccdtransp']:
-      pm[key]= 0.35
+      pm[key]= 0.1
     for key in ['ccdra','ccddec']:
       pm[key]= 0.5/3600 
     for key in ['ccdrarms', 'ccddecrms']:
@@ -66,7 +66,7 @@ def get_tolerance(camera=None,
   elif camera == 'mosaic':
     # legacypipe keys
     for key in ['ccdzpt']: #cczpt strict
-      pm[key]= 0.006
+      pm[key]= 0.004
     for key in ['zpt']: # Average ccdzpt not as strict
       pm[key]= 0.03
     for key in ['ra','dec','ra_bore','dec_bore']:
@@ -102,7 +102,7 @@ def get_tolerance(camera=None,
   elif camera == '90prime':
     # legacypipe keys
     for key in ['ccdzpt']: #cczpt strict
-      pm[key]= 0.52 #0.006
+      pm[key]= 0.004
     for key in ['zpt']: # Average ccdzpt not as strict
       pm[key]= 0.2 #0.03
     for key in ['ra','dec','ra_bore','dec_bore']:
@@ -112,7 +112,7 @@ def get_tolerance(camera=None,
     for key in ['ccddecoff']:
       pm[key]= 20e-2 #arcsec
     for key in ['ccdnmatch']:
-      pm[key]= 600
+      pm[key]= 300
     for key in ['fwhm', 'seeing']:
       pm[key]= 0.2/pix_scale # Pixels is default unit
       if legacyzpts_product == 'zpt': # idl uses arcsec
@@ -123,13 +123,13 @@ def get_tolerance(camera=None,
     for key in ['avsky']:
       pm[key]= 1.e-4 # a header value
     for key in ['ccdphoff']:
-      pm[key]= 0.6
+      pm[key]= 0.004
     for key in ['ccdphrms']:
       pm[key]= 1.
     for key in ['ccdskymag']:
-      pm[key]= 0.15
+      pm[key]= 0.01
     for key in ['ccdtransp']:
-      pm[key]= 0.2
+      pm[key]= 0.01
     for key in ['ccdra','ccddec']:
       pm[key]= 0.6/3600 #10 mas
     for key in ['ccdrarms', 'ccddecrms']:

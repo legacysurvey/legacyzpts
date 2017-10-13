@@ -35,10 +35,12 @@ def apply_cuts(cat):
     # Gt0
     for col in ['zpt','fwhm']:
         flag['lezero'][col]= cat.get(col) <= 0
+        print('col=%s has %d <= 0 values' % (col, sum(flag['lezero'][col])))
     # cuts
     keep= (np.ones(len(cat),bool) )
     for key in flag['nan'].keys():
         keep *= (flag['nan'][key] == False)
+        print('NaNs in', key, ':', sum(keep == True), 'keep=True,', sum(keep == False), 'keep=False')
     num_nans= np.where(keep == False)[0].size
     print('Removing %d NaNs' % num_nans)
     for key in flag['lezero'].keys():
@@ -150,7 +152,12 @@ if __name__ == "__main__":
         cats=[]
         for cnt,fn in enumerate(fns):
             print('Reading %d/%d' % (cnt,len(fns)))
-            cats.append( fits_table(fn) )
+            t = fits_table(fn)
+            # Recompute "zpt", ignoring NaNs.
+            I = np.flatnonzero(np.isfinite(t.ccdzpt))
+            if len(I):
+                t.zpt[:] = np.median(t.ccdzpt[I])
+            cats.append(t)
         cats= merge_tables(cats, columns='fillzero')
         if opt.fix_hdu:
             print('fixing hdu')
