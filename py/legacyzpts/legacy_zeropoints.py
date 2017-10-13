@@ -154,39 +154,37 @@ def get_units():
  
 
 def _ccds_table(camera='decam'):
-    '''Initialize the output CCDs table.  See decstat.pro and merge-zeropoints.py
-    for details.
+    '''Initialize the CCDs table.
 
+    Description and Units at:
+    https://github.com/legacysurvey/legacyzpts/blob/master/DESCRIPTION_OF_OUTPUTS.md
     '''
     cols = [
-        ('err_message', 'S30'), # error message if known error occurs for a ccd
-        ('image_filename', 'S100'), # image filename, including the subdirectory
-        ('image_hdu', '>i2'),      # integer extension number
-        ('camera', 'S7'),          # camera name
-        ('expnum', '>i4'),         # unique exposure number
-        ('ccdname', 'S4'),         # FITS extension name
-        ('ccdnum', '>i2'),        # CCD number 
-        ('expid', 'S16'),          # combination of EXPNUM and CCDNAME
-        ('object', 'S35'),         # object (field) name
-        ('propid', 'S10'),         # proposal ID
-        ('filter', 'S1'),          # filter name / bandpass
-        ('exptime', '>f4'),        # exposure time (s)
-        ('date_obs', 'S10'),       # date of observation (from header)
-        ('mjd_obs', '>f8'),        # MJD of observation (from header)
-        ('ut', 'S15'),             # UT time (from header)
-        ('ha', 'S13'),             # hour angle (from header)
-        ('airmass', '>f4'),        # airmass (from header)
-        #('seeing', '>f4'),        # seeing estimate (from header, arcsec)
-        ('fwhm', '>f4'),          # FWHM (pixels)
-        ('fwhm_cp', '>f4'),          # FWHM (pixels)
-        #('arawgain', '>f4'),       
-        ('gain', '>f4'),           # average gain (camera-specific, e/ADU) -- remove?
-        #('avsky', '>f4'),         # average sky value from CP (from header, ADU) -- remove?
-        ('width', '>i2'),          # image width (pixels, NAXIS1, from header)
-        ('height', '>i2'),         # image height (pixels, NAXIS2, from header)
-        ('ra_bore', '>f8'),        # telescope RA (deg, from header)
-        ('dec_bore', '>f8'),       # telescope Dec (deg, from header)
-        ('crpix1', '>f4'),         # astrometric solution (no distortion terms)
+        ('err_message', 'S30'), 
+        ('image_filename', 'S100'), 
+        ('image_hdu', '>i2'),      
+        ('camera', 'S7'),          
+        ('expnum', '>i4'),         
+        ('ccdname', 'S4'),         
+        ('ccdnum', '>i2'),        
+        ('expid', 'S16'),        
+        ('object', 'S35'),      
+        ('propid', 'S10'),     
+        ('filter', 'S1'),     
+        ('exptime', '>f4'),  
+        ('date_obs', 'S10'),
+        ('mjd_obs', '>f8'),  
+        ('ut', 'S15'),       
+        ('ha', 'S13'),       
+        ('airmass', '>f4'), 
+        ('fwhm', '>f4'),       
+        ('fwhm_cp', '>f4'),   
+        ('gain', '>f4'),     
+        ('width', '>i2'),   
+        ('height', '>i2'), 
+        ('ra_bore', '>f8'),     
+        ('dec_bore', '>f8'),   
+        ('crpix1', '>f4'),     
         ('crpix2', '>f4'),
         ('crval1', '>f8'),
         ('crval2', '>f8'),
@@ -194,65 +192,50 @@ def _ccds_table(camera='decam'):
         ('cd1_2', '>f4'),
         ('cd2_1', '>f4'),
         ('cd2_2', '>f4'),
-        ('pixscale', 'f4'),   # mean pixel scale [arcsec/pix]
-        ('zptavg', '>f4'),    # zeropoint averaged over all CCDs [=zpt in decstat]
+        ('pixscale', 'f4'),   
+        ('zptavg', '>f4'),   
         # -- CCD-level quantities --
-        ('ra', '>f8'),        # ra at center of the CCD
-        ('dec', '>f8'),       # dec at the center of the CCD
-        ('skymag', '>f4'),    # average sky surface brightness [mag/arcsec^2] [=ccdskymag in decstat]
-        ('skycounts', '>f4'), # median sky level [electron/pix]               [=ccdskycounts in decstat]
-        ('skycounts_a', '>f4'), # median sky level [electron/pix]               [=ccdskycounts in decstat]
-        ('skyrms', '>f4'),    # sky variance [electron/pix]                   [=ccdskyrms in decstat]
-        ('skyrms_a', '>f4'),    # sky variance [electron/pix]                   [=ccdskyrms in decstat]
-        ('skyrms_b', '>f4'),    # sky variance [electron/pix]                   [=ccdskyrms in decstat]
-        ('skyrms_c', '>f4'),    # sky variance [electron/pix]                   [=ccdskyrms in decstat]
-        ('skyrms_d', '>f4'),    # sky variance [electron/pix]                   [=ccdskyrms in decstat]
-        ('skyrms_sm', '>f4'),    # sky variance [electron/pix]                   [=ccdskyrms in decstat]
-        ('skyrms_clip', '>f4'),    # sky variance [electron/pix]                   [=ccdskyrms in decstat]
-        ('skyrms_clip_sm', '>f4'),    # sky variance [electron/pix]                   [=ccdskyrms in decstat]
-        ('skyrms_sigma', '>f4'),    # sky variance [electron/pix]                   [=ccdskyrms in decstat]
-        #('medskysub', '>f4'),    # sky variance [electron/pix]                   [=ccdskyrms in decstat]
-        ('nmatch_photom', '>i2'),    # number of PS1-matched stars                   [=ccdnmatch in decstat]
-        ('nmatch_astrom', '>i2'),    # number of PS1(-Gaia)-matched stars                   [=ccdnmatch in decstat]
-        ('goodps1', '>i2'),    # number of good PS1 stars 
-        ('goodps1_wbadpix5', '>i2'),    # number of good PS1 stars with aperature having >= 1 badpix=5 pixel
-        ('mdncol', '>f4'),    # median g-i color of PS1-matched main-sequence stars [=ccdmdncol in decstat]
-        ('phoff', '>f4'),     # photometric offset relative to PS1 (mag)      [=ccdphoff in decstat]
-        ('phrms', '>f4'),     # photometric rms relative to PS1 (mag)         [=ccdphrms in decstat]
-        ('zpt', '>f4'),       # median/mean zeropoint (mag)                   [=ccdzpt in decstat]
-        ('zpt_wbadpix5', '>f4'), # median/mean zeropoint (mag) including sources with badpix=5
-        ('transp', '>f4'),    # transparency                                  [=ccdtransp in decstat]
-        ('raoff', '>f4'),     # median RA offset (arcsec)                     [=ccdraoff in decstat]
-        ('decoff', '>f4'),    # median Dec offset (arcsec)                    [=ccddecoff in decstat]
-        ('rarms', '>f4'),     # rms RA offset (arcsec)                        [=ccdrarms in decstat]
-        ('decrms', '>f4'),     # rms Dec offset (arcsec)                       [=ccddecrms in decstat]
-        ('rastddev', '>f4'),     # std RA offset (arcsec)                        [=ccdrarms in decstat]
-        ('decstddev', '>f4')     # std Dec offset (arcsec)                       [=ccddecrms in decstat]
+        ('ra', '>f8'),        
+        ('dec', '>f8'),      
+        ('skymag', '>f4'),  
+        ('skycounts', '>f4'),
+        ('skyrms', '>f4'),    
+        ('nmatch_photom', '>i2'),   
+        ('nmatch_astrom', '>i2'),  
+        ('goodps1', '>i2'),   
+        ('goodps1_wbadpix5', '>i2'),
+        ('phoff', '>f4'),   
+        ('phrms', '>f4'),  
+        ('zpt', '>f4'),   
+        ('zpt_wbadpix5', '>f4'), 
+        ('transp', '>f4'),    
+        ('raoff', '>f4'),    
+        ('decoff', '>f4'),  
+        ('rarms', '>f4'),  
+        ('decrms', '>f4'),  
+        ('rastddev', '>f4'),  
+        ('decstddev', '>f4')  
         ]
 
-    # Add camera-specific keywords to the output table.
-    #cols.extend( extra_ccd_keys(camera=camera) )
-    
     ccds = Table(np.zeros(1, dtype=cols))
     return ccds
 
      
 def _stars_table(nstars=1):
-    '''Initialize the stars table, which will contain information on all the stars
-       detected on the CCD, including the PS1 photometry.
+    '''Initialize the stars table.
 
+    Description and Units at:
+    https://github.com/legacysurvey/legacyzpts/blob/master/DESCRIPTION_OF_OUTPUTS.md
     '''
     cols = [('image_filename', 'S100'),('image_hdu', '>i2'),
             ('expid', 'S16'), ('filter', 'S1'),('nmatch', '>i2'), 
-            ('amplifier', 'i2'), ('x', 'f4'), ('y', 'f4'),('expnum', '>i4'),
+            ('x', 'f4'), ('y', 'f4'),('expnum', '>i4'),
             ('gain', 'f4'),
             ('ra', 'f8'), ('dec', 'f8'), ('apmag', 'f4'),('apflux', 'f4'),('apskyflux', 'f4'),('apskyflux_perpix', 'f4'),
-            ('radiff', 'f8'), ('decdiff', 'f8'),('radiff_ps1', 'f8'), ('decdiff_ps1', 'f8'),
-            ('gaia_ra', 'f8'), ('gaia_dec', 'f8'), ('ps1_mag', 'f4'), ('ps1_gicolor', 'f4'),
+            ('radiff', 'f8'), ('decdiff', 'f8'),
+            ('ps1_mag', 'f4'),
             ('gaia_g','f8'),('ps1_g','f8'),('ps1_r','f8'),('ps1_i','f8'),('ps1_z','f8'),
-            ('daofind_x', 'f4'), ('daofind_y', 'f4'),
-            ('exptime', '>f4'),
-            ('mycuts_x', 'f4'), ('mycuts_y', 'f4')]
+            ('exptime', '>f4')]
     stars = Table(np.zeros(nstars, dtype=cols))
     return stars
 

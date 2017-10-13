@@ -180,7 +180,7 @@ def test_main():
   #test_mosaic(inSurveyccds=False, ps1_only=False)
   
   # *-legacypipe.fits vs. survey-ccds
-  #test_decam(inSurveyccds=True, ps1_only=False)
+  test_decam(inSurveyccds=True, ps1_only=False)
   test_mosaic(inSurveyccds=True, ps1_only=False)
   
   # Same image for surveyccds and idl zeropoints
