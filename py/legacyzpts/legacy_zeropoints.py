@@ -1034,8 +1034,13 @@ class Measurer(object):
             print('CP Header: %s = ' % ccd_col,hdrVal[ccd_col])
             ccds[ccd_col]= hdrVal[ccd_col]
           else:
-            raise KeyError('Could not find %s, keys not in cp header:' \
-                           % ccd_col,self.cp_header_keys[ccd_col])
+            warning='Could not find %s, keys not in cp header: %s' % \
+                    (ccd_col,self.cp_header_keys[ccd_col])
+            if ccd_col == 'fwhm_cp':
+              print('WARNING: %s' % warning)
+              ccds[ccd_col]= np.nan
+            else:
+              raise KeyError(warning)
         hdr_fwhm= ccds['fwhm_cp'].data[0]
         #hdr_fwhm=-1
         #for fwhm_key in self.cp_fwhm_keys:

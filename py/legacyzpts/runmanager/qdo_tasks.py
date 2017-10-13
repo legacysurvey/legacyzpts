@@ -17,7 +17,7 @@ class TaskList(object):
     # Tasks: camera imagefn
     tasks= ['%s %s' % (camera,fn) 
             for fn in images]
-    writelist(tasks, 'tasks_%s.txt' % camera)
+    writelist(tasks, '%s_tasks.txt' % camera)
 
 
 if __name__ == '__main__':

@@ -91,11 +91,8 @@ class QdoList(object):
     for task_id in task_ids:
       try:
         task_obj= q.tasks(id= int(task_id))
-        if len(task.split(' ')) == 2:
-          camera,projfn = task.split(' ')
-        else:
-          projfn = task.split(' ')[0]
-        logfn= get_logfile(projfn.task, self.outdir)
+        camera,projfn = task_obj.task.split(' ')
+        logfn= get_logfile(projfn, self.outdir)
         rmcmd= "rm %s*" % logfn.replace('.log',"")
         if modify:
           task_obj.set_state(qdo.Task.PENDING)
@@ -127,6 +124,7 @@ class RunStatus(object):
         "ValueError: Inconsistent data column lengths: {0, 1}",
         "Photometry on 0 stars",
         "OSError: File not found: '/project/projectdirs/cosmo/work/ps1/cats/chunks-qz-star-v3/ps1-",
+        r'Could\ not\ find\ fwhm_cp,\ keys\ not\ in\ cp\ header.{1,20}FWHM'
         ]
 
   def get_tally(self):

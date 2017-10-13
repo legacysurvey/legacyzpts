@@ -62,7 +62,18 @@ That should print out a ton of info, showing the residuals in ccdzpt, skycounts,
 
 ### Production Runs
 
-We use "qdo" to manage the thousands of production jobs, but for testing it is useful to have a script to run a single job. There are also two ways to set up the compute node environment: the conda environment above or a Docker Image. This gives us 
+First make lists of images to process 
+```sh
+find /project/projectdirs/cosmo/staging/mosaicz/MZLS_CP/CP*/k4m*ooi*.fits.fz > mosiac_images.txt
+find /project/projectdirs/cosmo/staging/bok/BOK_CP/CP*/ksb*ooi*.fits.fz > 90prime_images.txt
+```
+then turn them into a list of QDO tasks
+```sh
+for camera in 90prime mosaic;do python $zpts_code/legacyzpts/py/legacyzpts/runmanager/qdo_tasks.py --camera ${camera} --imagelist ${camera}_images.txt;done
+```
+Note, youll need to do more than find the files to create the image lists. For example, cutting on date, selecting the right CP version of each file. This ipynb https://github.com/legacysurvey/legacyzpts/blob/master/doc/nb/image_list.ipynb shows how I did this for DR6.
+
+Next well setup QDO. We use "qdo" to manage the thousands of production jobs, but for testing it is useful to have a script to run a single job. There are also two ways to set up the compute node environment: the conda environment above or a Docker Image. This gives us 
  1) Single job
  * A) conda environment
  * B) Docker image
@@ -71,12 +82,6 @@ We use "qdo" to manage the thousands of production jobs, but for testing it is u
  * B) Docker image
 
 #### 1A)
-Make a text file listing all the absolute paths to the CP image filenames you want to run on.
-```
-find /project/projectdirs/cosmo/staging/mosaicz/MZLS_CP/CP*v2/k4m*ooi*.fits.fz > image_list.txt
-```
-Ill use eBOSS DR5 PS1 only zeropoints as an example. Anand gave me the list of CP images, so I renamed it to image_list.txt
-
 Run a `Serial job`, see
 https://github.com/legacysurvey/legacyzpts/blob/master/bin/slurm_job.sh
 
@@ -120,10 +125,10 @@ Coming soon
 #### 2A)
 Qdo
 
-Make a new queue. 
+Make a queue for your run and upload all tasks for all cameras to it
 ```
 qdo create zpts_eBOSS
-qdo load zpts_eBOSS image_list.txt
+for camera in decam mosaic 90prime;do qdo load zpts_eBOSS ${camera}_tasks.txt;done
 ```
 
 Get the job script, see
@@ -135,10 +140,7 @@ cp $zpts_code/legacyzpts/bin/qdo_job.sh ./
 
 Edit these lines:
 ```sh
-export camera=decam
 export name_for_run=ebossDR5
-export proj_dir=/project/projectdirs/cosmo/staging
-export scr_dir=/global/cscratch1/sd/kaylanb/zpts_out/${name_for_run}
 ```
 
 Now launch qdo workers
@@ -182,7 +184,7 @@ The types of errors found in the "failed" log files are listed. You can rerun al
 python $zpts_code/legacyzpts/py/legacyzpts/runmanager/status.py --qdo_quename zpts_eBOSS --outdir $zpts_code/$name_for_run --failed_message_to_pending "log not exist" --modify
 ```
 
-### QA on the exiting tables
+### QA on the existing tables
 Merge the tables youve made so far and do QA on them. The `*-zpt.fits` table has the majority of information so lets start there
 ```sh
 export file_list=done_zpt.txt
