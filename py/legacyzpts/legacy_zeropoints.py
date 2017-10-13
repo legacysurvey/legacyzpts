@@ -1190,11 +1190,11 @@ class Measurer(object):
                                 sharplo=0.2, sharphi=1.0, roundlo=-1.0, roundhi=1.0,
                                 exclude_border=False)
             obj= dao(self.img)
-            if len(obj) < 20:
+            if len(obj) < self.minstar:
                 dao.threshold /= 2.
                 obj= dao(self.img)
-                if len(obj) < 20:
-                    return self.return_on_error('< 20 sources detected',ccds=ccds)
+                if len(obj) < self.minstar:
+                    return self.return_on_error('dao found < %d sources' % self.minstar,ccds=ccds)
             t0= ptime('detect-stars',t0)
     
             # We for sure know that sources near edge could be bad
@@ -1211,6 +1211,8 @@ class Measurer(object):
             nobj = len(obj)
             print('{} sources detected with detection threshold {}-sigma minus edge sources'.format(nobj, self.det_thresh))
             ccds['nstarfind']= nobj
+            if nobj < self.minstar:
+                return self.return_on_error('after edge cuts < %d sources' % self.minstar,ccds=ccds)
     
             if save_xy:
               # Arrays of length number of all daophot found sources
@@ -1232,8 +1234,8 @@ class Measurer(object):
                                       self.match_radius/3600.0,
                                       nearest=True)
             t0= ptime('matching-for-photometer',t0)
-            if len(matched['photom_obj']) == 0:
-              return self.return_on_error('0 photom matched sources',ccds=ccds)
+            if len(matched['photom_obj']) < self.minstar:
+                return self.return_on_error('photom matched < %d sources' % self.minstar,ccds=ccds)
             stars_photom,err= self.do_Photometry(obj[matched['photom_obj']],
                                              ps1[matched['photom_ref']],
                                              ccds=ccds, save_xy=save_xy)
@@ -1259,6 +1261,8 @@ class Measurer(object):
                                    ccds=ccds)
             else:
               # Use gaia
+              if len(matched['astrom_obj']) < self.minstar:
+                  return self.return_on_error('astrom gaia matched < %d sources' % self.minstar,ccds=ccds,stars_photom=stars_photom)
               stars_astrom,err= self.do_Astrometry(
                                    obj[matched['astrom_obj']],
                                    ref_ra= ps1_gaia.gaia_ra[matched['astrom_ref']],
@@ -1999,6 +2003,7 @@ class DecamMeasurer(Measurer):
     def __init__(self, *args, **kwargs):
         super(DecamMeasurer, self).__init__(*args, **kwargs)
 
+        self.minstar= 5 # decstat.pro
         self.pixscale=0.262 
         self.camera = 'decam'
         self.ut = self.primhdr['TIME-OBS']
@@ -2088,6 +2093,7 @@ class Mosaic3Measurer(Measurer):
     def __init__(self, *args, **kwargs):
         super(Mosaic3Measurer, self).__init__(*args, **kwargs)
 
+        self.minstar=20 # mosstat.pro
         self.pixscale=0.262 # 0.260 is right, but mosstat.pro has 0.262
         self.camera = 'mosaic'
         self.band= self.get_band()
@@ -2142,6 +2148,7 @@ class NinetyPrimeMeasurer(Measurer):
     def __init__(self, *args, **kwargs):
         super(NinetyPrimeMeasurer, self).__init__(*args, **kwargs)
         
+        self.minstar=20 # bokstat.pro
         self.pixscale= 0.470 # 0.455 is correct, but mosstat.pro has 0.470
         self.camera = '90prime'
         self.band= self.get_band()
