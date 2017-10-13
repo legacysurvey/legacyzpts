@@ -66,6 +66,7 @@ Less important:
 
 ### (2) <image name>-legacyzpt.fits
 All of these are duplicates of #1 and are the minimal set required by our legacypipe/Tractor pipeline. Note, the names and units are different from above.
+
 | Name | Type | Units | Description
 | ------ | ------ | ------ | ------ |
 | camera | str | 
@@ -101,6 +102,7 @@ All of these are duplicates of #1 and are the minimal set required by our legacy
 | zpt | float32 | 
 
 ### (3) <image name>-star-photom.fits
+
 | Name | Type | Units | Description
 | ------ | ------ | ------ | ------ |
 | amplifier | int16 | 
@@ -142,6 +144,7 @@ All of these are duplicates of #1 and are the minimal set required by our legacy
 
 ### (4) <image name>-star-astrom.fits
 This table has most of the above plus these astrometric qauntities
+
 | Name | Type | Units | Description
 | ------ | ------ | ------ | ------ |
 | decdiff | float64 |
