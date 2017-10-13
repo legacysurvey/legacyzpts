@@ -134,7 +134,7 @@ def test_mosaic(inSurveyccds=False, ps1_only=False):
                             img_patt))
     assert(len(fns) > 0)
     cmd_line=['--camera', 'mosaic','--outdir', outdir, 
-              '--not_on_proj','--debug'] + extra_args + PS1_GAIA_ARGS
+              '--not_on_proj','--debug'] + extra_args #+ PS1_GAIA_ARGS
     run_and_check_outputs(image_list=fns, cmd_line=cmd_line,
                           outdir=outdir)
     #run_and_check_outputs(image_list=[fns[0]], cmd_line=cmd_line,
@@ -181,7 +181,7 @@ def test_main():
   
   # *-legacypipe.fits vs. survey-ccds
   #test_decam(inSurveyccds=True, ps1_only=False)
-  #test_mosaic(inSurveyccds=True, ps1_only=False)
+  test_mosaic(inSurveyccds=True, ps1_only=False)
   
   # Same image for surveyccds and idl zeropoints
   test_90prime(ps1_only=False)

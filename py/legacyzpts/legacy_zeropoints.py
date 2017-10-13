@@ -1232,6 +1232,8 @@ class Measurer(object):
                                       self.match_radius/3600.0,
                                       nearest=True)
             t0= ptime('matching-for-photometer',t0)
+            if len(matched['photom_obj']) == 0:
+              return self.return_on_error('0 photom matched sources',ccds=ccds)
             stars_photom,err= self.do_Photometry(obj[matched['photom_obj']],
                                              ps1[matched['photom_ref']],
                                              ccds=ccds, save_xy=save_xy)

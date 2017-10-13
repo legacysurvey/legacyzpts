@@ -153,10 +153,6 @@ if __name__ == "__main__":
         for cnt,fn in enumerate(fns):
             print('Reading %d/%d' % (cnt,len(fns)))
             t = fits_table(fn)
-            # Recompute "zpt", ignoring NaNs.
-            I = np.flatnonzero(np.isfinite(t.ccdzpt))
-            if len(I):
-                t.zpt[:] = np.median(t.ccdzpt[I])
             cats.append(t)
         cats= merge_tables(cats, columns='fillzero')
         if opt.fix_hdu:

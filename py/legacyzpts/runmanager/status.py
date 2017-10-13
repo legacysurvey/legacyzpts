@@ -71,8 +71,12 @@ class QdoList(object):
                     for a in q.tasks(state= getattr(qdo.Task, res.upper()))]
       # Corresponding log, slurm files 
       for task in tasks[res]:
+        if len(task.split(' ')) == 2:
+          camera,projfn = task.split(' ')
+        else:
+          projfn = task.split(' ')[0]
         # Logs
-        logfn= get_logfile(task, self.outdir)
+        logfn= get_logfile(projfn, self.outdir)
         logs[res].append( logfn )
     return tasks,ids,logs
 
@@ -87,7 +91,11 @@ class QdoList(object):
     for task_id in task_ids:
       try:
         task_obj= q.tasks(id= int(task_id))
-        logfn= get_logfile(task_obj.task, self.outdir)
+        if len(task.split(' ')) == 2:
+          camera,projfn = task.split(' ')
+        else:
+          projfn = task.split(' ')[0]
+        logfn= get_logfile(projfn.task, self.outdir)
         rmcmd= "rm %s*" % logfn.replace('.log',"")
         if modify:
           task_obj.set_state(qdo.Task.PENDING)
@@ -116,7 +124,9 @@ class RunStatus(object):
         'MemoryError',
         "FAIL: All stars elimated after 2nd round of cuts",
         "NameError: name 'imgfn_proj' is not defined",
-        "ValueError: Inconsistent data column lengths: {0, 1}"
+        "ValueError: Inconsistent data column lengths: {0, 1}",
+        "Photometry on 0 stars",
+        "OSError: File not found: '/project/projectdirs/cosmo/work/ps1/cats/chunks-qz-star-v3/ps1-",
         ]
 
   def get_tally(self):
