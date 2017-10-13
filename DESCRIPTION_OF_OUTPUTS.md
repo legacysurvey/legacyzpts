@@ -3,6 +3,7 @@ Four FITS data tables with the same columns and units for all three cameras.
 
 ### (1) <image name>-zpt.fits
 Most important:
+
 | Name | Type | Units | Description
 | ------ | ------ | ------ | ------ |
 | airmass | float32 | 
@@ -40,6 +41,7 @@ Most important:
 | zptavg | float32 | 
  
 Less important:
+
 | Name | Type | Units | Description
 | ------ | ------ | ------ | ------ |
 | ccdnum | int16 | 
