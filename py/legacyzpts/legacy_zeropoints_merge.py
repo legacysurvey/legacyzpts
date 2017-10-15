@@ -23,53 +23,15 @@ def read_lines(fn):
     return np.array( list(np.char.strip(lines)) )
 
 
-def apply_cuts(cat):
-    flag= defaultdict(dict)
-    for col in cat.get_columns():
-        # Nan
-        try:
-            flag['nan'][col]= np.isfinite(cat.get(col)) == False
-            print('col=%s has %d NaNs' % (col,np.where(flag[col])[0].size))
-        except TypeError:
-            pass
-        # Gt0
-        if col in ['zpt','fwhm']:
-            flag['lezero'][col]= cat.get(col) <= 0
-            print('col=%s has %d <= 0 values' % (col, sum(flag['lezero'][col])))
-    # cuts
-    keep= (np.ones(len(cat),bool) )
-    for key in flag['nan'].keys():
-        keep *= (flag['nan'][key] == False)
-        print('NaNs in', key, ':', sum(keep == True), 'keep=True,', sum(keep == False), 'keep=False')
-    num_nans= np.where(keep == False)[0].size
-    print('Removing %d NaNs' % num_nans)
-    for key in flag['lezero'].keys():
-        keep *= (flag['lezero'][key] == False)
-    num_lezero= np.where(keep == False)[0].size - num_nans
-    print('Removing %d LEzero' % num_lezero)
-    cat2= cat.copy()
-    cat2.cut(keep)
-    print('CCDs no cuts=%d, after cuts=%d' % (len(cat),len(cat2)))
-    return cat,cat2,flag
-
 def write_cat(cat, outname):
-    cat,cat2,flag= apply_cuts(cat)
-    # save
     outname= outname.replace('.fits','')
-    fn= outname+'_nocuts.fits'
-    fn2= outname+'.fits'
-    fn_flag= outname+'_flag.pickle'
-    for f in [fn,fn2,fn_flag]:
-        if os.path.exists(f):
-            os.remove(f)
+    fn= outname+'.fits'
+    if os.path.exists(fn):
+        os.remove(fn)
     cat.writeto(fn)
-    cat2.writeto(fn2)
-    with open(fn_flag,'wb') as foo:
-        pickle.dump(flag, foo)
-    print('Wrote Files')
-    for f in [fn,fn2]:
-        os.system('gzip --best ' + f)
-    print('gzipped files')
+    print('Wrote %s' % fn)
+    #os.system('gzip --best ' + fn)
+    #print('Converted to %s.gz' % fn)
 
 def fix_hdu_b4merge(zpt_one_exposure):
     import fitsio

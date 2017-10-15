@@ -48,11 +48,14 @@ class QdoList(object):
   Args:
     outdir: obiwan outdir, the slurm*.out files are there
     que_name: ie. qdo create que_name
+    skip_suceeded: number succeeded tasks can be very large for production runs, 
+      this slows down code so skip those tasks
   """
 
-  def __init__(self,outdir,que_name='zpts_eBOSS'):
+  def __init__(self,outdir,que_name='zpts_eBOSS',skip_suceeded=False):
     self.outdir= outdir
     self.que_name= que_name
+    self.skip_suceeded= skip_suceeded
 
   def get_tasks_logs(self):
     """get tasks, logs for the three types of qdo status
@@ -64,12 +67,16 @@ class QdoList(object):
     print('qdo Que: %s' % self.que_name)
     q = qdo.connect(self.que_name)
     for res in QDO_RESULT:
+      if self.skip_suceeded and res == 'succeeded':
+        continue
+      print('listing %s tasks' % res.upper())
       # List of "brick rs" for each QDO_RESULT  
       tasks[res] = [a.task 
                     for a in q.tasks(state= getattr(qdo.Task, res.upper()))]
       ids[res] = [a.id 
                     for a in q.tasks(state= getattr(qdo.Task, res.upper()))]
       # Corresponding log, slurm files 
+      print('logfiles for %s tasks' % res.upper())
       for task in tasks[res]:
         if len(task.split(' ')) == 2:
           camera,projfn = task.split(' ')
@@ -129,7 +136,7 @@ class RunStatus(object):
 
   def get_tally(self):
     tally= defaultdict(list)
-    for res in ['succeeded','failed','running']:
+    for res in self.tasks.keys():
       if res == 'succeeded':
         for log in self.logs[res]:
           with open(log,'r') as foo:
@@ -187,13 +194,15 @@ if __name__ == '__main__':
   parser = ArgumentParser()
   parser.add_argument('--qdo_quename',default='zpts_eBOSS',help='',required=False)
   parser.add_argument('--outdir',default='/global/cscratch1/sd/kaylanb/zpts_out/ebossDR5',help='',required=False)
+  parser.add_argument('--skip_suceeded',action='store_true',default=False,help='number succeeded tasks can be very large for production runs and slows down status code',required=False)
   parser.add_argument('--running_to_pending',action="store_true",default=False,help='set to reset all "running" jobs to "pending"')
   parser.add_argument('--failed_message_to_pending',action='store',default=None,help='set to message of failed tak and reset all failed tasks with that message to pending')
   parser.add_argument('--modify',action='store_true',default=False,help='set to actually reset the qdo tasks state AND to delete IFF running_to_pending or failed_message_to_pending are set')
   args = parser.parse_args()
   print(args)
 
-  Q= QdoList(args.outdir,que_name=args.qdo_quename)
+  Q= QdoList(args.outdir,que_name=args.qdo_quename,
+             skip_suceeded=args.skip_suceeded)
   tasks,ids,logs= Q.get_tasks_logs()
   
   # Write log fns so can inspect
