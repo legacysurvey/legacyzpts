@@ -8,22 +8,22 @@ Most important:
 | ------ | ------ | ------ | ------ |
 | airmass | float32 | ---- | airmass from CP header
 | camera | str | ---- | decam, mosaic, or 90prime
-| ccdname | str | ---- | 
+| ccdname | str | ---- | ccd[1-4] (mosaic,90prime) or [NS][0-9]{2} (decam)
 | date_obs | str | ---- | yyyy-mm-dd
 | dec | float64 | deg | WCS solution center of the CCD 
 | decoff | float32 | deg | Median of 3 sigma-clipped ("Gaia Dec" - dec)
 | decrms | float32 | deg | RMS of 3 sigma-clipped ("Gaia Dec" - dec)
-| decstddev | float32 | Std Dev of 3 sigma-clipped ("Gaia Dec" - dec)
+| decstddev | float32 | deg | Std Dev of 3 sigma-clipped ("Gaia Dec" - dec)
 | expnum | int32 | ---- | primary key
 | err_message | str | ---- | empty string if CCD was processed without issue
-| exptime | float32 | sec |
+| exptime | float32 | sec | exposure time
 | filter | str | ---- | g, r, or z
 | fwhm | float32 | pixel | measured 
 | fwhm_cp | float32 | pixel | taken from CP header
 | gain | float32 | e-/ADU | (Decam) average of GAINA, GAINB, (Mosaic) GAIN, (90prime) 1.4
 | ha | str | N/A | hh:mm:ss.ss
 | height | int16 | pixel | height of CCD
-| image_filename | str | ---- |
+| image_filename | str | ---- | path to image on NERSC machines, relative to /project/projectdirs/cosmo/staging
 | mjd_obs | float64 | ---- | Modified Julian Date
 | nmatch_astrom | int16 |  ---- | number of good detected sources that have good Gaia matches within 1''
 | nmatch_photom | int16 | ---- | number of good detected sources that have good PS1 matches within 1''
@@ -46,7 +46,7 @@ Less important:
 
 | Name | Type | Units | Description
 | ------ | ------ | ------ | ------ |
-| ccdnum | int16 | ---- | 
+| ccdnum | int16 | ---- | ccdname with alphabetic characters removed
 | cd1_1 | float32 | ---- | Astrometric solution
 | cd1_2 | float32 | ---- | Astrometric solution
 | cd2_1 | float32 | ---- | Astrometric solution 
@@ -57,7 +57,7 @@ Less important:
 | crval2 | float64 | ---- | Astrometric solution
 | dec_bore | float64 | deg | bore sight of telescope
 | expid | str | ---- | expnum + ccdname
-| image_hdu | int16 | ---- |
+| image_hdu | int16 | ---- | hdu number for the ccd in the image FITS file
 | object | str | ---- | type of exposure (object vs. flat)
 | propid | str | ---- | proposal id for the survey
 | ra_bore | float64 | deg | bore sight of telescope
@@ -105,19 +105,19 @@ There are two stars tables: <image name>-star-photom.fits and <image name>-star-
 
 | Name | Type | Units | Description
 | ------ | ------ | ------ | ------ |
-| ccdname | str | 
-| dec | float64 |
-| expnum | int32 | 
-| expid | str | 
-| exptime | float32 | 
-| filter | str |
-| gain | float32 | 
-| image_filename | str | 
-| image_hdu | int16 | 
-| nmatch | int16 | 
-| ra | float64 |
-| x | float64 | pixel | location of detection source on CCD
-| y | float64 | location of detection source on CCD
+| ccdname | str | ---- | same as above
+| dec | float64 | deg | declination of detected source
+| expnum | int32 | ---- | same as above
+| expid | str | ---- | same as above
+| exptime | float32 | sec | same as above
+| filter | str | ---- | same as above
+| gain | float32 | ---- | same as above
+| image_filename | str | ---- | same as above
+| image_hdu | int16 | ---- | same as above
+| nmatch | int16 | ---- | number of good detected sources with good PS1 (stars-photom.fits) or Gaia (stars-astrom.fits) 1'' matches
+| ra | float64 | deg | right ascension of detected source
+| x | float64 | pixel | x-position of detected source, [0,width]
+| y | float64 | pixel | y-position of detected source, [0,height]
 
 ##### (3a) <image name>-star-photom.fits
 The photom table has additional photometry information for 1 as matched PS1 sources

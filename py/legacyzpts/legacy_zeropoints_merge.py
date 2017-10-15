@@ -25,17 +25,17 @@ def read_lines(fn):
 
 def apply_cuts(cat):
     flag= defaultdict(dict)
-    # NaN
     for col in cat.get_columns():
+        # Nan
         try:
             flag['nan'][col]= np.isfinite(cat.get(col)) == False
             print('col=%s has %d NaNs' % (col,np.where(flag[col])[0].size))
         except TypeError:
             pass
-    # Gt0
-    for col in ['zpt','fwhm']:
-        flag['lezero'][col]= cat.get(col) <= 0
-        print('col=%s has %d <= 0 values' % (col, sum(flag['lezero'][col])))
+        # Gt0
+        if col in ['zpt','fwhm']:
+            flag['lezero'][col]= cat.get(col) <= 0
+            print('col=%s has %d <= 0 values' % (col, sum(flag['lezero'][col])))
     # cuts
     keep= (np.ones(len(cat),bool) )
     for key in flag['nan'].keys():
