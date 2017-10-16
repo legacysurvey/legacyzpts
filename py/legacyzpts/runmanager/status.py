@@ -131,7 +131,8 @@ class RunStatus(object):
         "ValueError: Inconsistent data column lengths: {0, 1}",
         "Photometry on 0 stars",
         "OSError: File not found: '/project/projectdirs/cosmo/work/ps1/cats/chunks-qz-star-v3/ps1-",
-        r'Could\ not\ find\ fwhm_cp,\ keys\ not\ in\ cp\ header.{1,20}FWHM'
+        r'Could\ not\ find\ fwhm_cp,\ keys\ not\ in\ cp\ header.{1,20}FWHM',
+        r'TAN\ header:\ expected\ CTYPE1\ =\ RA---TAN,.*got\ CTYPE1\ =\ "RA---ZPX"'
         ]
 
   def get_tally(self):

@@ -635,6 +635,15 @@ def get_bitmask_fn(imgfn):
         raise ValueError('bad imgfn? no ooi or oki: %s' % imgfn)
     return fn
 
+def get_90prime_expnum(primhdr):
+    """converts 90prime header key DTACQNAM into the unique exposure number"""
+    # /descache/bass/20160710/d7580.0144.fits --> 75800144
+    base= (os.path.basename(primhdr['DTACQNAM'])
+           .replace('.fits','')
+           .replace('.fz',''))
+    return int( re.sub(r'([a-z]+|\.+)','',base) )
+
+
 class Measurer(object):
     def __init__(self, fn, aprad=3.5, skyrad_inner=7.0, skyrad_outer=10.0,
                  det_thresh=8., match_radius=3.,sn_min=None,sn_max=None,
@@ -725,9 +734,7 @@ class Measurer(object):
         if kwargs['camera'] in ['decam','mosaic']:
           self.expnum= self.primhdr['EXPNUM']
         elif kwargs['camera'] == '90prime':
-          # /descache/bass/20160710/d7580.0144.fits --> 75800144
-          base= os.path.basename(self.primhdr['DTACQNAM']).replace('.fits','')
-          self.expnum= int( re.sub(r'([a-z]+|\.+)','',base) )
+          self.expnum= get_90prime_expnum(self.primhdr)
         print('CP Header: EXPNUM = ',self.expnum)
         self.obj = self.primhdr['OBJECT']
 

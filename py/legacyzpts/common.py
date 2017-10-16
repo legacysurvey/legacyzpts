@@ -13,6 +13,8 @@ from glob import glob
 from collections import defaultdict
 import json
 
+from legacyzpts.legacy_zeropoints import get_90prime_expnum 
+
 try:
     from astrometry.util.fits import fits_table, merge_tables
 except ImportError:
@@ -234,5 +236,58 @@ def insert_fwhmcp():
   #leg.cut(np.isfinite(leg.fwhm) == False)
   #return _insert_fwhmcp(leg,'fwhmcp_where_nan.json')  
   leg.cut(np.isfinite(leg.fwhm))
-  leg=leg[:500]
+  leg=leg[map_90prime_images_to_expnum:500]
   return _insert_fwhmcp(leg,'fwhmcp_where_real.json')  
+
+
+def map_90prime_images_to_expnum(imagelist):
+  """reads 90prime headers and returns expnums
+  
+  Args:
+    imagelist: text file listing abs path to 90prime files
+    
+  Returns:
+    dict
+  """
+  fns= np.loadtxt(imagelist,dtype=str)
+  expnum= {get_90prime_expnum(
+            fitsio.read_header(fn, 0)):os.path.join(fn.split('/')[-2],fn.split('/')[-1])
+           for fn in fns}
+  with open('all_expnum_img.txt','w') as foo:
+    for key in expnum.keys(): 
+      foo.write('%s %s\n' % (key,expnum[key]))
+  print('Wrote all_expnum_img.txt')
+  return expnum
+
+def fall2015_90prime_images(tiles_fn,imageliset):
+  """returns science-able 90prime Fall 2015 images given bass_tiles file and bass image list"""
+  tiles= fits_table(tiles_fn)
+  g_tiles= tiles[((tiles.g_date == '2015-11-12') |
+                  (tiles.g_date == '2015-11-13'))]
+  r_tiles= tiles[((tiles.r_date == '2015-11-12') |
+                  (tiles.r_date == '2015-11-13'))]
+  expnums= list(g_tiles.g_expnum) + list(r_tiles.r_expnum)
+  exp2img= map_90prime_images_to_expnum(imageliset)
+  ={}
+  for expnum in expnums:
+    if expnum in exp2img.keys():
+      final[expnum]= exp2img[expnum]
+    else:
+      print('%s not in exp2img' % expnum)
+  return final
+
+
+def run():
+  #map_90prime_images_to_expnum('/global/cscratch1/sd/kaylanb/images.txt')
+  final= fall2015_90prime_images('/global/cscratch1/sd/kaylanb/svn_90prime/obstatus/bass-tiles_obstatus.fits','/global/cscratch1/sd/kaylanb/90prime_fall2015.txt')
+  for key in final.keys(): print(key,final[key])
+  with open('final_expnum_img.txt','w') as foo:
+    for key in final.keys(): 
+      foo.write('%s %s\n' % (key,final[key]))
+  print('Wrote final_expnum_img.txt')
+
+
+
+
+
+
