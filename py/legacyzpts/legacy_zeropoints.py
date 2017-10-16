@@ -1145,9 +1145,9 @@ class Measurer(object):
         if len(ps1_gaia):
             ps1_gaia.cut( self.get_ps1_cuts(ps1_gaia) )
             # Add gaia ra,dec
-            ps1_gaia.set('gaia_dec', ps1_gaia.dec_ok - ps1_gaia.ddec/3600000.)
-            ps1_gaia.set('gaia_ra', ps1_gaia.ra_ok - 
-                         ps1_gaia.dra/3600000./np.cos(np.deg2rad( ps1_gaia.gaia_dec )))
+            ps1_gaia.gaia_dec = ps1_gaia.dec_ok - ps1_gaia.ddec/3600000.
+            ps1_gaia.gaia_ra  = ps1_gaia.ra_ok - 
+                         ps1_gaia.dra/3600000./np.cos(np.deg2rad(ps1_gaia.gaia_dec))
             # same for ps1_gaia -- but clip the color term because we don't clip the g-i color.
             colorterm = self.colorterm_ps1_to_observed(ps1_gaia.median, self.band)
             ps1_gaia.legacy_survey_mag = ps1_gaia.median[:, ps1band] + np.clip(colorterm, -1., +1.)
@@ -1315,17 +1315,19 @@ class Measurer(object):
 
             # PS1 for photometry
 
-            # FIXME --- check this
+            # Initial flux estimate, from nominal zeropoint
             flux0 = 10.**((zp0 - ps1.legacy_survey_mag) / 2.5) * exptime
+            # Inverse-error of sky image
             ierr = 1.0/np.sqrt(sky_img)
+            # Run tractor fitting of the PS1 stars, using the PsfEx model.
             phot = self.tractor_fit_sources(ps1.ra_ok, ps1.dec_ok, flux0,
                                             img_sub_sky, ierr, psf)
             ref = ps1[phot.iref]
             phot.delete_column('iref')
-            ref.rename('ra_ok', 'ra')
+            ref.rename('ra_ok',  'ra')
             ref.rename('dec_ok', 'dec')
 
-            phot.raoff = (ref.ra - phot.ra_fit) * np.cos(np.deg2rad(ref.dec)) * 3600.
+            phot.raoff  = (ref.ra  - phot.ra_fit ) * 3600. * np.cos(np.deg2rad(ref.dec))
             phot.decoff = (ref.dec - phot.dec_fit) * 3600.
             phot.psfmag = -2.5*np.log10(phot.flux / exptime) + zp0
     
@@ -1343,10 +1345,10 @@ class Measurer(object):
             kext = self.extinction(self.band)
             transp = 10.**(-0.4 * (zp0 - zptmed - kext * (airmass - 1.0)))
     
-            print('Tractor PsfEx-fitting results for PS1:')
-            print('RA, Dec offsets (arcsec) relative to Gaia: %.4f, %.4f' %
+            print('Tractor PsfEx-fitting results for PS1 (photometry):')
+            print('RA, Dec offsets (arcsec) relative to PS1: %.4f, %.4f' %
                   (np.median(phot.raoff), np.median(phot.decoff)))
-            print('RA, Dec stddev (arcsec) relative to Gaia: %.4f, %.4f' %
+            print('RA, Dec stddev (arcsec): %.4f, %.4f' %
                   (np.std(phot.raoff), np.std(phot.decoff)))
             print('Mag offset: %.4f' % dmagmed)
             print('Scatter: %.4f' % dmagsig)
@@ -1357,7 +1359,7 @@ class Measurer(object):
             for c in ['x0','y0','x1','y1','flux','raoff','decoff']:
                 phot.set(c, phot.get(c).astype(np.float32))
 
-            phot.ra_ps1 = ref.ra
+            phot.ra_ps1  = ref.ra
             phot.dec_ps1 = ref.dec
             phot.ps1_mag = ref.legacy_survey_mag
             for band in 'griz':
@@ -1394,7 +1396,8 @@ class Measurer(object):
                 stars_astrom = None
             else:
                 # Fast-track "phot" results within 1".
-
+                # That is, match the "ps1_gaia" sample with the sample that we just fit during the photometry phase,
+                # and use those results for astrometry, rather than re-fitting the same stars.
                 I,J,d = match_radec(ps1_gaia.gaia_ra, ps1_gaia.gaia_dec,
                                     phot.ra_fit, phot.dec_fit, 1./3600.,
                                     nearest=True)
@@ -1406,7 +1409,15 @@ class Measurer(object):
                     photmatch = fits_table()
                     for col in ['x0','y0','x1','y1','flux','psfsum','ra_fit','dec_fit']:
                         photmatch.set(col, phot.get(col)[J])
+                    # Update the "x0","y0" columns to be the X,Y
+                    # coords from pushing the *gaia* RA,Decs through
+                    # the WCS.
+                    xx,yy = self.wcs.radec2pixelxy(photref.gaia_ra, photref.gaia_dec)
+                    photmatch.x0 = xx - 1.
+                    photmatch.y0 = yy - 1.
+                    # Use as reference catalog the PS1-Gaia sources that matched the PS1 stars.
                     photref = ps1_gaia[I]
+                    # Now take the PS1-Gaia stars that didn't have a match and fit them.
                     unmatched = np.ones(len(ps1_gaia), bool)
                     unmatched[I] = False
                     ps1_gaia.cut(unmatched)
@@ -1414,6 +1425,7 @@ class Measurer(object):
                     refs.append(photref)
 
                 if len(ps1_gaia):
+                    # If there were PS1-Gaia stars that didn't match to PS1, fit them now...
                     flux0 = 10.**((zp0 - ps1_gaia.legacy_survey_mag) / 2.5) * exptime
                     astrom = self.tractor_fit_sources(ps1_gaia.gaia_ra, ps1_gaia.gaia_dec, flux0,
                                                       img_sub_sky, ierr, psf)
@@ -1431,10 +1443,10 @@ class Measurer(object):
                     astrom = fits[0]
                     ref = refs[0]
 
-                ref.rename('gaia_ra', 'ra')
+                ref.rename('gaia_ra',  'ra')
                 ref.rename('gaia_dec', 'dec')
 
-                astrom.raoff = (ref.ra - astrom.ra_fit) * np.cos(np.deg2rad(ref.dec)) * 3600.
+                astrom.raoff  = (ref.ra  - astrom.ra_fit ) * 3600. * np.cos(np.deg2rad(ref.dec))
                 astrom.decoff = (ref.dec - astrom.dec_fit) * 3600.
                 astrom.psfmag = -2.5*np.log10(astrom.flux / exptime) + zp0
 
@@ -1449,11 +1461,10 @@ class Measurer(object):
                 print('Tractor PsfEx-fitting results for PS1/Gaia:')
                 print('RA, Dec offsets (arcsec) relative to Gaia: %.4f, %.4f' %
                       (np.median(astrom.raoff), np.median(astrom.decoff)))
-                print('RA, Dec stddev (arcsec) relative to Gaia: %.4f, %.4f' %
+                print('RA, Dec stddev (arcsec): %.4f, %.4f' %
                       (np.std(astrom.raoff), np.std(astrom.decoff)))
                 print('Mag offset: %.4f' % dmagmed)
                 print('Scatter: %.4f' % dmagsig)
-                
                 print('Number stars used for zeropoint median %d' % ndmag)
                 print('Zeropoint %.4f' % zptmed)
                 print('Transparency %.4f' % transp)
@@ -1461,7 +1472,7 @@ class Measurer(object):
                 for c in ['x0','y0','x1','y1','flux','raoff','decoff']:
                     astrom.set(c, astrom.get(c).astype(np.float32))
                 
-                astrom.ra_gaia = ref.ra
+                astrom.ra_gaia  = ref.ra
                 astrom.dec_gaia = ref.dec
                 astrom.phot_g_mean_mag = ref.phot_g_mean_mag
                 # Convert to astropy Table
