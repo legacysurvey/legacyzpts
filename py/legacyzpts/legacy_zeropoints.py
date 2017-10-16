@@ -1146,8 +1146,8 @@ class Measurer(object):
             ps1_gaia.cut( self.get_ps1_cuts(ps1_gaia) )
             # Add gaia ra,dec
             ps1_gaia.gaia_dec = ps1_gaia.dec_ok - ps1_gaia.ddec/3600000.
-            ps1_gaia.gaia_ra  = ps1_gaia.ra_ok - 
-                         ps1_gaia.dra/3600000./np.cos(np.deg2rad(ps1_gaia.gaia_dec))
+            ps1_gaia.gaia_ra  = (ps1_gaia.ra_ok - 
+                         ps1_gaia.dra/3600000./np.cos(np.deg2rad(ps1_gaia.gaia_dec)))
             # same for ps1_gaia -- but clip the color term because we don't clip the g-i color.
             colorterm = self.colorterm_ps1_to_observed(ps1_gaia.median, self.band)
             ps1_gaia.legacy_survey_mag = ps1_gaia.median[:, ps1band] + np.clip(colorterm, -1., +1.)
