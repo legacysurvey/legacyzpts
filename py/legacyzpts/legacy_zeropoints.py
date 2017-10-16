@@ -1409,14 +1409,15 @@ class Measurer(object):
                     photmatch = fits_table()
                     for col in ['x0','y0','x1','y1','flux','psfsum','ra_fit','dec_fit']:
                         photmatch.set(col, phot.get(col)[J])
+                    # Use as reference catalog the PS1-Gaia sources that matched the PS1 stars.
+                    photref = ps1_gaia[I]
                     # Update the "x0","y0" columns to be the X,Y
                     # coords from pushing the *gaia* RA,Decs through
                     # the WCS.
-                    xx,yy = self.wcs.radec2pixelxy(photref.gaia_ra, photref.gaia_dec)
+                    ok,xx,yy = self.wcs.radec2pixelxy(photref.gaia_ra, photref.gaia_dec)
                     photmatch.x0 = xx - 1.
                     photmatch.y0 = yy - 1.
-                    # Use as reference catalog the PS1-Gaia sources that matched the PS1 stars.
-                    photref = ps1_gaia[I]
+
                     # Now take the PS1-Gaia stars that didn't have a match and fit them.
                     unmatched = np.ones(len(ps1_gaia), bool)
                     unmatched[I] = False
