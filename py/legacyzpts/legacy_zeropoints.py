@@ -959,7 +959,7 @@ class Measurer(object):
         ccds['zpt']= np.nan
         return ccds, stars_photom, stars_astrom
 
-    def run(self, ext=None, save_xy=False, psfex=False):
+    def run(self, ext=None, save_xy=False, psfex=False, splinesky=False):
         """Computes statistics for 1 CCD
         
         Args: 
@@ -1313,15 +1313,40 @@ class Measurer(object):
             psf = self.get_psfex_model()
             ccds['fwhm'] = psf.fwhm
 
+
+            fit_img = img_sub_sky
+
+            if splinesky:
+                sky = self.get_splinesky()
+                print('Instantiating and subtracting sky model')
+                skymod = np.zeros_like(self.img)
+                sky.addTo(skymod)
+                # We apply the gain to the image...
+                skymod *= self.gain
+
+                print('Old sky_img: avg', np.mean(sky_img), 'min/max', np.min(sky_img), np.max(sky_img))
+                print('Skymod: avg', np.mean(skymod), 'min/max', skymod.min(), skymod.max())
+
+                fit_img = self.img - skymod
+
+
             # PS1 for photometry
 
             # Initial flux estimate, from nominal zeropoint
             flux0 = 10.**((zp0 - ps1.legacy_survey_mag) / 2.5) * exptime
             # Inverse-error of sky image
             ierr = 1.0/np.sqrt(sky_img)
+
+            # plt.clf()
+            # plt.hist((fit_img * ierr).ravel(), range=(-10,10), bins=100)
+            # plt.xlabel('Image pixel chi')
+            # fn = 'chi-%i-%s.png' % (self.expnum, self.ccdname)
+            # plt.savefig(fn)
+            # print('Wrote', fn)
+
             # Run tractor fitting of the PS1 stars, using the PsfEx model.
             phot = self.tractor_fit_sources(ps1.ra_ok, ps1.dec_ok, flux0,
-                                            img_sub_sky, ierr, psf)
+                                            fit_img, ierr, psf)
             ref = ps1[phot.iref]
             phot.delete_column('iref')
             ref.rename('ra_ok',  'ra')
@@ -1534,6 +1559,56 @@ class Measurer(object):
             t0= ptime('made-plots',t0)
         return ccds, stars_photom, stars_astrom
 
+    def get_splinesky(self):
+        # Subtract spline sky.
+        import tractor
+        from tractor.utils import get_class_from_name
+
+        expstr = '%08i' % self.expnum
+        # Look for merged file
+        fn = os.path.join(self.calibdir, self.camera, 'splinesky-merged', expstr[:5],
+                          '%s-%s.fits' % (self.camera, expstr))
+        print('Looking for file', fn)
+        if os.path.exists(fn):
+            T = fits_table(fn)
+            I, = np.nonzero((T.expnum == self.expnum) *
+                            np.array([c.strip() == self.ext for c in T.ccdname]))
+            if len(I) == 1:
+                Ti = T[I[0]]
+
+                # Remove any padding
+                h,w = Ti.gridh, Ti.gridw
+                Ti.gridvals = Ti.gridvals[:h, :w]
+                Ti.xgrid = Ti.xgrid[:w]
+                Ti.ygrid = Ti.ygrid[:h]
+
+                skyclass = Ti.skyclass.strip()
+                clazz = get_class_from_name(skyclass)
+                fromfits = getattr(clazz, 'from_fits_row')
+                sky = fromfits(Ti)
+                return sky
+
+        # Look for single-CCD file
+        fn = os.path.join(self.calibdir, self.camera, 'splinesky', expstr[:5], expstr,
+                          '%s-%s-%s.fits' % (self.camera, expstr, self.ext))
+        print('Reading file', fn)
+
+        hdr = fitsio.read_header(fn)
+        try:
+            skyclass = hdr['SKY']
+        except NameError:
+            raise NameError('SKY not in header: skyfn=%s, imgfn=%s' % (fn,self.imgfn))
+        clazz = get_class_from_name(skyclass)
+
+        if getattr(clazz, 'from_fits', None) is not None:
+            fromfits = getattr(clazz, 'from_fits')
+            sky = fromfits(fn, hdr)
+        else:
+            fromfits = getattr(clazz, 'fromFitsHeader')
+            sky = fromfits(hdr, prefix='SKY_')
+
+        return sky
+
     def tractor_fit_sources(self, ref_ra, ref_dec, ref_flux, img, ierr,
                             psf, normalize_psf=True):
         import tractor
@@ -1724,7 +1799,7 @@ class Measurer(object):
         stars_photom = _stars_table(nstars= ccds['nmatch_photom'])
         stars_photom['apmag'] = phot['apmags'][final_cut]
         stars_photom['ps1_mag'] = ps1.legacy_survey_mag[final_cut]
- 
+
         if save_xy:
           # Save ps1_mag and apmag for every matched source
           all_stars=fits_table()
@@ -2375,8 +2450,9 @@ def measure_image(img_fn, **measureargs):
     all_stars_photom = []
     all_stars_astrom = []
     psfex = measureargs['psf']
+    splinesky = measureargs['splinesky']
     for ext in extlist:
-        ccds, stars_photom, stars_astrom = measure.run(ext, psfex=psfex, save_xy=measureargs['debug'])
+        ccds, stars_photom, stars_astrom = measure.run(ext, psfex=psfex, splinesky=splinesky, save_xy=measureargs['debug'])
         t0= ptime('measured-ext-%s' % ext,t0)
 
         if ccds is not None:
@@ -2568,6 +2644,8 @@ def get_parser():
                         help='set to > 1 if using legacy-zeropoints-mpiwrapper.py')
     parser.add_argument('--psf', default=False, action='store_true',
                         help='Use PsfEx model for astrometry & photometry')
+    parser.add_argument('--splinesky', default=False, action='store_true',
+                        help='Use spline sky model for sky subtraction?')
     parser.add_argument('--calibdir', default=None, action='store',
                         help='if None will use LEGACY_SURVEY_DIR/calib, e.g. /global/cscratch1/sd/desiproc/dr5-new/calib')
     return parser
