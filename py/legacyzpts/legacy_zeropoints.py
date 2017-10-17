@@ -1329,7 +1329,16 @@ class Measurer(object):
 
             phot.raoff  = (ref.ra  - phot.ra_fit ) * 3600. * np.cos(np.deg2rad(ref.dec))
             phot.decoff = (ref.dec - phot.dec_fit) * 3600.
-            phot.psfmag = -2.5*np.log10(phot.flux / exptime) + zp0
+
+            ok, = np.nonzero(phot.flux > 0)
+            phot.psfmag = np.zeros(len(phot), np.float32)
+            phot.psfmag[ok] = -2.5*np.log10(phot.flux[ok] / exptime) + zp0
+            phot.dpsfmag = np.zeros_like(phot.psfmag)
+            phot.dpsfmag[ok] = np.abs((-2.5 / np.log(10.)) * phot.dflux[ok] / phot.flux[ok])
+
+            H,W = self.bitmask.shape
+            phot.bitmask = self.bitmask[np.clip(phot.y1, 0, H-1).astype(int),
+                                        np.clip(phot.x1, 0, W-1).astype(int)]
     
             dmagall = ref.legacy_survey_mag - phot.psfmag
             if not np.all(np.isfinite(dmagall)):
@@ -1345,9 +1354,12 @@ class Measurer(object):
             kext = self.extinction(self.band)
             transp = 10.**(-0.4 * (zp0 - zptmed - kext * (airmass - 1.0)))
     
+            raoff = np.median(phot.raoff)
+            decoff = np.median(phot.decoff)
+
             print('Tractor PsfEx-fitting results for PS1 (photometry):')
             print('RA, Dec offsets (arcsec) relative to PS1: %.4f, %.4f' %
-                  (np.median(phot.raoff), np.median(phot.decoff)))
+                  (raoff, decoff))
             print('RA, Dec stddev (arcsec): %.4f, %.4f' %
                   (np.std(phot.raoff), np.std(phot.decoff)))
             print('Mag offset: %.4f' % dmagmed)
@@ -1355,8 +1367,9 @@ class Measurer(object):
             print('Number stars used for zeropoint median %d' % ndmag)
             print('Zeropoint %.4f' % zptmed)
             print('Transparency %.4f' % transp)
-    
-            for c in ['x0','y0','x1','y1','flux','raoff','decoff']:
+
+            for c in ['x0','y0','x1','y1','flux','raoff','decoff', 'psfmag',
+                      'dflux','dx','dy']:
                 phot.set(c, phot.get(c).astype(np.float32))
 
             phot.ra_ps1  = ref.ra
@@ -1366,15 +1379,22 @@ class Measurer(object):
                 i = ps1cat.ps1band.get(band, None)
                 if i is None:
                     continue
-                phot.set('ps1_'+band, ref.median[:,i])
+                phot.set('ps1_'+band, ref.median[:,i].astype(np.float32))
+            # Save CCD-level information in the per-star table.
+            phot.ccd_raoff  = np.zeros(len(phot), np.float32) + raoff
+            phot.ccd_decoff = np.zeros(len(phot), np.float32) + decoff
+            phot.ccd_phoff  = np.zeros(len(phot), np.float32) + dmagmed
+            phot.ccd_zpt    = np.zeros(len(phot), np.float32) + zptmed
+            phot.expnum = np.zeros(len(phot), np.int32) + self.expnum
+            phot.ccdname = np.array([self.ccdname] * len(phot))
 
             # Convert to astropy Table
             cols = phot.get_columns()
             stars_photom = Table([phot.get(c) for c in cols], names=cols)
 
             # Add to the zeropoints table
-            ccds['raoff'] = np.median(phot.raoff)
-            ccds['decoff'] = np.median(phot.decoff)
+            ccds['raoff']  = raoff
+            ccds['decoff'] = decoff
             ccds['rastddev'] = np.std(phot.raoff)
             ccds['decstddev'] = np.std(phot.decoff)
             ra_clip, _, _ = sigmaclip(phot.raoff, low=3., high=3.)
@@ -1407,7 +1427,8 @@ class Measurer(object):
                 refs = []
                 if len(I):
                     photmatch = fits_table()
-                    for col in ['x0','y0','x1','y1','flux','psfsum','ra_fit','dec_fit']:
+                    for col in ['x0','y0','x1','y1','flux','psfsum','ra_fit','dec_fit',
+                                'dflux','dx','dy']:
                         photmatch.set(col, phot.get(col)[J])
                     # Use as reference catalog the PS1-Gaia sources that matched the PS1 stars.
                     photref = ps1_gaia[I]
@@ -1417,19 +1438,19 @@ class Measurer(object):
                     ok,xx,yy = self.wcs.radec2pixelxy(photref.gaia_ra, photref.gaia_dec)
                     photmatch.x0 = xx - 1.
                     photmatch.y0 = yy - 1.
+                    fits.append(photmatch)
+                    refs.append(photref)
 
                     # Now take the PS1-Gaia stars that didn't have a match and fit them.
                     unmatched = np.ones(len(ps1_gaia), bool)
                     unmatched[I] = False
                     ps1_gaia.cut(unmatched)
-                    fits.append(photmatch)
-                    refs.append(photref)
 
                 if len(ps1_gaia):
                     # If there were PS1-Gaia stars that didn't match to PS1, fit them now...
                     flux0 = 10.**((zp0 - ps1_gaia.legacy_survey_mag) / 2.5) * exptime
                     astrom = self.tractor_fit_sources(ps1_gaia.gaia_ra, ps1_gaia.gaia_dec, flux0,
-                                                      img_sub_sky, ierr, psf)
+                                                      fit_img, ierr, psf)
                     if len(astrom):
                         ref = ps1_gaia[astrom.iref]
                         astrom.delete_column('iref')
@@ -1449,7 +1470,12 @@ class Measurer(object):
 
                 astrom.raoff  = (ref.ra  - astrom.ra_fit ) * 3600. * np.cos(np.deg2rad(ref.dec))
                 astrom.decoff = (ref.dec - astrom.dec_fit) * 3600.
-                astrom.psfmag = -2.5*np.log10(astrom.flux / exptime) + zp0
+
+                ok, = np.nonzero(astrom.flux > 0)
+                astrom.psfmag = np.zeros(len(astrom), np.float32)
+                astrom.psfmag[ok] = -2.5*np.log10(astrom.flux[ok] / exptime) + zp0
+                astrom.dpsfmag = np.zeros_like(astrom.psfmag)
+                astrom.dpsfmag[ok] = np.abs((-2.5 / np.log(10.)) * astrom.dflux[ok] / astrom.flux[ok])
 
                 dmagall = ref.legacy_survey_mag - astrom.psfmag
                 dmag, _, _ = sigmaclip(dmagall, low=2.5, high=2.5)
@@ -1458,10 +1484,13 @@ class Measurer(object):
                 dmagsig = np.std(dmag)
                 zptmed = zp0 + dmagmed
                 transp = 10.**(-0.4 * (zp0 - zptmed - kext * (airmass - 1.0)))
+
+                raoff = np.median(astrom.raoff)
+                decoff = np.median(astrom.decoff)
         
                 print('Tractor PsfEx-fitting results for PS1/Gaia:')
                 print('RA, Dec offsets (arcsec) relative to Gaia: %.4f, %.4f' %
-                      (np.median(astrom.raoff), np.median(astrom.decoff)))
+                      (raoff, decoff))
                 print('RA, Dec stddev (arcsec): %.4f, %.4f' %
                       (np.std(astrom.raoff), np.std(astrom.decoff)))
                 print('Mag offset: %.4f' % dmagmed)
@@ -1470,19 +1499,26 @@ class Measurer(object):
                 print('Zeropoint %.4f' % zptmed)
                 print('Transparency %.4f' % transp)
 
-                for c in ['x0','y0','x1','y1','flux','raoff','decoff']:
+                for c in ['x0','y0','x1','y1','flux','raoff','decoff',
+                          'dflux','dx','dy']:
                     astrom.set(c, astrom.get(c).astype(np.float32))
-                
+
                 astrom.ra_gaia  = ref.ra
                 astrom.dec_gaia = ref.dec
                 astrom.phot_g_mean_mag = ref.phot_g_mean_mag
+                # Save CCD-level information in the per-star table.
+                astrom.ccd_raoff  = np.zeros(len(astrom), np.float32) + raoff
+                astrom.ccd_decoff = np.zeros(len(astrom), np.float32) + decoff
+                astrom.expnum = np.zeros(len(astrom), np.int32) + self.expnum
+                astrom.ccdname = np.array([self.ccdname] * len(astrom))
+
                 # Convert to astropy Table
                 cols = astrom.get_columns()
                 stars_astrom = Table([astrom.get(c) for c in cols], names=cols)
 
                 # Update the zeropoints table
-                ccds['raoff'] = np.median(astrom.raoff)
-                ccds['decoff'] = np.median(astrom.decoff)
+                ccds['raoff']  = raoff
+                ccds['decoff'] = decoff
                 ccds['rastddev'] = np.std(astrom.raoff)
                 ccds['decstddev'] = np.std(astrom.decoff)
                 ra_clip, _, _ = sigmaclip(astrom.raoff, low=3., high=3.)
@@ -1507,7 +1543,20 @@ class Measurer(object):
             ps = PlotSequence('astromfit')
 
         print('Fitting positions & fluxes of %i stars' % len(ref_ra))
-        Istar,X0,X1,Y0,Y1,FLUX,psfsum = [],[],[],[],[],[],[]
+
+        cal = fits_table()
+        # These x0,y0,x1,y1 are zero-indexed coords.
+        cal.x0 = []
+        cal.y0 = []
+        cal.x1 = []
+        cal.y1 = []
+        cal.flux = []
+        cal.dx = []
+        cal.dy = []
+        cal.dflux = []
+        cal.psfsum = []
+        cal.iref = []
+
         for istar in range(len(ref_ra)):
             ok,x,y = self.wcs.radec2pixelxy(ref_ra[istar], ref_dec[istar])
             x -= 1
@@ -1531,16 +1580,16 @@ class Measurer(object):
                 s = np.sum(subpsf.img)
                 # print('Normalizing PsfEx model with sum:', s)
                 subpsf.img /= s
-                psfsum.append(s)
+                cal.psfsum.append(s)
             else:
-                psfsum.append(1.) # ??
+                cal.psfsum.append(1.) # ??
             tim = tractor.Image(data=subimg, inverr=subie, psf=subpsf)
             flux0 = ref_flux[istar]
             #print('Zp0', zp0, 'mag', ref.mag[istar], 'flux', flux0)
             x0 = x - xlo
             y0 = y - ylo
-            X0.append(x0 + xlo)
-            Y0.append(y0 + ylo)
+            cal.x0.append(x0 + xlo)
+            cal.y0.append(y0 + ylo)
             src = tractor.PointSource(tractor.PixPos(x0, y0),
                                       tractor.Flux(flux0))
             tr = tractor.Tractor([tim], [src])
@@ -1575,11 +1624,18 @@ class Measurer(object):
                 #      'flux', src.brightness, 'dlnp', dlnp)
                 if dlnp == 0:
                     break
-            X1.append(src.pos.x + xlo)
-            Y1.append(src.pos.y + ylo)
-            FLUX.append(src.brightness.getValue())
-            Istar.append(istar)
-            
+            dlnp,x,alpha,variance = tr.optimize(variance=True, **optargs)
+
+            cal.x1.append(src.pos.x + xlo)
+            cal.y1.append(src.pos.y + ylo)
+            cal.flux.append(src.brightness.getValue())
+            cal.iref.append(istar)
+
+            std = np.sqrt(variance)
+            cal.dx.append(std[0])
+            cal.dy.append(std[1])
+            cal.dflux.append(std[2])
+
             if plots:
                 plt.clf()
                 plt.subplot(2,2,1)
@@ -1595,15 +1651,6 @@ class Measurer(object):
                 plt.suptitle('After')
                 ps.savefig()
 
-        cal = fits_table()
-        # These x0,y0,x1,y1 are zero-indexed coords.
-        cal.x0 = X0
-        cal.y0 = Y0
-        cal.x1 = X1
-        cal.y1 = Y1
-        cal.flux = FLUX
-        cal.psfsum = psfsum
-        cal.iref = Istar
         cal.to_np_arrays()
         cal.ra_fit,cal.dec_fit = self.wcs.pixelxy2radec(cal.x1 + 1, cal.y1 + 1)
         return cal
