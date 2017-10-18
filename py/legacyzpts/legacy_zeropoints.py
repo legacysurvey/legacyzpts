@@ -2071,9 +2071,15 @@ class DecamMeasurer(Measurer):
         #self.gain = self.hdr['ARAWGAIN'] # hack! average gain [electron/sec]
 
         # /global/homes/a/arjundey/idl/pro/observing/decstat.pro
-        self.zp0 =  dict(g = 26.610,r = 26.818,z = 26.484) # e/sec
-        self.sky0 = dict(g = 22.04,r = 20.91,z = 18.46) # AB mag/arcsec^2
-        self.k_ext = dict(g = 0.17,r = 0.10,z = 0.06)
+        self.zp0 =  dict(g = 26.610,r = 26.818,z = 26.484,
+                         # i,Y from DESY1_Stripe82 95th percentiles
+                         i=26.758, Y=25.321) # e/sec
+        self.sky0 = dict(g = 22.04,r = 20.91,z = 18.46,
+                         # i, Y totally made up
+                         i=19.68, Y=18.46) # AB mag/arcsec^2
+        self.k_ext = dict(g = 0.17,r = 0.10,z = 0.06,
+                          #i, Y totally made up
+                          i=0.08, Y=0.06)
         # --> e/sec
         #for b in self.zp0.keys(): 
         #    self.zp0[b] += -2.5*np.log10(self.gain) 
