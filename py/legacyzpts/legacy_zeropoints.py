@@ -2295,24 +2295,6 @@ def get_extlist(camera,fn,debug=False,choose_ccd=None):
     return extlist
    
  
-#def measure_mosaic3(fn, ext='CCD1', **kwargs):
-#    '''Wrapper function to measure quantities from the Mosaic3 camera.'''
-#    measure = Mosaic3Measurer(fn, ext, **kwargs)
-#    ccds, stars = measure.run()
-#    return ccds, stars
-#
-#def measure_90prime(fn, ext='CCD1', **kwargs):
-#    '''Wrapper function to measure quantities from the 90prime camera.'''
-#    measure = NinetyPrimeMeasurer(fn, ext, **kwargs)
-#    ccds, stars = measure.run()
-#    return ccds, stars
-#
-#def measure_decam(fn, ext='N4', **kwargs):
-#    '''Wrapper function to measure quantities from the DECam camera.'''
-#    measure = DecamMeasurer(fn, ext, **kwargs)
-#    ccds, stars = measure.run()
-#    return ccds, stars
-
 def _measure_image(args):
     '''Utility function to wrap measure_image function for multiprocessing map.''' 
     return measure_image(*args)
@@ -2352,7 +2334,7 @@ def measure_image(img_fn, run_calibs=False, **measureargs):
     
     camera= measureargs['camera']
     camera_check = primhdr.get('INSTRUME','').strip().lower()
-    # mosaic listed as mosaic3 in hearder, other combos maybe
+    # mosaic listed as mosaic3 in header, other combos maybe
     assert(camera in camera_check or camera_check in camera)
     
     extlist = get_extlist(camera,img_fn, 
@@ -2487,10 +2469,6 @@ def runit(imgfn,zptfn,starfn_photom,starfn_astrom,
           **measureargs):
     '''Generate a legacypipe-compatible CCDs file for a given image.
     '''
-    #zptfn= measureargs.get('zptfn')
-    #starfn= measureargs.get('starfn')
-    #imgfn= measureargs.get('imgfn')
-    
     t0 = Time()
     ccds, stars_photom, stars_astrom, extra_info= measure_image(imgfn, **measureargs)
     t0= ptime('measure_image',t0)
@@ -2513,12 +2491,9 @@ def runit(imgfn,zptfn,starfn_photom,starfn_astrom,
     # Two stars tables
     stars_photom.write(starfn_photom)
     stars_astrom.write(starfn_astrom)
-    print('Wrote 2 stars tables\n%s\n%s' % 
-          (starfn_photom,starfn_astrom))
+    print('Wrote 2 stars tables\n%s\n%s' %  (starfn_photom,starfn_astrom))
     # Clean up
     t0= ptime('write-results-to-fits',t0)
-    #else:
-    #    print('FAILED, only %d CCDs, %s' % (len(ccds),imgfn))
     if measureargs['copy_from_proj'] & os.path.exists(imgfn): 
         # Safegaurd against removing stuff on /project
         assert(not 'project' in imgfn)
