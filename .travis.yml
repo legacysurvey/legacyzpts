@@ -106,7 +106,7 @@ before_script:
     - (cd $HOME/dust/maps && wget -c http://portal.nersc.gov/project/cosmo/temp/dstn/travis-ci/maps/SFD_dust_4096_sgp.fits)
     - export DUST_DIR=$HOME/dust
     - cd $HOME && git clone https://github.com/legacysurvey/legacypipe.git
-    - cd legacypipe && git checkout f4fc46ea0b
+    #- cd legacypipe && git checkout f4fc46ea0b
     - export PYTHONPATH=$HOME/legacypipe/py:$PYTHONPATH
     - cd $HOME && git clone https://github.com/legacysurvey/theValidator.git
     - export PYTHONPATH=$HOME/theValidator:$PYTHONPATH
