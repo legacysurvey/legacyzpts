@@ -1546,7 +1546,7 @@ class Measurer(object):
         return ccds, stars_photom, stars_astrom
 
     def get_splinesky(self):
-        # Subtract spline sky.
+        # Find splinesky model file and read it
         import tractor
         from tractor.utils import get_class_from_name
 
@@ -1578,7 +1578,9 @@ class Measurer(object):
         fn = os.path.join(self.calibdir, self.camera, 'splinesky', expstr[:5], expstr,
                           '%s-%s-%s.fits' % (self.camera, expstr, self.ext))
         print('Reading file', fn)
-
+        if not os.path.exists(fn):
+            return None
+        
         hdr = fitsio.read_header(fn)
         try:
             skyclass = hdr['SKY']
@@ -2101,13 +2103,13 @@ class Measurer(object):
         plt.savefig(fn,bbox_extra_artists=[xlab,ylab])
         plt.close()
         print('Wrote %s' % fn)
-   
-    def run_calibs(self, ext):
-        if self.get_psfex_model() is None:
-            pass
 
-        if self.get_splinesky() is None:
-            pass
+    # def run_calibs(self, ext):
+    #     self.set_hdu(ext)
+    #     if self.get_psfex_model() is None:
+    #         self.create_psfex_model()
+    #     if self.get_splinesky() is None:
+    #         self.create_splinesky_model()
  
 class DecamMeasurer(Measurer):
     '''DECam CP units: ADU
@@ -2156,7 +2158,51 @@ class DecamMeasurer(Measurer):
         self.cp_header_keys= {'width':['ZNAXIS1','NAXIS1'],
                               'height':['ZNAXIS2','NAXIS2'],
                               'fwhm_cp':['FWHM']}
-    
+
+    def run_calibs(self, ext):
+        self.set_hdu(ext)
+        psfex = False
+        splinesky = False
+        if self.get_psfex_model() is None:
+            psfex = True
+        if self.get_splinesky() is None:
+            splinesky = True
+        if (not psfex) and (not splinesky):
+            # Nothing to do!
+            return
+        #def create_splinesky_model(self):
+
+        from legacypipe.survey import LegacySurveyData
+        from legacypipe.decam import DecamImage
+
+        class FakeCCD(object):
+            pass
+
+        survey = LegacySurveyData()
+        ccd = FakeCCD()
+        ccd.image_filename = self.fn
+        ccd.image_hdu = self.image_hdu
+        ccd.expnum = self.expnum
+        ccd.ccdname = self.ccdname
+        ccd.filter = self.band
+        ccd.exptime = self.exptime
+        ccd.camera = self.camera
+        ccd.ccdzpt = 25.0
+        ccd.ccdraoff = 0.
+        ccd.ccddecoff = 0.
+        ccd.fwhm = 0.
+        ccd.propid = self.propid
+        # fake
+        ccd.cd1_1 = ccd.cd2_2 = self.pixscale / 3600.
+        ccd.cd1_2 = ccd.cd2_1 = 0.
+        ccd.pixscale = self.pixscale ## units??
+        ccd.mjd_obs = self.mjd_obs
+        ccd.width = 0
+        ccd.height = 0
+        
+        im = DecamImage(survey, ccd)
+        im.run_calibs(psfex=psfex, sky=splinesky, splinesky=True)
+        
     def get_band(self):
         band = self.primhdr['FILTER']
         band = band.split()[0]
