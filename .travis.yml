@@ -126,7 +126,9 @@ after_success:
   - coverage report
   - coveralls
 
-
+cache:
+  directories:
+  - $HOME/legacyzpts/tests/testdata
 
 
 
