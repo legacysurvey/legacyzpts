@@ -2596,15 +2596,11 @@ def main(image_list=None,args=None):
             os.path.exists(F.starfn_astrom) ):
             print('Already finished: %s' % F.zptfn)
             continue
-        #measureargs.update(dict(zptfn= F.zptfn,\
-        #                        starfn= F.starfn,\
-        #                        imgfn= F.imgfn))
         # Create the file
         t0=ptime('b4-run',t0)
         runit(F.imgfn,F.zptfn,F.starfn_photom,F.starfn_astrom, 
               **measureargs)
         #try: 
-        #    runit(imgfn_proj, **measureargs)
         #except:
         #    print('zpt failed for %s' % imgfn_proj)
         t0=ptime('after-run',t0)
