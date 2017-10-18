@@ -110,8 +110,8 @@ before_script:
     - export PYTHONPATH=$HOME/legacypipe/py:$PYTHONPATH
     - cd $HOME && git clone https://github.com/legacysurvey/theValidator.git
     - export PYTHONPATH=$HOME/theValidator:$PYTHONPATH
-    - cd $HOME && git clone https://github.com/legacysurvey/legacyzpts.git
-    - export PYTHONPATH=$HOME/legacyzpts/py:$PYTHONPATH
+    # - cd $HOME && git clone https://github.com/legacysurvey/legacyzpts.git
+    #- export PYTHONPATH=$HOME/legacyzpts/py:$PYTHONPATH
     - export PYTHONPATH=${PYTHONPATH}:.
     - echo PYTHONPATH is $PYTHONPATH
 
