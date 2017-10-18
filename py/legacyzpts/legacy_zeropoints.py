@@ -42,12 +42,6 @@ try:
 except ImportError:
     pass
 
-# PS1 only catalogues, named by healpix pixel
-PS1='/project/projectdirs/cosmo/work/ps1/cats/chunks-qz-star-v3'
-# PS1 GAIA matches only catalogues, named by healpix pixel
-PS1_GAIA_MATCHES='/project/projectdirs/cosmo/work/gaia/chunks-ps1-gaia'
-
-
 CAMERAS=['decam','mosaic','90prime']
 STAGING_CAMERAS={'decam':'decam',
                  'mosaic':'mosaicz',
@@ -1123,13 +1117,6 @@ class Measurer(object):
         t0= ptime('measure-sky',t0)
 
         # Load PS1 and PS1-Gaia Catalogues 
-        # We will only used detected sources that have PS1 or PS1-gaia matches
-        # So cut to this super set immediately
-        
-        #pattern={'ps1':'/project/projectdirs/cosmo/work/ps1/cats/chunks-qz-star-v3/ps1-%(hp)05d.fits',
-        #         'ps1_gaia':'/project/projectdirs/cosmo/work/gaia/chunks-ps1-gaia/chunk-%(hp)05d.fits'}
-        #ps1_pattern= #os.environ["PS1CAT_DIR"]=PS1
-        #ps1_gaia_patternos.environ["PS1_GAIA_MATCHES"]= PS1_GAIA_MATCHES
         ps1 = ps1cat(ccdwcs=self.wcs, 
                      pattern= self.ps1_pattern).get_stars(magrange=None)
         ps1_gaia = ps1cat(ccdwcs=self.wcs,
