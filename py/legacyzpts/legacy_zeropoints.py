@@ -665,13 +665,12 @@ class Measurer(object):
         self.debug= kwargs.get('debug')
         self.outdir= kwargs.get('outdir')
 
-        if kwargs['psf']:
-          if kwargs['calibdir']:
+        if kwargs['calibdir']:
             self.calibdir= kwargs['calibdir']
-          else:
+        else:
             self.calibdir= os.getenv('LEGACY_SURVEY_DIR',None)
-            if self.calibdir is None:
-              raise ValueError('LEGACY_SURVEY_DIR not set and --calibdir not given')
+            if self.calibdir is None and kwargs['psf']:
+                raise ValueError('LEGACY_SURVEY_DIR not set and --calibdir not given')
             self.calibdir= os.path.join(self.calibdir,'calib')
 
         self.aper_sky_sub = aper_sky_sub
