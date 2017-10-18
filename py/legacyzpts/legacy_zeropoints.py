@@ -2175,10 +2175,15 @@ class DecamMeasurer(Measurer):
         from legacypipe.survey import LegacySurveyData
         from legacypipe.decam import DecamImage
 
+        class FakeLegacySurveyData(LegacySurveyData):
+            def get_calib_dir(self):
+                return self.calibdir
+
         class FakeCCD(object):
             pass
 
-        survey = LegacySurveyData()
+        survey = FakeLegacySurveyData()
+        survey.calibdir = self.calibdir
         ccd = FakeCCD()
         ccd.image_filename = self.fn
         ccd.image_hdu = self.image_hdu
