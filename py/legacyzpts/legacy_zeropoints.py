@@ -1670,6 +1670,8 @@ class Measurer(object):
         fn = os.path.join(self.calibdir, self.camera, 'psfex', expstr[:5], expstr,
                           '%s-%s-%s.fits' % (self.camera, expstr, self.ext))
         print('Reading PsfEx file', fn)
+        if not os.path.exists(fn):
+            return None
         psf = tractor.PixelizedPsfEx(fn)
 
         import fitsio
@@ -2026,6 +2028,12 @@ class Measurer(object):
         plt.close()
         print('Wrote %s' % fn)
    
+    def run_calibs(self, ext):
+        if self.get_psfex_model() is None:
+            pass
+
+        if self.get_splinesky() is None:
+            pass
  
 class DecamMeasurer(Measurer):
     '''DECam CP units: ADU
@@ -2309,7 +2317,7 @@ def _measure_image(args):
     '''Utility function to wrap measure_image function for multiprocessing map.''' 
     return measure_image(*args)
 
-def measure_image(img_fn, **measureargs): 
+def measure_image(img_fn, run_calibs=False, **measureargs): 
     '''Wrapper on the camera-specific classes to measure the CCD-level data on all
     the FITS extensions for a given set of images.
     '''
@@ -2369,6 +2377,9 @@ def measure_image(img_fn, **measureargs):
     all_stars_astrom = []
     psfex = measureargs['psf']
     for ext in extlist:
+        if run_calibs:
+            measure.run_calibs(ext)
+
         ccds, stars_photom, stars_astrom = measure.run(ext, psfex=psfex, save_xy=measureargs['debug'])
         t0= ptime('measured-ext-%s' % ext,t0)
 
@@ -2559,6 +2570,8 @@ def get_parser():
                         help='Use this option when deriving the photometric transformation equations.')
     parser.add_argument('--nproc', type=int,action='store',default=1,
                         help='set to > 1 if using legacy-zeropoints-mpiwrapper.py')
+    parser.add_argument('--run-calibs', default=False, action='store_true',
+                        help='Create PsfEx and splinesky files if they do not already exist')
     parser.add_argument('--psf', default=False, action='store_true',
                         help='Use PsfEx model for astrometry & photometry')
     parser.add_argument('--calibdir', default=None, action='store',
