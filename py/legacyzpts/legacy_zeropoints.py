@@ -58,52 +58,6 @@ def image_to_fits(img,fn,header=None,extname=None):
     fitsio.write(fn,img,header=header,extname=extname)
     print('Wrote %s' % fn)
 
-
-# From image.py
-# imgfn,maskfn = self.funpack_files(self.imgfn, self.dqfn, self.hdu, todelete)
-#for fn in todelete:
-#   os.unlink(fn)
-def funpack_files(imgfn, maskfn, hdu, todelete):
-    from legacypipe.survey import create_temp
-
-    tmpimgfn = None
-    tmpmaskfn = None
-    # For FITS files that are not actually fpack'ed, funpack -E
-    # fails.  Check whether actually fpacked.
-    fcopy = False
-    hdr = fitsio.read_header(imgfn, ext=hdu)
-    if not ((hdr['XTENSION'] == 'BINTABLE') and hdr.get('ZIMAGE', False)):
-        print('Image %s, HDU %i is not fpacked; just imcopying.' %
-              (imgfn,  hdu))
-        fcopy = True
-
-    tmpimgfn  = create_temp(suffix='.fits')
-    tmpmaskfn = create_temp(suffix='.fits')
-    todelete.append(tmpimgfn)
-    todelete.append(tmpmaskfn)
-
-    if fcopy:
-        cmd = 'imcopy %s"+%i" %s' % (imgfn, hdu, tmpimgfn)
-    else:
-        cmd = 'funpack -E %s -O %s %s' % (hdu, tmpimgfn, imgfn)
-    print(cmd)
-    if os.system(cmd):
-        raise RuntimeError('Command failed: ' + cmd)
-
-    if fcopy:
-        cmd = 'imcopy %s"+%i" %s' % (maskfn, hdu, tmpmaskfn)
-    else:
-        cmd = 'funpack -E %s -O %s %s' % (hdu, tmpmaskfn, maskfn)
-    print(cmd)
-    if os.system(cmd):
-        print('Command failed: ' + cmd)
-        M,hdr = self._read_fits(maskfn, hdu, header=True)
-        print('Read', M.dtype, M.shape)
-        fitsio.write(tmpmaskfn, M, header=hdr, clobber=True)
-
-    return tmpimgfn,tmpmaskfn
-
-
 def ptime(text,t0):
     tnow=Time()
     print('TIMING:%s ' % text,tnow-t0)
