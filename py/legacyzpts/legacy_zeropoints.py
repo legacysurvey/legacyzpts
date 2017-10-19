@@ -250,6 +250,8 @@ def cols_for_legacypipe_table(which='all'):
                        'filter','exptime','camera','width','height','propid',
                        'mjd_obs','ccdnmatch',
                        'fwhm','zpt','ccdzpt','ccdraoff','ccddecoff',
+                       'ccdrarms', 'ccddecrms', 'ccdskycounts',
+                       'ccdphrms',
                        'cd1_1','cd2_2','cd1_2','cd2_1',
                        'crval1','crval2','crpix1','crpix2']
     dustins_keys= ['skyrms']
@@ -292,6 +294,10 @@ def create_legacypipe_table(ccds_fn, camera=None):
     # Rename
     rename_keys= [('zpt','ccdzpt'),('zptavg','zpt'),
                   ('raoff','ccdraoff'),('decoff','ccddecoff'),
+                  ('skycounts', 'ccdskycounts'),
+                  ('rastddev', 'ccdrarms'),
+                  ('decstddev', 'ccddecrms'),
+                  ('phrms', 'ccdphrms'),
                   ('nmatch_photom','ccdnmatch')]
     for old,new in rename_keys:
         T.rename(old,new)
@@ -938,7 +944,7 @@ class Measurer(object):
                                            STAGING_CAMERAS[self.camera])+1:]
         else:
           # img not on proj
-          ccds['image_filename'] = os.path.basename(self.fn)
+          ccds['image_filename'] = self.fn #os.path.basename(self.fn)
         ccds['image_hdu'] = self.image_hdu 
         ccds['ccdnum'] = self.ccdnum 
         ccds['camera'] = self.camera
