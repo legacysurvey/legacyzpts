@@ -2353,7 +2353,7 @@ class NinetyPrimeMeasurer(Measurer):
                               'fwhm_cp':['SEEINGP1','SEEINGP']}
     
     def get_gain(self,hdr):
-        self.gain= 1.4 # no GAINA,B
+        return 1.4 # no GAINA,B
 
     def get_band(self):
         band = self.primhdr['FILTER']
