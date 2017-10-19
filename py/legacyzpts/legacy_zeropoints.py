@@ -755,6 +755,15 @@ class Measurer(object):
         mask, junk = fitsio.read(dqfn, ext=self.ext, header=True)
         return mask
 
+    def read_image(self):
+        '''Read the image and header; scale the image.'''
+        img, hdr = fitsio.read(self.fn, ext=self.ext, header=True)
+        img = self.scale_image(img)
+        return img, hdr
+
+    def scale_image(self, img):
+        return img
+
     def create_zero_one_mask(self,bitmask,good=[]):
         """Return zero_one_mask arraygiven a bad pixel map and good pix values
         bitmask: ood image
@@ -1081,13 +1090,9 @@ class Measurer(object):
         if (self.camera == 'decam') & (ext == 'S7'):
             return self.return_on_error(err_message='S7', ccds=ccds)
 
-        if self.camera == 'decam':
-            # Simultaneous image,bitmask read
-            # funpack optional (funpack = slower!)
-            hdr, self.img, self.bitmask = self.read_image_and_bitmask(funpack=False)
-        else:
-            self.img,hdr= self.read_image() 
-            self.bitmask= self.read_bitmask()
+        self.img,hdr= self.read_image() 
+        self.bitmask= self.read_bitmask()
+
         t0= ptime('read image',t0)
 
         # Measure the sky brightness and (sky) noise level.  Need to capture
@@ -1299,7 +1304,6 @@ class Measurer(object):
             psf = self.get_psfex_model()
             ccds['fwhm'] = psf.fwhm
 
-
             fit_img = img_sub_sky
 
             if splinesky:
@@ -1307,8 +1311,8 @@ class Measurer(object):
                 print('Instantiating and subtracting sky model')
                 skymod = np.zeros_like(self.img)
                 sky.addTo(skymod)
-                # We apply the gain to the image...
-                skymod *= self.gain
+                # Apply the same transformation that was applied to the image...
+                skymod = self.scale_image(skymod)
 
                 print('Old sky_img: avg', np.mean(sky_img), 'min/max', np.min(sky_img), np.max(sky_img))
                 print('Skymod: avg', np.mean(skymod), 'min/max', skymod.min(), skymod.max())
@@ -2216,40 +2220,8 @@ class DecamMeasurer(Measurer):
         from legacyanalysis.ps1cat import ps1_to_decam
         return ps1_to_decam(ps1stars, band)
 
-    def read_image_and_bitmask(self,funpack=True):
-        '''funpack, then read'''
-        imgfn= self.fn
-        maskfn= get_bitmask_fn(self.fn)
-        print('Reading %s %s' % (imgfn,maskfn))
-        if funpack:
-            todelete=[]
-            imgfn,maskfn = funpack_files(imgfn, maskfn, self.ext, todelete)
-            # Read
-            img, hdr = fitsio.read(imgfn, ext=self.ext, header=True)
-            mask, junk = fitsio.read(maskfn, ext=self.ext, header=True)
-            for fn in todelete:
-               os.unlink(fn)
-        else:
-            # Read
-            try: 
-                img, hdr = fitsio.read(imgfn, ext=self.ext, header=True)
-            except IOError:
-                raise ValueError('error reading ext=%s from imgfn=%s' % (self.ext,imgfn))
-            mask, junk = fitsio.read(maskfn, ext=self.ext, header=True)
-        # ADU --> e
-        img *= self.gain 
-        return hdr,img,mask
-    
-    def read_image(self):
-        '''Read the image and header.  Convert image from ADU to electrons.'''
-        img, hdr = fitsio.read(self.fn, ext=self.ext, header=True)
-        #fits=fitsio.FITS(fn,mode='r',clobber=False,lower=True)
-        #hdr= fits[0].read_header()
-        #img= fits[ext].read()
-        #img *= self.gain
-        #img *= self.gain / self.exptime
-        img *= self.gain 
-        return img, hdr
+    def scale_image(self, img):
+        return img * self.gain
     
     def get_wcs(self):
         return wcs_pv2sip_hdr(self.hdr) # PV distortion
@@ -2297,14 +2269,9 @@ class Mosaic3Measurer(Measurer):
         from legacyanalysis.ps1cat import ps1_to_mosaic
         return ps1_to_mosaic(ps1stars, band)
 
-    def read_image(self):
-        '''Read the image and header.  Convert image from electrons/sec to electrons.'''
-        img, hdr = fitsio.read(self.fn, ext=self.ext, header=True)
-        #fits=fitsio.FITS(fn,mode='r',clobber=False,lower=True)
-        #hdr= fits[0].read_header()
-        #img= fits[ext].read()
-        img *= self.exptime 
-        return img, hdr
+    def scale_image(self, img):
+        '''Convert image from electrons/sec to electrons.'''
+        return img * self.exptime
 
     def get_wcs(self):
         return wcs_pv2sip_hdr(self.hdr) # PV distortion
@@ -2365,11 +2332,9 @@ class NinetyPrimeMeasurer(Measurer):
         from legacyanalysis.ps1cat import ps1_to_90prime
         return ps1_to_90prime(ps1stars, band)
 
-    def read_image(self):
-        '''Read the image and header.  Convert image from electrons/sec to electrons.'''
-        img, hdr = fitsio.read(self.fn, ext=self.ext, header=True)
-        img *= self.exptime
-        return img, hdr
+    def scale_image(self, img):
+        '''Convert image from electrons/sec to electrons.'''
+        return img * self.exptime
 
     def get_wcs(self):
         return wcs_pv2sip_hdr(self.hdr) # PV distortion
