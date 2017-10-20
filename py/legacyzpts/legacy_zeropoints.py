@@ -1148,10 +1148,15 @@ class Measurer(object):
         #         'ps1_gaia':'/project/projectdirs/cosmo/work/gaia/chunks-ps1-gaia/chunk-%(hp)05d.fits'}
         #ps1_pattern= #os.environ["PS1CAT_DIR"]=PS1
         #ps1_gaia_patternos.environ["PS1_GAIA_MATCHES"]= PS1_GAIA_MATCHES
-        ps1 = ps1cat(ccdwcs=self.wcs, 
-                     pattern= self.ps1_pattern).get_stars(magrange=None)
-        ps1_gaia = ps1cat(ccdwcs=self.wcs,
-                          pattern= self.ps1_gaia_pattern).get_stars(magrange=None)
+        try:
+          ps1 = ps1cat(ccdwcs=self.wcs, 
+                       pattern= self.ps1_pattern).get_stars(magrange=None)
+          ps1_gaia = ps1cat(ccdwcs=self.wcs,
+                            pattern= self.ps1_gaia_pattern).get_stars(magrange=None)
+        except OSError:
+          mess="outside PS1 footprint,In Gal. Plane"
+          print(mess)
+          return self.return_on_error(mess,ccds=ccds)
         assert(len(ps1_gaia.columns()) > len(ps1.columns())) 
         ps1band = ps1cat.ps1band[self.band]
         # PS1 cuts
