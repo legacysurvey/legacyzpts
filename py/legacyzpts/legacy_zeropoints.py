@@ -716,9 +716,17 @@ class Measurer(object):
             self.primhdr= tmp[0].header
             tmp.close()
             del tmp
+        # CP WCS succeed?
+        assert('WCSCAL' in self.primhdr.keys())
+        self.goodWcs=True  
+        if 'fail' in self.primhdr['WCSCAL'].strip().lower():
+          self.goodWcs=False  
 
         # Camera-agnostic primary header cards
-        self.propid = self.primhdr['PROPID']
+        try:
+          self.propid = self.primhdr['PROPID']
+        except KeyError:
+          self.propid = self.primhdr['DTPROPID']
         self.exptime = self.primhdr['EXPTIME']
         self.date_obs = self.primhdr['DATE-OBS']
         self.mjd_obs = self.primhdr['MJD-OBS']
@@ -977,6 +985,8 @@ class Measurer(object):
         Returns:
           ccds, stars_photom, stars_astrom
         """
+        if not self.goodWcs:
+          return self.return_on_error(err_message='WCS failed')
         self.set_hdu(ext)
         # 
         t0= Time()

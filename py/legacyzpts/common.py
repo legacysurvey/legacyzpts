@@ -268,7 +268,7 @@ def fall2015_90prime_images(tiles_fn,imageliset):
                   (tiles.r_date == '2015-11-13'))]
   expnums= list(g_tiles.g_expnum) + list(r_tiles.r_expnum)
   exp2img= map_90prime_images_to_expnum(imageliset)
-  ={}
+  final={}
   for expnum in expnums:
     if expnum in exp2img.keys():
       final[expnum]= exp2img[expnum]
