@@ -2,50 +2,13 @@
 Four FITS data tables with the same columns and units for all three cameras.
 
 ### (1) <image name>-zpt.fits
-Most important:
 
 | Name | Type | Units | Description
 | ------ | ------ | ------ | ------ |
-| airmass | float32 | ---- | airmass from CP header
+| airmass | float32 | ---- | from CP header
+| avsky | float32 | ---- | from CP header
 | camera | str | ---- | decam, mosaic, or 90prime
 | ccdname | str | ---- | ccd[1-4] (mosaic,90prime) or [NS][0-9]{2} (decam)
-| date_obs | str | ---- | yyyy-mm-dd
-| dec | float64 | deg | WCS solution center of the CCD 
-| decoff | float32 | deg | Median of 3 sigma-clipped ("Gaia Dec" - dec)
-| decrms | float32 | deg | RMS of 3 sigma-clipped ("Gaia Dec" - dec)
-| decstddev | float32 | deg | Std Dev of 3 sigma-clipped ("Gaia Dec" - dec)
-| expnum | int32 | ---- | primary key
-| err_message | str | ---- | empty string if CCD was processed without issue
-| exptime | float32 | sec | exposure time
-| filter | str | ---- | g, r, or z
-| fwhm | float32 | pixel | measured 
-| fwhm_cp | float32 | pixel | taken from CP header
-| gain | float32 | e-/ADU | (Decam) average of GAINA, GAINB, (Mosaic) GAIN, (90prime) 1.4
-| ha | str | N/A | hh:mm:ss.ss
-| height | int16 | pixel | height of CCD
-| image_filename | str | ---- | path to image on NERSC machines, relative to /project/projectdirs/cosmo/staging
-| mjd_obs | float64 | ---- | Modified Julian Date
-| nmatch_astrom | int16 |  ---- | number of good detected sources that have good Gaia matches within 1''
-| nmatch_photom | int16 | ---- | number of good detected sources that have good PS1 matches within 1''
-| phoff | float32 | AB mag | Per CCD Median of 2.5 sigma-clipped (PS1 mag - Our mag)
-| phrms | float32 | AB mag | Per CCD Std Dev of 2.5 sigma-clipped (PS1 mag - Our mag)
-| pixscale | float32 | as/pixel | fixed at 0.262 (DECam, Mosaic) and 0.470 (90Prime)
-| ra | float64 | deg | WCS solution center of the CCD 
-| raoff | float32 | deg | Median of 3 sigma-clipped ("Gaia Ra" - ra) * cos(dec)
-| rarms | float32 | deg | RMS of 3 sigma-clipped ("Gaia Ra" - ra) * cos(dec)
-| rastddev | float32 | deg | Std Dev of 3 sigma-clipped("Gaia Ra" - ra) * cos(dec)
-| skycounts | float32 | e-/pixel/sec | Median of 3 sigma-clipped 1000x1000 central pixels of CCD 
-| skymag | float32 | AB mag/as^2 | skycounts converted to AB mag/as^2
-| skyrms | float32 | e-/pixel/sec | Std Dev of 3 sigma-clipped 1000x1000 central pixels of CCD 
-| transp | float32 | ---- | Relative atmospheric transparency
-| width | int16 | pixel | width of CCD
-| zpt | float32 | e-/sec | phoff + nominal zeropoint for camera, filter
-| zptavg | float32 | e-/sec | average zpt over all CCDs
- 
-Less important:
-
-| Name | Type | Units | Description
-| ------ | ------ | ------ | ------ |
 | ccdnum | int16 | ---- | ccdname with alphabetic characters removed
 | cd1_1 | float32 | ---- | Astrometric solution
 | cd1_2 | float32 | ---- | Astrometric solution
@@ -55,13 +18,48 @@ Less important:
 | crpix2 | float32 | ---- | Astrometric solution
 | crval1 | float64 | ---- | Astrometric solution
 | crval2 | float64 | ---- | Astrometric solution
+| date_obs | str | ---- | yyyy-mm-dd
+| dec | float64 | deg | WCS solution center of the CCD 
 | dec_bore | float64 | deg | bore sight of telescope
+| decoff | float32 | deg | Median of 3 sigma-clipped ("Gaia Dec" - dec)
+| decrms | float32 | deg | RMS of 3 sigma-clipped ("Gaia Dec" - dec)
+| decstddev | float32 | deg | Std Dev of 3 sigma-clipped ("Gaia Dec" - dec)
+| err_message | str | ---- | empty string if no processing problems, otherwise usually describes a reason why this CCD should be excluded from science analysis 
 | expid | str | ---- | expnum + ccdname
+| expnum | int32 | ---- | primary key
+| exptime | float32 | sec | exposure time
+| filter | str | ---- | g, r, or z
+| fwhm | float32 | pixel | measured by legacyzpts
+| fwhm_cp | float32 | pixel | from CP header
+| gain | float32 | e-/ADU | (Decam) average of GAINA, GAINB, (Mosaic) GAIN, (90prime) 1.4
+| goodps1 | int16 | ---- | number of good PS1 sources in CCD
+| goodps1_wbadpix5 |  int16 | ---- | number of good PS1 sources in the CCD that are within 5 pixels of at least bad pixel map == 5 pixel
+| ha | str | N/A | hh:mm:ss.ss
+| height | int16 | pixel | height of CCD
+| image_filename | str | ---- | path to image on NERSC machines, relative to /project/projectdirs/cosmo/staging
 | image_hdu | int16 | ---- | hdu number for the ccd in the image FITS file
+| mjd_obs | float64 | ---- | Modified Julian Date
+| nmatch_astrom | int16 |  ---- | number of good detected sources that have good Gaia matches within 1''
+| nmatch_photom | int16 | ---- | number of good detected sources that have good PS1 matches within 1''
 | object | str | ---- | type of exposure (object vs. flat)
+| phoff | float32 | AB mag | Per CCD Median of 2.5 sigma-clipped (PS1 mag - Our mag)
+| phrms | float32 | AB mag | Per CCD Std Dev of 2.5 sigma-clipped (PS1 mag - Our mag)
+| pixscale | float32 | as/pixel | fixed at 0.262 (DECam, Mosaic) and 0.470 (90Prime)
 | propid | str | ---- | proposal id for the survey
+| ra | float64 | deg | WCS solution center of the CCD 
 | ra_bore | float64 | deg | bore sight of telescope
+| raoff | float32 | deg | Median of 3 sigma-clipped ("Gaia Ra" - ra) * cos(dec)
+| rarms | float32 | deg | RMS of 3 sigma-clipped ("Gaia Ra" - ra) * cos(dec)
+| rastddev | float32 | deg | Std Dev of 3 sigma-clipped("Gaia Ra" - ra) * cos(dec)
+| skycounts | float32 | e-/pixel/sec | Median of 3 sigma-clipped 1000x1000 central pixels of CCD 
+| skymag | float32 | AB mag/as^2 | skycounts converted to AB mag/as^2
+| skyrms | float32 | e-/pixel/sec | Std Dev of 3 sigma-clipped 1000x1000 central pixels of CCD 
+| transp | float32 | ---- | Relative atmospheric transparency
 | ut | str | ---- | hh:mm:ss.ss 
+| width | int16 | pixel | width of CCD
+| zpt | float32 | e-/sec | phoff + nominal zeropoint for camera, filter
+| zptavg | float32 | e-/sec | average zpt over all CCDs
+| zpt_wbadpix5 | float32 | e-/sec | phoff + nominal zeropoint for camera, filter *including* sources that have at least one bad pixel map == 5 pixel in their 7'' aperture
 
 ### (2) <image name>-legacyzpt.fits
 All of these are duplicates of #1 and are the minimal set required by our legacypipe/Tractor pipeline. Note, the names and units are different from above.
