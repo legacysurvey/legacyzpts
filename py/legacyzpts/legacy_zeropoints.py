@@ -295,8 +295,8 @@ def create_legacypipe_table(ccds_fn, camera=None):
     rename_keys= [('zpt','ccdzpt'),('zptavg','zpt'),
                   ('raoff','ccdraoff'),('decoff','ccddecoff'),
                   ('skycounts', 'ccdskycounts'),
-                  ('rastddev', 'ccdrarms'),
-                  ('decstddev', 'ccddecrms'),
+                  ('rarms',  'ccdrarms'),
+                  ('decrms', 'ccddecrms'),
                   ('phrms', 'ccdphrms'),
                   ('nmatch_photom','ccdnmatch')]
     for old,new in rename_keys:
