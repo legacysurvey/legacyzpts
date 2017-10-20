@@ -130,6 +130,7 @@ class RunStatus(object):
         "NameError: name 'imgfn_proj' is not defined",
         "ValueError: Inconsistent data column lengths: {0, 1}",
         "Photometry on 0 stars",
+        "WCS Failed",
         "OSError: File not found: '/project/projectdirs/cosmo/work/ps1/cats/chunks-qz-star-v3/ps1-",
         r'Could\ not\ find\ fwhm_cp.*?FWHM',
         r'Could\ not\ find\ fwhm_cp.*?SEEINGP1',
