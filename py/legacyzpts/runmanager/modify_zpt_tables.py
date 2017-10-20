@@ -3,6 +3,8 @@ import numpy as np
 from astrometry.util.fits import fits_table
 from astrometry.libkd.spherematch import match_radec
 
+CAMERAS=['decam','mosaic','90prime']
+
 def add_to_legacypipe(zpt_fn,leg_fn, new_leg_fn):
   """Adds columns from zpt table to legacypipe table
   """
@@ -19,6 +21,29 @@ def add_to_legacypipe(zpt_fn,leg_fn, new_leg_fn):
   leg.set('phrms',zpt.get('phrms'))
   leg.writeto(new_leg_fn)
   print('Wrote %s' % new_leg_fn)
+
+def cleanup_zpt_table(fn,camera):
+  """Removes unneeded cols
+  
+  Args:
+    fn: filename for '*-zpt.fits' table
+  """
+  assert(camera in CAMERAS)
+  t=fits_table(fn)
+  del_cols=['mdncol','nstarfind','skycounts_a',
+            'skyrms_a','skyrms_b','skyrms_c','skyrms_d',
+            'skyrms_clip','skyrms_clip_sm','skyrms_sigma',
+            'skyrms_sm']
+  for col in del_cols:
+    if col in t.get_columns():
+      t.delete_column(col)
+  if camera == '90prime':
+    t.set('gain',np.zeros(len(t)) + 1.4)
+  fnout= fn.replace('.fits','').replace('.gz','')
+  fnout+= '_cleaned.fits'
+  t.writeto(fnout)
+  print('wrote %s' % fnout)
+ 
 
 def cleanup_star_table(fn,which='photom'):
   """Removes unneeded cols from wither astrom or photom stars table

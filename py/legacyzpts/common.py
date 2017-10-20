@@ -17,8 +17,11 @@ from legacyzpts.legacy_zeropoints import get_90prime_expnum
 
 try:
     from astrometry.util.fits import fits_table, merge_tables
+    from astrometry.libkd.spherematch import match_radec
 except ImportError:
     pass
+
+CAMERAS=['decam','mosaic','90prime']
 
 def inJupyter():
     return 'inline' in matplotlib.get_backend()
@@ -157,6 +160,44 @@ def shrink_img(camera='decam'):
     fn_new= fn_new.replace("oki","ood").replace('ooi','ood')
     _shrink_img(fn, fn_new, camera=camera)
 
+def ccds_touching_bricks(bricks,ccds,camera,
+                         forcesep=None):
+  """
+
+  Args:
+    bricks: bricks fits table
+    ccds: ccds fits table
+    camera:
+
+  Returns:
+    bricks,ccds: tuple of fits tables of bricks and ccds that are touching
+  """
+  assert(camera in CAMERAS)
+  bricksize = 0.25
+  maxSideArcsec= {'decam':0.262* 4094,
+                  'mosaic':0.262* 4096,
+                  '90prime':0.455* 4096}
+  # A bit more than 0.25-degree brick radius + image radius
+  search_radius = 1.05 * np.sqrt(2.) * (bricksize +
+                                        (maxSideArcsec[camera] / 3600.))/2.
+  if forcesep:
+    search_radius= forcesep
+  I,J,d = match_radec(bricks.ra, bricks.dec, ccds.ra, ccds.dec, search_radius,
+                      nearest=True)
+  lenB,lenC= len(bricks),len(ccds)
+  bricks.cut(I)
+  ccds.cut(J)
+  print('%d/%d bricks, %d/%d ccds are touching' % 
+        (len(bricks),lenB,len(ccds),lenC))
+  return bricks,ccds 
+
+def ccds_for_brickname(brickname,ccds,camera,forcesep=None):
+  """get list of ccds touching a brick, brick is specified by string name"""
+  bricks= fits_table('/global/project/projectdirs/cosmo/data/legacysurvey/dr4/survey-bricks.fits.gz')
+  bricks.cut(np.char.strip(bricks.brickname) == brickname)
+  _,c= ccds_touching_bricks(bricks,ccds,camera,forcesep)
+  return c
+  
 
 def add_fwhmcp_to_legacypipe_table(T, json_fn='json.txt'):
   """adds fwhm from CP header as a new colum for each ccd"""
