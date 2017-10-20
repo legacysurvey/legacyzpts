@@ -1287,6 +1287,9 @@ class Measurer(object):
             # Inverse-error of sky image
             ierr = 1.0/np.sqrt(sky_img)
 
+            # Zero out masked pixels.
+            ierr[self.bitmask > 0] = 0
+
             # plt.clf()
             # plt.hist((fit_img * ierr).ravel(), range=(-10,10), bins=100)
             # plt.xlabel('Image pixel chi')
