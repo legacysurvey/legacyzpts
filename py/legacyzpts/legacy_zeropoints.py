@@ -1365,6 +1365,8 @@ class Measurer(object):
             phot.ccd_zpt    = np.zeros(len(phot), np.float32) + zptmed
             phot.expnum = np.zeros(len(phot), np.int32) + self.expnum
             phot.ccdname = np.array([self.ccdname] * len(phot))
+            phot.exptime = np.zeros(len(phot), np.float32) + self.exptime
+            phot.gain = np.zeros(len(phot), np.float32) + self.gain
 
             # Convert to astropy Table
             cols = phot.get_columns()
@@ -1606,20 +1608,19 @@ class Measurer(object):
             # FIXME -- check that ierr is correct
             subie = ierr[ylo:yhi+1, xlo:xhi+1]
             subpsf = psf.constantPsfAt(x, y)
+            psfsum = np.sum(subpsf.img)
             if normalize_psf:
-                s = np.sum(subpsf.img)
                 # print('Normalizing PsfEx model with sum:', s)
-                subpsf.img /= s
-                cal.psfsum.append(s)
-            else:
-                cal.psfsum.append(1.) # ??
+                subpsf.img /= psfsum
+
+            print('PSF model:', subpsf)
+            print('PSF image sum:', subpsf.img.sum())
+
             tim = tractor.Image(data=subimg, inverr=subie, psf=subpsf)
             flux0 = ref_flux[istar]
             #print('Zp0', zp0, 'mag', ref.mag[istar], 'flux', flux0)
             x0 = x - xlo
             y0 = y - ylo
-            cal.x0.append(x0 + xlo)
-            cal.y0.append(y0 + ylo)
             src = tractor.PointSource(tractor.PixPos(x0, y0),
                                       tractor.Flux(flux0))
             tr = tractor.Tractor([tim], [src])
@@ -1654,8 +1655,18 @@ class Measurer(object):
                 #      'flux', src.brightness, 'dlnp', dlnp)
                 if dlnp == 0:
                     break
-            dlnp,x,alpha,variance = tr.optimize(variance=True, **optargs)
 
+            print('Getting variance estimate: thawed params:')
+            tr.printThawedParams()
+            variance = tr.optimize(variance=True, just_variance=True, **optargs)
+            # Yuck -- if inverse-variance is all zero, weird-shaped result...
+            if len(variance) == 4 and variance[3] is None:
+                print('No variance estimate available')
+                continue
+
+            cal.psfsum.append(psfsum)
+            cal.x0.append(x0 + xlo)
+            cal.y0.append(y0 + ylo)
             cal.x1.append(src.pos.x + xlo)
             cal.y1.append(src.pos.y + ylo)
             cal.flux.append(src.brightness.getValue())
