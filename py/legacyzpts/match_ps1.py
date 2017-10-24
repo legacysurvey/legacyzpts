@@ -5,14 +5,14 @@ import matplotlib.pyplot as plt
 import fitsio
 
 try:
-  from astrometry.util.fits import fits_table, merge_tables
-  from astrometry.util.util import wcs_pv2sip_hdr
-  from astrometry.libkd.spherematch import match_radec
-  from legacypipe.survey import LegacySurveyData, wcs_for_brick
+    from astrometry.util.fits import fits_table, merge_tables
+    from astrometry.util.util import wcs_pv2sip_hdr
+    from astrometry.libkd.spherematch import match_radec
+    from legacypipe.survey import LegacySurveyData, wcs_for_brick
 
-  from legacyanalysis.ps1cat import ps1cat, ps1_to_decam
+    from legacyanalysis.ps1cat import ps1cat, ps1_to_decam
 except ImportError:
-  pass
+    pass
 
 
 from legacyzpt.qa.paper_plots import myscatter
@@ -20,20 +20,20 @@ from legacyzpt.qa.paper_plots import myscatter
 PROJ_DIR= "/project/projectdirs/cosmo/work/legacysurvey/dr5/DR5_out"
 
 def get_tractorfn(brick):
-  return os.path.join(PROJ_DIR, 'tractor/%s/tractor-%s.fits' %
-                      (brick[:3],brick))
+    return os.path.join(PROJ_DIR, 'tractor/%s/tractor-%s.fits' %
+                  (brick[:3],brick))
 
 def get_ps1_colorterm(ps1stars, band, camera='decam'):
-  if camera == 'decam':
-    return ps1_to_decam(ps1stars, band)
-  else:
-    raise ValueError('camera %s not supported' % camera)
+    if camera == 'decam':
+        return ps1_to_decam(ps1stars, band)
+    else:
+        raise ValueError('camera %s not supported' % camera)
 
 def magAB_to_nanomaggie_flux(magAB):
-  return 1E9*10**(-0.4*magAB)
+    return 1E9*10**(-0.4*magAB)
 
 def nanomaggie_flux_to_magAB(nanoflux):
-  return -2.5*np.log10(nanoflux) + 2.5*9
+    return -2.5*np.log10(nanoflux) + 2.5*9
 
 
 
