@@ -589,6 +589,15 @@ def get_bitmask_fn(imgfn):
         raise ValueError('bad imgfn? no ooi or oki: %s' % imgfn)
     return fn
 
+def get_90prime_expnum(primhdr):
+    """converts 90prime header key DTACQNAM into the unique exposure number"""
+    # /descache/bass/20160710/d7580.0144.fits --> 75800144
+    base= (os.path.basename(primhdr['DTACQNAM'])
+           .replace('.fits','')
+           .replace('.fz',''))
+    return int( re.sub(r'([a-z]+|\.+)','',base) )
+
+
 class Measurer(object):
     def __init__(self, fn, aprad=3.5, skyrad_inner=7.0, skyrad_outer=10.0,
                  det_thresh=8., match_radius=3.,sn_min=None,sn_max=None,
@@ -660,9 +669,17 @@ class Measurer(object):
             self.primhdr= tmp[0].header
             tmp.close()
             del tmp
+        # CP WCS succeed?
+        assert('WCSCAL' in self.primhdr.keys())
+        self.goodWcs=True  
+        if not 'success' in self.primhdr['WCSCAL'].strip().lower():
+          self.goodWcs=False  
 
         # Camera-agnostic primary header cards
-        self.propid = self.primhdr['PROPID']
+        try:
+          self.propid = self.primhdr['PROPID']
+        except KeyError:
+          self.propid = self.primhdr['DTPROPID']
         self.exptime = self.primhdr['EXPTIME']
         self.date_obs = self.primhdr['DATE-OBS']
         self.mjd_obs = self.primhdr['MJD-OBS']
@@ -678,9 +695,7 @@ class Measurer(object):
         if kwargs['camera'] in ['decam','mosaic']:
           self.expnum= self.primhdr['EXPNUM']
         elif kwargs['camera'] == '90prime':
-          # /descache/bass/20160710/d7580.0144.fits --> 75800144
-          base= os.path.basename(self.primhdr['DTACQNAM']).replace('.fits','')
-          self.expnum= int( re.sub(r'([a-z]+|\.+)','',base) )
+          self.expnum= get_90prime_expnum(self.primhdr)
         print('CP Header: EXPNUM = ',self.expnum)
         self.obj = self.primhdr['OBJECT']
 
@@ -932,6 +947,9 @@ class Measurer(object):
         Returns:
           ccds, stars_photom, stars_astrom
         """
+        if not self.goodWcs:
+          print('WCS Failed')
+          return self.return_on_error(err_message='WCS Failed')
         self.set_hdu(ext)
         # 
         t0= Time()
@@ -1081,10 +1099,22 @@ class Measurer(object):
         t0= ptime('measure-sky',t0)
 
         # Load PS1 and PS1-Gaia Catalogues 
-        ps1 = ps1cat(ccdwcs=self.wcs, 
-                     pattern= self.ps1_pattern).get_stars(magrange=None)
-        ps1_gaia = ps1cat(ccdwcs=self.wcs,
-                          pattern= self.ps1_gaia_pattern).get_stars(magrange=None)
+        # We will only used detected sources that have PS1 or PS1-gaia matches
+        # So cut to this super set immediately
+        
+        #pattern={'ps1':'/project/projectdirs/cosmo/work/ps1/cats/chunks-qz-star-v3/ps1-%(hp)05d.fits',
+        #         'ps1_gaia':'/project/projectdirs/cosmo/work/gaia/chunks-ps1-gaia/chunk-%(hp)05d.fits'}
+        #ps1_pattern= #os.environ["PS1CAT_DIR"]=PS1
+        #ps1_gaia_patternos.environ["PS1_GAIA_MATCHES"]= PS1_GAIA_MATCHES
+        try:
+          ps1 = ps1cat(ccdwcs=self.wcs, 
+                       pattern= self.ps1_pattern).get_stars(magrange=None)
+          ps1_gaia = ps1cat(ccdwcs=self.wcs,
+                            pattern= self.ps1_gaia_pattern).get_stars(magrange=None)
+        except OSError:
+          txt="outside PS1 footprint,In Gal. Plane"
+          print(txt)
+          return self.return_on_error(mess,ccds=ccds)
         assert(len(ps1_gaia.columns()) > len(ps1.columns())) 
         ps1band = ps1cat.ps1band[self.band]
         # PS1 cuts

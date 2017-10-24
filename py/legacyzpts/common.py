@@ -13,10 +13,15 @@ from glob import glob
 from collections import defaultdict
 import json
 
+from legacyzpts.legacy_zeropoints import get_90prime_expnum 
+
 try:
     from astrometry.util.fits import fits_table, merge_tables
+    from astrometry.libkd.spherematch import match_radec
 except ImportError:
     pass
+
+CAMERAS=['decam','mosaic','90prime']
 
 def inJupyter():
     return 'inline' in matplotlib.get_backend()
@@ -155,6 +160,44 @@ def shrink_img(camera='decam'):
     fn_new= fn_new.replace("oki","ood").replace('ooi','ood')
     _shrink_img(fn, fn_new, camera=camera)
 
+def ccds_touching_bricks(bricks,ccds,camera,
+                         forcesep=None):
+  """
+
+  Args:
+    bricks: bricks fits table
+    ccds: ccds fits table
+    camera:
+
+  Returns:
+    bricks,ccds: tuple of fits tables of bricks and ccds that are touching
+  """
+  assert(camera in CAMERAS)
+  bricksize = 0.25
+  maxSideArcsec= {'decam':0.262* 4094,
+                  'mosaic':0.262* 4096,
+                  '90prime':0.455* 4096}
+  # A bit more than 0.25-degree brick radius + image radius
+  search_radius = 1.05 * np.sqrt(2.) * (bricksize +
+                                        (maxSideArcsec[camera] / 3600.))/2.
+  if forcesep:
+    search_radius= forcesep
+  I,J,d = match_radec(bricks.ra, bricks.dec, ccds.ra, ccds.dec, search_radius,
+                      nearest=True)
+  lenB,lenC= len(bricks),len(ccds)
+  bricks.cut(I)
+  ccds.cut(J)
+  print('%d/%d bricks, %d/%d ccds are touching' % 
+        (len(bricks),lenB,len(ccds),lenC))
+  return bricks,ccds 
+
+def ccds_for_brickname(brickname,ccds,camera,forcesep=None):
+  """get list of ccds touching a brick, brick is specified by string name"""
+  bricks= fits_table('/global/project/projectdirs/cosmo/data/legacysurvey/dr4/survey-bricks.fits.gz')
+  bricks.cut(np.char.strip(bricks.brickname) == brickname)
+  _,c= ccds_touching_bricks(bricks,ccds,camera,forcesep)
+  return c
+  
 
 def add_fwhmcp_to_legacypipe_table(T, json_fn='json.txt'):
   """adds fwhm from CP header as a new colum for each ccd"""
@@ -234,5 +277,58 @@ def insert_fwhmcp():
   #leg.cut(np.isfinite(leg.fwhm) == False)
   #return _insert_fwhmcp(leg,'fwhmcp_where_nan.json')  
   leg.cut(np.isfinite(leg.fwhm))
-  leg=leg[:500]
+  leg=leg[map_90prime_images_to_expnum:500]
   return _insert_fwhmcp(leg,'fwhmcp_where_real.json')  
+
+
+def map_90prime_images_to_expnum(imagelist):
+  """reads 90prime headers and returns expnums
+  
+  Args:
+    imagelist: text file listing abs path to 90prime files
+    
+  Returns:
+    dict
+  """
+  fns= np.loadtxt(imagelist,dtype=str)
+  expnum= {get_90prime_expnum(
+            fitsio.read_header(fn, 0)):os.path.join(fn.split('/')[-2],fn.split('/')[-1])
+           for fn in fns}
+  with open('all_expnum_img.txt','w') as foo:
+    for key in expnum.keys(): 
+      foo.write('%s %s\n' % (key,expnum[key]))
+  print('Wrote all_expnum_img.txt')
+  return expnum
+
+def fall2015_90prime_images(tiles_fn,imageliset):
+  """returns science-able 90prime Fall 2015 images given bass_tiles file and bass image list"""
+  tiles= fits_table(tiles_fn)
+  g_tiles= tiles[((tiles.g_date == '2015-11-12') |
+                  (tiles.g_date == '2015-11-13'))]
+  r_tiles= tiles[((tiles.r_date == '2015-11-12') |
+                  (tiles.r_date == '2015-11-13'))]
+  expnums= list(g_tiles.g_expnum) + list(r_tiles.r_expnum)
+  exp2img= map_90prime_images_to_expnum(imageliset)
+  final={}
+  for expnum in expnums:
+    if expnum in exp2img.keys():
+      final[expnum]= exp2img[expnum]
+    else:
+      print('%s not in exp2img' % expnum)
+  return final
+
+
+def run():
+  #map_90prime_images_to_expnum('/global/cscratch1/sd/kaylanb/images.txt')
+  final= fall2015_90prime_images('/global/cscratch1/sd/kaylanb/svn_90prime/obstatus/bass-tiles_obstatus.fits','/global/cscratch1/sd/kaylanb/90prime_fall2015.txt')
+  for key in final.keys(): print(key,final[key])
+  with open('final_expnum_img.txt','w') as foo:
+    for key in final.keys(): 
+      foo.write('%s %s\n' % (key,final[key]))
+  print('Wrote final_expnum_img.txt')
+
+
+
+
+
+

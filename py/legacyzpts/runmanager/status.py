@@ -130,9 +130,22 @@ class RunStatus(object):
         "NameError: name 'imgfn_proj' is not defined",
         "ValueError: Inconsistent data column lengths: {0, 1}",
         "Photometry on 0 stars",
+        "WCS Failed",
         "OSError: File not found: '/project/projectdirs/cosmo/work/ps1/cats/chunks-qz-star-v3/ps1-",
-        r'Could\ not\ find\ fwhm_cp,\ keys\ not\ in\ cp\ header.{1,20}FWHM'
+        r'Could\ not\ find\ fwhm_cp.*?FWHM',
+        r'Could\ not\ find\ fwhm_cp.*?SEEINGP1',
+        r'unknown\ record:\ PROPID',
+        r'File\ not\ found:.*?ood.*?fits.fz',
+        r'k4m.*?_ooi_gd',
+        r'k4m.*?_ooi_rd',
+        r'k4m.*?_ooi_wrc4',
+        r'TAN\ header:\ expected\ CTYPE1\ =\ RA---TAN,.*got\ CTYPE1\ =\ "RA---ZPX"',
         ]
+    self.regex_badexp= [
+        r'CP20170204\/ksb_170205_114709_ooi_r_v1\.fits\.fz',
+        r'CP20160226v2\/k4m_160227_115515_ooi_zd_v2\.fits.fz'
+        ]
+    self.regex_errs_extra= ['Other','log not exist','BadExposure']
 
   def get_tally(self):
     tally= defaultdict(list)
@@ -164,6 +177,13 @@ class RunStatus(object):
               found_err=True
               break
           if not found_err:
+            for regex in self.regex_badexp:
+              foundIt= re.search(regex, text)
+              if foundIt:
+                tally[res].append('BadExposure')
+                found_err=True
+                break
+          if not found_err:
             tally[res].append('Other')
           
     # numpy array, not list, works with np.where()
@@ -177,7 +197,7 @@ class RunStatus(object):
       if res == 'succeeded':
          print('%d/%d = done' % (len(tally[res]), np.sum(tally[res])))
       elif res == 'failed':
-        for regex in self.regex_errs + ['Other','log not exist']:
+        for regex in self.regex_errs + self.regex_errs_extra:
           print('%d/%d = %s' % (
                    np.where(tally[res] == regex)[0].size, len(tally[res]), regex))
       elif res == 'running':
@@ -213,11 +233,14 @@ if __name__ == '__main__':
   R.print_tally(tally)
 
   #err_logs= R.get_logs_for_failed(regex='Other')
-  for err_key in R.regex_errs + ['Other','log not exist']:
+  for err_key in R.regex_errs + R.regex_errs_extra:
     err_logs= np.array(logs['failed'])[ tally['failed'] == err_key ]
     err_tasks= np.array(tasks['failed'])[ tally['failed'] == err_key ]
-    err_string= (err_key[:10]
+    err_string= ((err_key[:10] + err_key[-10:])
                  .replace(" ","_")
+                 .replace("/","")
+                 .replace("*","")
+                 .replace("?","")
                  .replace(":",""))
     writelist(err_logs,"logs_%s_%s.txt" % (args.qdo_quename,err_string))
     writelist(err_tasks,"tasks_%s_%s.txt" % (args.qdo_quename,err_string))
