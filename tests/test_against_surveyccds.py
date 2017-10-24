@@ -149,12 +149,12 @@ def test_legacypipe_table(camera='decam',indir='ps1_gaia',
 def test_main():
   plot=False
   production=False
-  #test_legacypipe_table(camera='decam',indir='ps1_gaia',
-  #                      plot=plot,prod=production)
-  #test_legacypipe_table(camera='mosaic',indir='ps1_gaia',
-  #                      plot=plot, prod=production)
-  #test_legacypipe_table(camera='90prime',indir='ps1_gaia',
-  #                      plot=plot,prod=production)
+  test_legacypipe_table(camera='decam',indir='ps1_gaia',
+                        plot=plot,prod=production)
+  test_legacypipe_table(camera='mosaic',indir='ps1_gaia',
+                        plot=plot, prod=production)
+  test_legacypipe_table(camera='90prime',indir='ps1_gaia',
+                        plot=plot,prod=production)
   # PSFex versions
   test_legacypipe_table(camera='decam',indir='ps1_gaia',
                         psfex=True,

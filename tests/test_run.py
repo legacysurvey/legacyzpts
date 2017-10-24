@@ -86,7 +86,7 @@ def test_decam(inSurveyccds=False, ps1_only=False,
       psfex_dir='psfex'
       calibdir= os.path.join(os.path.dirname(__file__),
                              'testdata','calib')
-      extra_args+= ['--psf'] #,'--calibdir',calibdir]
+      extra_args+= ['--psf','--calibdir',calibdir]
     outdir = os.path.join(os.path.dirname(__file__),
                           'testoutput','decam',
                           ps1_gaia_dir, uniq_dir,
@@ -189,12 +189,12 @@ def test_main():
 def test_main_psfex():
   # PSFex 
   # *-zpt vs. IDL zeropoints
-  test_decam(inSurveyccds=False, ps1_only=False,
-             psfex=True)
+  #test_decam(inSurveyccds=False, ps1_only=False,
+  #           psfex=True)
   # *-legacypipe.fits vs. survey-ccds
   test_decam(inSurveyccds=True, ps1_only=False,
              psfex=True)
 
 if __name__ == "__main__":
-  test_main()
-  #test_main_psfex()
+  #test_main()
+  test_main_psfex()
