@@ -125,15 +125,14 @@ def merge_tables_fns(fn_list,textfile=True,
     return merge_tables(cats, columns='fillzero')
 
 
-def _shrink_img(imgfn,imgfn_new, camera='decam'):
+def _shrink_img(imgfn,imgfn_new, ccdnames=[]):
     """reads in imgfn and writes it to imgfn_new after removing most of the hdus"""
     assert(not 'project' in imgfn_new)
+    assert(len(ccdnames) > 0)
     hdu= fitsio.FITS(imgfn,'r')
     new= fitsio.FITS(imgfn_new,'rw')
 
     new.write(hdu[0].read(),header=hdu[0].read_header())
-    if camera == 'decam':
-        ccdnames= ['N4','S4', 'S22','N19']
     for ccdname in ccdnames:
         try: 
             data= hdu[ccdname].read()
@@ -146,19 +145,21 @@ def _shrink_img(imgfn,imgfn_new, camera='decam'):
 
 
 def shrink_img(camera='decam'):
-    root='/project/projectdirs/cosmo/staging/decam'
-    images= ['DECam_CP/CP20150407/c4d_150409_000747_ooi_g_v1.fits.fz',
-           'DECam_CP/CP20150407/c4d_150409_000424_ooi_r_v1.fits.fz',
-           'DECam_CP/CP20150407/c4d_150409_001645_ooi_z_v1.fits.fz']
+    if camera == 'decam':
+        root='/project/projectdirs/cosmo/staging/decam'
+        images= ['DECam_CP/CP20150407/c4d_150409_000747_ooi_g_v1.fits.fz',
+                 'DECam_CP/CP20150407/c4d_150409_000424_ooi_r_v1.fits.fz',
+                 'DECam_CP/CP20150407/c4d_150409_001645_ooi_z_v1.fits.fz']
+        ccdnames=['N4','S4', 'S22','N19']
     for image in images:
         fn= os.path.join(root,image)
         # ooi
         fn_new='small_'+os.path.basename(fn) #.replace('.fz','')
-        _shrink_img(fn, fn_new, camera=camera)
+        _shrink_img(fn, fn_new, ccdnames=ccdnames)
         # ood
         fn= fn.replace("oki","ood").replace('ooi','ood')
         fn_new= fn_new.replace("oki","ood").replace('ooi','ood')
-        _shrink_img(fn, fn_new, camera=camera)
+        _shrink_img(fn, fn_new, ccdnames=ccdnames)
 
 def ccds_touching_bricks(bricks,ccds,camera,
                          forcesep=None):
