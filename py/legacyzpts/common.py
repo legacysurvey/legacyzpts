@@ -139,7 +139,7 @@ def _shrink_img(imgfn,imgfn_new, ccdnames=[]):
             h= hdu[ccdname].read_header()
             new.write(data, extname=ccdname, header=h)
         except OSError:
-            pass
+            print('error reading hdu: ',ccdname)
     new.close()
     print('wrote %s' % imgfn_new)
 
