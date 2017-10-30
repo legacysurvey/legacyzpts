@@ -591,6 +591,15 @@ def get_bitmask_fn(imgfn):
         raise ValueError('bad imgfn? no ooi or oki: %s' % imgfn)
     return fn
 
+def get_weight_fn(imgfn):
+    if 'ooi' in imgfn: 
+        fn= imgfn.replace('ooi','oow')
+    elif 'oki' in imgfn: 
+        fn= imgfn.replace('oki','oow')
+    else:
+        raise ValueError('bad imgfn? no ooi or oki: %s' % imgfn)
+    return fn
+
 def get_90prime_expnum(primhdr):
     """converts 90prime header key DTACQNAM into the unique exposure number"""
     # /descache/bass/20160710/d7580.0144.fits --> 75800144
@@ -723,8 +732,14 @@ class Measurer(object):
 
     def read_bitmask(self):
         dqfn= get_bitmask_fn(self.fn)
-        mask, junk = fitsio.read(dqfn, ext=self.ext, header=True)
+        mask = fitsio.read(dqfn, ext=self.ext)
         return mask
+
+    def read_weight(self):
+        fn= get_weight_fn(self.fn)
+        wt = fitsio.read(fn, ext=self.ext)
+        wt = self.scale_weight(wt)
+        return wt
 
     def read_image(self):
         '''Read the image and header; scale the image.'''
@@ -734,6 +749,33 @@ class Measurer(object):
 
     def scale_image(self, img):
         return img
+
+    def scale_weight(self, img):
+        return img
+
+    def remap_invvar(self, invvar, primhdr, img, dq):
+        # By default, *do not* remap
+        return invvar
+
+    # A function that can be called by a subclasser's remap_invvar() method
+    def remap_invvar_shotnoise(self, invvar, primhdr, img, dq):
+        #
+        # All three cameras scale the image and weight to units of electrons.
+        #
+        print('Remapping weight map for', self.fn)
+        const_sky = primhdr['SKYADU'] # e/s, Recommended sky level keyword from Frank 
+        expt = primhdr['EXPTIME'] # s
+        with np.errstate(divide='ignore'):
+            var_SR = 1./invvar # e**2
+
+        print('median img:', np.median(img), 'vs sky estimate * exptime', const_sky*expt)
+
+        var_Astro = np.abs(img - const_sky * expt) # img in electrons; Poisson process so variance = mean
+        wt = 1./(var_SR + var_Astro) # 1/(e**2)
+        # Zero out NaNs and masked pixels 
+        wt[np.isfinite(wt) == False] = 0.
+        wt[dq != 0] = 0.
+        return wt
 
     def create_zero_one_mask(self,bitmask,good=[]):
         """Return zero_one_mask arraygiven a bad pixel map and good pix values
@@ -1065,6 +1107,9 @@ class Measurer(object):
 
         self.img,hdr= self.read_image() 
         self.bitmask= self.read_bitmask()
+        weight = self.read_weight()
+
+        self.invvar = self.remap_invvar(weight, self.primhdr, self.img, self.bitmask)
 
         t0= ptime('read image',t0)
 
@@ -1309,11 +1354,8 @@ class Measurer(object):
 
             # Initial flux estimate, from nominal zeropoint
             flux0 = 10.**((zp0 - ps1.legacy_survey_mag) / 2.5) * exptime
-            # Inverse-error of sky image
-            ierr = 1.0/np.sqrt(sky_img)
 
-            # Zero out masked pixels.
-            ierr[self.bitmask > 0] = 0
+            ierr = np.sqrt(self.invvar)
 
             # plt.clf()
             # plt.hist((fit_img * ierr).ravel(), range=(-10,10), bins=100)
@@ -2221,7 +2263,10 @@ class DecamMeasurer(Measurer):
 
     def scale_image(self, img):
         return img * self.gain
-    
+
+    def scale_weight(self, img):
+        return img / (self.gain**2)
+
     def get_wcs(self):
         return wcs_pv2sip_hdr(self.hdr) # PV distortion
     
@@ -2271,6 +2316,12 @@ class Mosaic3Measurer(Measurer):
     def scale_image(self, img):
         '''Convert image from electrons/sec to electrons.'''
         return img * self.exptime
+
+    def scale_weight(self, img):
+        return img / (self.exptime**2)
+
+    def remap_invvar(self, invvar, primhdr, img, dq):
+        return self.remap_invvar_shotnoise(invvar, primhdr, img, dq)
 
     def get_wcs(self):
         return wcs_pv2sip_hdr(self.hdr) # PV distortion
@@ -2334,6 +2385,12 @@ class NinetyPrimeMeasurer(Measurer):
     def scale_image(self, img):
         '''Convert image from electrons/sec to electrons.'''
         return img * self.exptime
+
+    def scale_weight(self, img):
+        return img / (self.exptime**2)
+
+    def remap_invvar(self, invvar, primhdr, img, dq):
+        return self.remap_invvar_shotnoise(invvar, primhdr, img, dq)
 
     def get_wcs(self):
         return wcs_pv2sip_hdr(self.hdr) # PV distortion
