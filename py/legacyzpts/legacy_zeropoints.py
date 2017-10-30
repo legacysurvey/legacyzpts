@@ -1109,6 +1109,21 @@ class Measurer(object):
         self.bitmask= self.read_bitmask()
         weight = self.read_weight()
 
+        plt.clf()
+        n,b,p = plt.hist(((self.img - np.median(self.img)) * np.sqrt(weight))[weight > 0],
+                         range=(-6,6), bins=100)
+        plt.xlabel('Image pixel chi')
+        xx = np.linspace(-6,6, 100)
+        yy = 1./np.sqrt(2.*np.pi) * np.exp(-0.5 * xx**2)
+        yy *= sum(n)
+        db = b[1]-b[0]
+        plt.plot(xx, yy * db, 'r-')
+        plt.xlim(-6,6)
+        fn = 'chipre-%i-%s.png' % (self.expnum, self.ccdname)
+        plt.savefig(fn)
+        print('Wrote', fn)
+
+
         self.invvar = self.remap_invvar(weight, self.primhdr, self.img, self.bitmask)
 
         t0= ptime('read image',t0)
@@ -1357,12 +1372,28 @@ class Measurer(object):
 
             ierr = np.sqrt(self.invvar)
 
-            # plt.clf()
-            # plt.hist((fit_img * ierr).ravel(), range=(-10,10), bins=100)
-            # plt.xlabel('Image pixel chi')
-            # fn = 'chi-%i-%s.png' % (self.expnum, self.ccdname)
-            # plt.savefig(fn)
-            # print('Wrote', fn)
+            plt.clf()
+            n,b,p = plt.hist((fit_img * ierr)[ierr > 0], range=(-6,6), bins=100)
+            plt.xlabel('Image pixel chi')
+            xx = np.linspace(-6,6, 100)
+            yy = 1./np.sqrt(2.*np.pi) * np.exp(-0.5 * xx**2)
+            yy *= sum(n)
+            db = b[1]-b[0]
+            plt.plot(xx, yy * db, 'r-')
+            plt.xlim(-6,6)
+            fn = 'chi-%i-%s.png' % (self.expnum, self.ccdname)
+            plt.savefig(fn)
+            print('Wrote', fn)
+
+            plt.clf()
+            I = (ierr > 0) * (fit_img > 1)
+            plt.hexbin(fit_img[I], 1. / ierr[I],
+                       xscale='log', yscale='log')
+            plt.xlabel('Image pixel value')
+            plt.ylabel('Uncertainty')
+            fn = 'unc-%i-%s.png' % (self.expnum, self.ccdname)
+            plt.savefig(fn)
+            print('Wrote', fn)
 
             # Run tractor fitting of the PS1 stars, using the PsfEx model.
             phot = self.tractor_fit_sources(ps1.ra_ok, ps1.dec_ok, flux0,
