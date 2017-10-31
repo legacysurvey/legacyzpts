@@ -147,7 +147,8 @@ def _ccds_table(camera='decam'):
         ('dec', '>f8'),      
         ('skymag', '>f4'),  
         ('skycounts', '>f4'),
-        ('skyrms', '>f4'),    
+        ('skyrms', '>f4'),
+        ('sig1', '>f4'),
         ('nmatch_photom', '>i2'),   
         ('nmatch_astrom', '>i2'),  
         ('goodps1', '>i2'),   
@@ -255,7 +256,7 @@ def cols_for_legacypipe_table(which='all'):
                            'ccdphrms',
                            'cd1_1','cd2_2','cd1_2','cd2_1',
                            'crval1','crval2','crpix1','crpix2']
-        dustins_keys= ['skyrms']
+        dustins_keys= ['skyrms', 'sig1']
     elif which == 'numeric':
         need_arjuns_keys= ['ra','dec','ra_bore','dec_bore',
                            'expnum',
@@ -1109,6 +1110,12 @@ class Measurer(object):
         self.bitmask= self.read_bitmask()
         weight = self.read_weight()
 
+        # Per-pixel error -- weight is 1/sig*2, scaled by scale_weight()
+        medweight = np.median(weight[(weight > 0) * (self.bitmask == 0)])
+        # Undo the weight scaling to get sig1 back into native image units
+        wscale = self.scale_weight(1.)
+        ccds['sig1'] = 1. / np.sqrt(medweight / wscale)
+
         self.invvar = self.remap_invvar(weight, self.primhdr, self.img, self.bitmask)
 
         t0= ptime('read image',t0)
@@ -1696,8 +1703,8 @@ class Measurer(object):
                 # print('Normalizing PsfEx model with sum:', s)
                 subpsf.img /= psfsum
 
-            print('PSF model:', subpsf)
-            print('PSF image sum:', subpsf.img.sum())
+            #print('PSF model:', subpsf)
+            #print('PSF image sum:', subpsf.img.sum())
 
             tim = tractor.Image(data=subimg, inverr=subie, psf=subpsf)
             flux0 = ref_flux[istar]
@@ -1739,8 +1746,8 @@ class Measurer(object):
                 if dlnp == 0:
                     break
 
-            print('Getting variance estimate: thawed params:')
-            tr.printThawedParams()
+            #print('Getting variance estimate: thawed params:')
+            #tr.printThawedParams()
             variance = tr.optimize(variance=True, just_variance=True, **optargs)
             # Yuck -- if inverse-variance is all zero, weird-shaped result...
             if len(variance) == 4 and variance[3] is None:
