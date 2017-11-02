@@ -142,6 +142,7 @@ def _ccds_table(camera='decam'):
         ('cd2_2', '>f4'),
         ('pixscale', 'f4'),   
         ('zptavg', '>f4'),   
+        ('yshift', 'bool'),
         # -- CCD-level quantities --
         ('ra', '>f8'),        
         ('dec', '>f8'),      
@@ -256,7 +257,7 @@ def cols_for_legacypipe_table(which='all'):
                            'ccdphrms',
                            'cd1_1','cd2_2','cd1_2','cd2_1',
                            'crval1','crval2','crpix1','crpix2']
-        dustins_keys= ['skyrms', 'sig1']
+        dustins_keys= ['skyrms', 'sig1', 'yshift']
     elif which == 'numeric':
         need_arjuns_keys= ['ra','dec','ra_bore','dec_bore',
                            'expnum',
@@ -1020,6 +1021,7 @@ class Measurer(object):
         ccds['airmass'] = self.airmass
         ccds['gain'] = self.gain
         ccds['pixscale'] = self.pixscale
+        ccds['yshift'] = 'YSHIFT' in self.primhdr
         
         # From CP Header
         hdrVal={}
@@ -2433,7 +2435,6 @@ def get_extlist(camera,fn,debug=False,choose_ccd=None):
         extlist = ['CCD1', 'CCD2', 'CCD3', 'CCD4']
         if debug:
             extlist = ['CCD1']
-            #extlist = ['CCD1','CCD2']
     elif camera == 'mosaic':
         extlist = ['CCD1', 'CCD2', 'CCD3', 'CCD4']
         if debug:
