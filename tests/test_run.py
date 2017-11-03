@@ -8,6 +8,8 @@ from astrometry.util.fits import fits_table, merge_tables
 
 DOWNLOAD_DIR='http://portal.nersc.gov/project/desi/users/kburleigh/legacyzpts'
 
+DOWNLOAD_DIR_2='http://portal.nersc.gov/project/cosmo/temp/dstn/'
+
 CAMERAS= ['decam','mosaic','90prime']
 
 FN_SUFFIX= {"decam":"c4d",
@@ -27,6 +29,12 @@ def download_ccds():
                                targz), 
                   outdir)
 
+    for targz in ['ccds_decam_weights.tar.gz']:
+      fetch_targz(os.path.join(DOWNLOAD_DIR_2,
+                               targz),
+                  outdir)
+
+      
 def run_and_check_outputs(image_list,cmd_line,outdir):
     """Runs legacyzpts and checks that expected files were written
 
