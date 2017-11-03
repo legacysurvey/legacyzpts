@@ -29,7 +29,10 @@ def download_ccds():
                                targz), 
                   outdir)
 
-    for targz in ['ccds_decam_weights.tar.gz']:
+    for targz in ['ccds_decam_weights.tar.gz',
+                  'ccds_mosaic_weights.tar.gz',
+                  'ccds_90prime_weights.tar.gz',
+                  ]:
       fetch_targz(os.path.join(DOWNLOAD_DIR_2,
                                targz),
                   outdir)
