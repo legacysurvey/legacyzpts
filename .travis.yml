@@ -114,7 +114,7 @@ before_script:
     - export PYTHONPATH=$HOME/theValidator:$PYTHONPATH
     # - cd $HOME && git clone https://github.com/legacysurvey/legacyzpts.git
     #- export PYTHONPATH=$HOME/legacyzpts/py:$PYTHONPATH
-    - export PYTHONPATH=${PYTHONPATH}:.
+    - export PYTHONPATH=${PYTHONPATH}:${LEGACYZPTS_DIR}/py:.
     - echo PYTHONPATH is $PYTHONPATH
 
 script:
