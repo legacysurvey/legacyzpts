@@ -119,7 +119,7 @@ before_script:
 
 script:
   - pwd
-  - cd $(LEGACYZPTS_DIR)
+  - cd $LEGACYZPTS_DIR
   - pwd
   #- cd $HOME/legacyzpts
   - pytest -v tests/test_run.py::test_main 
