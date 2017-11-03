@@ -1163,7 +1163,7 @@ class Measurer(object):
         except OSError:
             txt="outside PS1 footprint,In Gal. Plane"
             print(txt)
-            return self.return_on_error(mess,ccds=ccds)
+            return self.return_on_error(txt,ccds=ccds)
         assert(len(ps1_gaia.columns()) > len(ps1.columns())) 
         ps1band = ps1cat.ps1band[self.band]
         # PS1 cuts
