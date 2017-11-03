@@ -58,52 +58,6 @@ def image_to_fits(img,fn,header=None,extname=None):
     fitsio.write(fn,img,header=header,extname=extname)
     print('Wrote %s' % fn)
 
-
-# From image.py
-# imgfn,maskfn = self.funpack_files(self.imgfn, self.dqfn, self.hdu, todelete)
-#for fn in todelete:
-#   os.unlink(fn)
-def funpack_files(imgfn, maskfn, hdu, todelete):
-    from legacypipe.survey import create_temp
-
-    tmpimgfn = None
-    tmpmaskfn = None
-    # For FITS files that are not actually fpack'ed, funpack -E
-    # fails.  Check whether actually fpacked.
-    fcopy = False
-    hdr = fitsio.read_header(imgfn, ext=hdu)
-    if not ((hdr['XTENSION'] == 'BINTABLE') and hdr.get('ZIMAGE', False)):
-        print('Image %s, HDU %i is not fpacked; just imcopying.' %
-              (imgfn,  hdu))
-        fcopy = True
-
-    tmpimgfn  = create_temp(suffix='.fits')
-    tmpmaskfn = create_temp(suffix='.fits')
-    todelete.append(tmpimgfn)
-    todelete.append(tmpmaskfn)
-
-    if fcopy:
-        cmd = 'imcopy %s"+%i" %s' % (imgfn, hdu, tmpimgfn)
-    else:
-        cmd = 'funpack -E %s -O %s %s' % (hdu, tmpimgfn, imgfn)
-    print(cmd)
-    if os.system(cmd):
-        raise RuntimeError('Command failed: ' + cmd)
-
-    if fcopy:
-        cmd = 'imcopy %s"+%i" %s' % (maskfn, hdu, tmpmaskfn)
-    else:
-        cmd = 'funpack -E %s -O %s %s' % (hdu, tmpmaskfn, maskfn)
-    print(cmd)
-    if os.system(cmd):
-        print('Command failed: ' + cmd)
-        M,hdr = self._read_fits(maskfn, hdu, header=True)
-        print('Read', M.dtype, M.shape)
-        fitsio.write(tmpmaskfn, M, header=hdr, clobber=True)
-
-    return tmpimgfn,tmpmaskfn
-
-
 def ptime(text,t0):
     tnow=Time()
     print('TIMING:%s ' % text,tnow-t0)
@@ -283,42 +237,45 @@ def run_create_legacypipe_table(zpt_list):
         
 
 def cols_for_legacypipe_table(which='all'):
-  """Return list of -legacypipe.fits table colums
-  
-  Args:
-    which: all, numeric, 
-       nonzero_diff (numeric and expect non-zero diff with reference 
-       when compute it)"""
-  assert(which in ['all','numeric','nonzero_diff'])
-  if which == 'all':
-    need_arjuns_keys= ['ra','dec','ra_bore','dec_bore',
-                       'image_filename','image_hdu','expnum','ccdname','object',
-                       'filter','exptime','camera','width','height','propid',
-                       'mjd_obs','ccdnmatch',
-                       'fwhm','zpt','ccdzpt','ccdraoff','ccddecoff',
-                       'cd1_1','cd2_2','cd1_2','cd2_1',
-                       'crval1','crval2','crpix1','crpix2']
-    dustins_keys= ['skyrms']
-  elif which == 'numeric':
-    need_arjuns_keys= ['ra','dec','ra_bore','dec_bore',
-                       'expnum',
-                       'exptime','width','height',
-                       'mjd_obs','ccdnmatch',
-                       'fwhm','zpt','ccdzpt','ccdraoff','ccddecoff',
-                       'cd1_1','cd2_2','cd1_2','cd2_1',
-                       'crval1','crval2','crpix1','crpix2']
-    dustins_keys= ['skyrms']
-  elif which == 'nonzero_diff':
-    need_arjuns_keys= ['ra','dec','ccdnmatch',
-                       'fwhm','zpt','ccdzpt','ccdraoff','ccddecoff']
-    dustins_keys= ['skyrms']
-  
-  return need_arjuns_keys + dustins_keys
+    """Return list of -legacypipe.fits table colums
+
+    Args:
+        which: all, numeric, 
+        nonzero_diff (numeric and expect non-zero diff with reference 
+        when compute it)
+    """
+    assert(which in ['all','numeric','nonzero_diff'])
+    if which == 'all':
+        need_arjuns_keys= ['ra','dec','ra_bore','dec_bore',
+                           'image_filename','image_hdu','expnum','ccdname','object',
+                           'filter','exptime','camera','width','height','propid',
+                           'mjd_obs','ccdnmatch',
+                           'fwhm','zpt','ccdzpt','ccdraoff','ccddecoff',
+                           'ccdrarms', 'ccddecrms', 'ccdskycounts',
+                           'ccdphrms',
+                           'cd1_1','cd2_2','cd1_2','cd2_1',
+                           'crval1','crval2','crpix1','crpix2']
+        dustins_keys= ['skyrms']
+    elif which == 'numeric':
+        need_arjuns_keys= ['ra','dec','ra_bore','dec_bore',
+                           'expnum',
+                           'exptime','width','height',
+                           'mjd_obs','ccdnmatch',
+                           'fwhm','zpt','ccdzpt','ccdraoff','ccddecoff',
+                           'cd1_1','cd2_2','cd1_2','cd2_1',
+                           'crval1','crval2','crpix1','crpix2']
+        dustins_keys= ['skyrms']
+    elif which == 'nonzero_diff':
+        need_arjuns_keys= ['ra','dec','ccdnmatch',
+                           'fwhm','zpt','ccdzpt','ccdraoff','ccddecoff']
+        dustins_keys= ['skyrms']
+    return need_arjuns_keys + dustins_keys
  
 
 def create_legacypipe_table(ccds_fn, camera=None):
-    '''input _ccds_table fn
-    output a table formatted for legacypipe/runbrick'''
+    """input _ccds_table fn
+    output a table formatted for legacypipe/runbrick
+    """
     assert(camera in CAMERAS)
     need_keys= cols_for_legacypipe_table(which='all')
     # Load full zpt table
@@ -333,11 +290,15 @@ def create_legacypipe_table(ccds_fn, camera=None):
     #has_zpt = 'zpt' in T.columns()
     # Units
     if camera == 'decam':
-      T.set('zpt',T.zpt - 2.5*np.log10(T.gain))
-      T.set('zptavg',T.zptavg - 2.5*np.log10(T.gain))
+        T.set('zpt',T.zpt - 2.5*np.log10(T.gain))
+        T.set('zptavg',T.zptavg - 2.5*np.log10(T.gain))
     # Rename
     rename_keys= [('zpt','ccdzpt'),('zptavg','zpt'),
                   ('raoff','ccdraoff'),('decoff','ccddecoff'),
+                  ('skycounts', 'ccdskycounts'),
+                  ('rarms',  'ccdrarms'),
+                  ('decrms', 'ccddecrms'),
+                  ('phrms', 'ccdphrms'),
                   ('nmatch_photom','ccdnmatch')]
     for old,new in rename_keys:
         T.rename(old,new)
@@ -350,8 +311,8 @@ def create_legacypipe_table(ccds_fn, camera=None):
         #    _= units.pop(key)
     # legacypipe/merge-zeropoints.py
     if camera == 'decam':
-      T.set('width', np.zeros(len(T), np.int16) + 2046)
-      T.set('height', np.zeros(len(T), np.int16) + 4094)
+        T.set('width', np.zeros(len(T), np.int16) + 2046)
+        T.set('height', np.zeros(len(T), np.int16) + 4094)
     # precision
     T.width  = T.width.astype(np.int16)
     T.height = T.height.astype(np.int16)
@@ -375,46 +336,46 @@ def create_legacypipe_table(ccds_fn, camera=None):
 
 def cols_for_converted_star_table(star_table=None,
                                   which=None):
-  assert(star_table in ['photom','astrom'])
-  assert(which in ['all','numeric','nonzero_diff'])
-  # which
-  if which == 'all':
-    need_arjuns_keys= ['filename','expnum','extname',
-                       'ccd_x','ccd_y','ccd_ra','ccd_dec',
-                       'ccd_mag','ccd_sky',
-                       'raoff','decoff',
-                       'magoff',
-                       'nmatch',
-                       'gmag','ps1_g','ps1_r','ps1_i','ps1_z']
-    # If want it in star- table, add it here
-    extra_keys= ['image_hdu','filter','ccdname'] 
-  elif which == 'numeric':
-    need_arjuns_keys= ['expnum',
-                       'ccd_x','ccd_y','ccd_ra','ccd_dec',
-                       'ccd_mag','ccd_sky',
-                       'raoff','decoff',
-                       'magoff',
-                       'nmatch',
-                       'gmag','ps1_g','ps1_r','ps1_i','ps1_z']
-    extra_keys= [] 
-  elif which == 'nonzero_diff':
-    need_arjuns_keys= ['ccd_x','ccd_y','ccd_ra','ccd_dec',
-                       'ccd_mag','ccd_sky',
-                       'raoff','decoff',
-                       'magoff',
-                       'nmatch']
-    extra_keys= [] 
+    assert(star_table in ['photom','astrom'])
+    assert(which in ['all','numeric','nonzero_diff'])
+    # which
+    if which == 'all':
+        need_arjuns_keys= ['filename','expnum','extname',
+                           'ccd_x','ccd_y','ccd_ra','ccd_dec',
+                           'ccd_mag','ccd_sky',
+                           'raoff','decoff',
+                           'magoff',
+                           'nmatch',
+                           'gmag','ps1_g','ps1_r','ps1_i','ps1_z']
+        # If want it in star- table, add it here
+        extra_keys= ['image_hdu','filter','ccdname'] 
+    elif which == 'numeric':
+        need_arjuns_keys= ['expnum',
+                           'ccd_x','ccd_y','ccd_ra','ccd_dec',
+                           'ccd_mag','ccd_sky',
+                           'raoff','decoff',
+                           'magoff',
+                           'nmatch',
+                           'gmag','ps1_g','ps1_r','ps1_i','ps1_z']
+        extra_keys= [] 
+    elif which == 'nonzero_diff':
+        need_arjuns_keys= ['ccd_x','ccd_y','ccd_ra','ccd_dec',
+                           'ccd_mag','ccd_sky',
+                           'raoff','decoff',
+                           'magoff',
+                           'nmatch']
+        extra_keys= [] 
 
-  # star_table
-  if star_table == 'photom':
-    for key in ['raoff','decoff']:
-      need_arjuns_keys.remove(key)
-  
-  elif star_table == 'astrom':
-    for key in ['magoff']:
-      need_arjuns_keys.remove(key)
-  # Done 
-  return need_arjuns_keys + extra_keys
+    # star_table
+    if star_table == 'photom':
+        for key in ['raoff','decoff']:
+            need_arjuns_keys.remove(key)
+
+    elif star_table == 'astrom':
+        for key in ['magoff']:
+            need_arjuns_keys.remove(key)
+    # Done 
+    return need_arjuns_keys + extra_keys
  
 
 
@@ -423,13 +384,13 @@ def convert_stars_table(T, camera=None,
     """converts -star.fits table to idl matches table
 
     Note, unlike converte_zeropoints_table, must treat each band 
-      separately so loop over the bands
+        separately so loop over the bands
 
     Args:
-      T: legacy stars fits_table, can be a single stars table or a merge
-        of many stars tables
-      camera: CAMERAS
-      star_table: photom or astrom
+        T: legacy stars fits_table, can be a single stars table or a merge
+            of many stars tables
+        camera: CAMERAS
+        star_table: photom or astrom
     """
     assert(camera in CAMERAS)
     assert(star_table in ['photom','astrom'])
@@ -451,17 +412,17 @@ def convert_stars_table_one_band(T, camera=None, star_table=None,
     """Converts legacy star fits table (T) to idl names and units
     
     Attributes:
-      T: legacy star fits table
-      star_table: photom or astrom
-      zp_fid: fiducial zeropoint for the band
-      pixscale: pixscale
-      expnum2exptime: dict mapping expnum to exptime
+        T: legacy star fits table
+        star_table: photom or astrom
+        zp_fid: fiducial zeropoint for the band
+        pixscale: pixscale
+        expnum2exptime: dict mapping expnum to exptime
     
     Example:
-    kwargs= primary_hdr(zpt_fn)
-    T= fits_table(stars_fn)
-    newT= convert_stars_table(T, zp_fid=kwargs['zp_fid'],
-    pixscale=kwargs['pixscale'])
+        kwargs= primary_hdr(zpt_fn)
+        T= fits_table(stars_fn)
+        newT= convert_stars_table(T, zp_fid=kwargs['zp_fid'],
+        pixscale=kwargs['pixscale'])
     """ 
     assert(camera in CAMERAS)
     assert(star_table in ['photom','astrom'])
@@ -481,9 +442,9 @@ def convert_stars_table_one_band(T, camera=None, star_table=None,
     # legacyzpts star- apskyflux is e- from sky in 7'' aperture
     area= np.pi*3.5**2/pixscale**2
     if camera == 'decam':
-      T.set('ccd_sky', T.apskyflux / area / T.gain)
+        T.set('ccd_sky', T.apskyflux / area / T.gain)
     elif camera in ['mosaic','90prime']:
-      T.set('ccd_sky', T.apskyflux / area / T.exptime)
+        T.set('ccd_sky', T.apskyflux / area / T.exptime)
     # Arjuns ccd_sky is ADUs in 7-10 arcsec sky aperture
     # e.g. sky (total e/pix/sec)= ccd_sky (ADU) * gain / exptime
     # Rename
@@ -493,8 +454,8 @@ def convert_stars_table_one_band(T, camera=None, star_table=None,
                   ('image_filename','filename'),
                   ('gaia_g','gmag')]
     if star_table == 'astrom':
-      for key in [('dmagall','magoff')]:
-        rename_keys.remove(key)
+        for key in [('dmagall','magoff')]:
+            rename_keys.remove(key)
     for old,new in rename_keys:
         T.rename(old,new)
         #units[new]= units.pop(old)
@@ -508,62 +469,63 @@ def convert_stars_table_one_band(T, camera=None, star_table=None,
 
 
 def cols_for_converted_zpt_table(which='all'):
-  """Return list of columns for -zpt.fits table converted to idl names
-  
-  Args:
-    which: all, numeric, 
+    """Return list of columns for -zpt.fits table converted to idl names
+
+    Args:
+        which: all, numeric, 
        nonzero_diff (numeric and expect non-zero diff with reference 
-       when compute it)"""
-  assert(which in ['all','numeric','nonzero_diff'])
-  if which == 'all':
-    need_arjuns_keys= ['filename', 'object', 'expnum', 'exptime', 'filter', 'seeing', 'ra', 'dec', 
-         'date_obs', 'mjd_obs', 'ut', 'ha', 'airmass', 'propid', 'zpt', 'avsky', 
-         'fwhm', 'crpix1', 'crpix2', 'crval1', 'crval2', 'cd1_1', 'cd1_2', 'cd2_1', 'cd2_2', 
-         'naxis1', 'naxis2', 'ccdnum', 'ccdname', 'ccdra', 'ccddec', 
-         'ccdzpt', 'ccdphoff', 'ccdphrms', 'ccdskyrms', 'ccdskymag', 
-         'ccdskycounts', 'ccdraoff', 'ccddecoff', 'ccdrarms', 'ccddecrms', 'ccdtransp', 
-         'ccdnmatch']
-  
-  elif which == 'numeric':
-    need_arjuns_keys= ['expnum', 'exptime', 'seeing', 'ra', 'dec', 
-         'mjd_obs', 'airmass', 'zpt', 'avsky', 
-         'fwhm', 'crpix1', 'crpix2', 'crval1', 'crval2', 'cd1_1', 'cd1_2', 'cd2_1', 'cd2_2', 
-         'naxis1', 'naxis2', 'ccdnum', 'ccdra', 'ccddec', 
-         'ccdzpt', 'ccdphoff', 'ccdphrms', 'ccdskyrms', 'ccdskymag', 
-         'ccdskycounts', 'ccdraoff', 'ccddecoff', 'ccdrarms', 'ccddecrms', 'ccdtransp', 
-         'ccdnmatch']
-   
-  elif which == 'nonzero_diff':
-    need_arjuns_keys= ['seeing', 'ra', 'dec', 
-         'zpt', 'avsky', 
-         'fwhm', 
-         'ccdra', 'ccddec', 
-         'ccdzpt', 'ccdphoff', 'ccdphrms', 'ccdskyrms', 'ccdskymag', 
-         'ccdskycounts', 'ccdraoff', 'ccddecoff', 'ccdrarms', 'ccddecrms', 'ccdtransp', 
-         'ccdnmatch']
-  
-  return need_arjuns_keys
+       when compute it)
+    """
+    assert(which in ['all','numeric','nonzero_diff'])
+    if which == 'all':
+        need_arjuns_keys= ['filename', 'object', 'expnum', 'exptime', 'filter', 'seeing', 'ra', 'dec', 
+             'date_obs', 'mjd_obs', 'ut', 'ha', 'airmass', 'propid', 'zpt', 'avsky', 
+             'fwhm', 'crpix1', 'crpix2', 'crval1', 'crval2', 'cd1_1', 'cd1_2', 'cd2_1', 'cd2_2', 
+             'naxis1', 'naxis2', 'ccdnum', 'ccdname', 'ccdra', 'ccddec', 
+             'ccdzpt', 'ccdphoff', 'ccdphrms', 'ccdskyrms', 'ccdskymag', 
+             'ccdskycounts', 'ccdraoff', 'ccddecoff', 'ccdrarms', 'ccddecrms', 'ccdtransp', 
+             'ccdnmatch']
+
+    elif which == 'numeric':
+        need_arjuns_keys= ['expnum', 'exptime', 'seeing', 'ra', 'dec', 
+             'mjd_obs', 'airmass', 'zpt', 'avsky', 
+             'fwhm', 'crpix1', 'crpix2', 'crval1', 'crval2', 'cd1_1', 'cd1_2', 'cd2_1', 'cd2_2', 
+             'naxis1', 'naxis2', 'ccdnum', 'ccdra', 'ccddec', 
+             'ccdzpt', 'ccdphoff', 'ccdphrms', 'ccdskyrms', 'ccdskymag', 
+             'ccdskycounts', 'ccdraoff', 'ccddecoff', 'ccdrarms', 'ccddecrms', 'ccdtransp', 
+             'ccdnmatch']
+
+    elif which == 'nonzero_diff':
+        need_arjuns_keys= ['seeing', 'ra', 'dec', 
+             'zpt', 'avsky', 
+             'fwhm', 
+             'ccdra', 'ccddec', 
+             'ccdzpt', 'ccdphoff', 'ccdphrms', 'ccdskyrms', 'ccdskymag', 
+             'ccdskycounts', 'ccdraoff', 'ccddecoff', 'ccdrarms', 'ccddecrms', 'ccdtransp', 
+             'ccdnmatch']
+
+    return need_arjuns_keys
  
 
 def convert_zeropoints_table(T, camera=None):
     """Make column names and units of -zpt.fits identical to IDL zeropoints
 
     Args:
-      T: fits_table of some -zpt.fits like fits file
+        T: fits_table of some -zpt.fits like fits file
     """
     assert(camera in CAMERAS)
     pix= get_pixscale(camera)
     need_arjuns_keys= cols_for_converted_zpt_table(which='all')
     # Change units
     if camera == "decam":
-      T.set('fwhm', T.fwhm * pix)
-      T.set('skycounts', T.skycounts * T.exptime / T.gain)
-      T.set('skyrms', T.skyrms * T.exptime / T.gain)
-      T.set('zpt',T.zpt - 2.5*np.log10(T.gain))
-      T.set('zptavg',T.zptavg - 2.5*np.log10(T.gain))
+        T.set('fwhm', T.fwhm * pix)
+        T.set('skycounts', T.skycounts * T.exptime / T.gain)
+        T.set('skyrms', T.skyrms * T.exptime / T.gain)
+        T.set('zpt',T.zpt - 2.5*np.log10(T.gain))
+        T.set('zptavg',T.zptavg - 2.5*np.log10(T.gain))
     elif camera in ['mosaic','90prime']:
-      T.set('fwhm', T.fwhm * pix)
-      T.set('fwhm_cp', T.fwhm_cp * pix)
+        T.set('fwhm', T.fwhm * pix)
+        T.set('fwhm_cp', T.fwhm_cp * pix)
     # Append 'ccd' to name
     app_ccd= ['skycounts','skyrms','skymag',
               'phoff','raoff','decoff',
@@ -629,29 +591,31 @@ def get_bitmask_fn(imgfn):
         raise ValueError('bad imgfn? no ooi or oki: %s' % imgfn)
     return fn
 
+def get_90prime_expnum(primhdr):
+    """converts 90prime header key DTACQNAM into the unique exposure number"""
+    # /descache/bass/20160710/d7580.0144.fits --> 75800144
+    base= (os.path.basename(primhdr['DTACQNAM'])
+           .replace('.fits','')
+           .replace('.fz',''))
+    return int( re.sub(r'([a-z]+|\.+)','',base) )
+
+
 class Measurer(object):
+    """Main image processing functions for all cameras.
+
+    Args:
+        aprad: Aperture photometry radius in arcsec
+        skyrad_inner,skyrad_outer: sky annulus in arcsec
+        det_thresh: minimum S/N for matched filter
+        match_radius: arcsec matching to gaia/ps1
+        sn_min,sn_max: if not None then then {min,max} S/N will be enforced from 
+            aperture photoemtry, where S/N = apflux/sqrt(skyflux)
+        aper_sky_sub: do aperture sky subtraction instead of splinesky
+    """
+
     def __init__(self, fn, aprad=3.5, skyrad_inner=7.0, skyrad_outer=10.0,
                  det_thresh=8., match_radius=3.,sn_min=None,sn_max=None,
                  aper_sky_sub=False, calibrate=False, **kwargs):
-        '''This is the work-horse class which operates on a given image regardless of
-        its origin (decam, mosaic, 90prime).
-
-        Args:
-
-        aprad: float
-        Aperture photometry radius in arcsec
-
-        skyrad_{inner,outer}: floats
-        Sky annulus radius in arcsec
-
-        det_thresh: minimum S/N for matched filter, 8 gives daofind agreendment with IDL daofind of 10
-        match_radius: arcsec matching to gaia/ps1, 3 arcsec is IDL codes
-
-        sn_{min,max}: if not None then then {min,max} S/N will be enforced from 
-                      aperture photoemtry, where S/N = apflux/sqrt(skyflux)
-
-        aper_sky_sub: do aperture sky subtraction instead of splinesky
-        '''
         # Set extra kwargs
         self.ps1_pattern= kwargs['ps1_pattern']
         self.ps1_gaia_pattern= kwargs['ps1_gaia_pattern']
@@ -665,13 +629,14 @@ class Measurer(object):
         self.debug= kwargs.get('debug')
         self.outdir= kwargs.get('outdir')
 
-        if kwargs['calibdir']:
-            self.calibdir= kwargs['calibdir']
-        else:
-            self.calibdir= os.getenv('LEGACY_SURVEY_DIR',None)
-            if self.calibdir is None and kwargs['psf']:
-                raise ValueError('LEGACY_SURVEY_DIR not set and --calibdir not given')
-            self.calibdir= os.path.join(self.calibdir,'calib')
+        if kwargs['psf']:
+            if kwargs['calibdir']:
+                self.calibdir= kwargs['calibdir']
+            else:
+                self.calibdir= os.getenv('LEGACY_SURVEY_DIR',None)
+                if self.calibdir is None:
+                    raise ValueError('LEGACY_SURVEY_DIR not set and --calibdir not given')
+                self.calibdir= os.path.join(self.calibdir,'calib')
 
         self.aper_sky_sub = aper_sky_sub
         self.calibrate = calibrate
@@ -700,9 +665,17 @@ class Measurer(object):
             self.primhdr= tmp[0].header
             tmp.close()
             del tmp
+        # CP WCS succeed?
+        assert('WCSCAL' in self.primhdr.keys())
+        self.goodWcs=True  
+        if not 'success' in self.primhdr['WCSCAL'].strip().lower():
+            self.goodWcs=False  
 
         # Camera-agnostic primary header cards
-        self.propid = self.primhdr['PROPID']
+        try:
+            self.propid = self.primhdr['PROPID']
+        except KeyError:
+            self.propid = self.primhdr['DTPROPID']
         self.exptime = self.primhdr['EXPTIME']
         self.date_obs = self.primhdr['DATE-OBS']
         self.mjd_obs = self.primhdr['MJD-OBS']
@@ -716,11 +689,9 @@ class Measurer(object):
             setattr(self, key.lower(),val)
 
         if kwargs['camera'] in ['decam','mosaic']:
-          self.expnum= self.primhdr['EXPNUM']
+            self.expnum= self.primhdr['EXPNUM']
         elif kwargs['camera'] == '90prime':
-          # /descache/bass/20160710/d7580.0144.fits --> 75800144
-          base= os.path.basename(self.primhdr['DTACQNAM']).replace('.fits','')
-          self.expnum= int( re.sub(r'([a-z]+|\.+)','',base) )
+            self.expnum= get_90prime_expnum(self.primhdr)
         print('CP Header: EXPNUM = ',self.expnum)
         self.obj = self.primhdr['OBJECT']
 
@@ -755,6 +726,15 @@ class Measurer(object):
         mask, junk = fitsio.read(dqfn, ext=self.ext, header=True)
         return mask
 
+    def read_image(self):
+        '''Read the image and header; scale the image.'''
+        img, hdr = fitsio.read(self.fn, ext=self.ext, header=True)
+        img = self.scale_image(img)
+        return img, hdr
+
+    def scale_image(self, img):
+        return img
+
     def create_zero_one_mask(self,bitmask,good=[]):
         """Return zero_one_mask arraygiven a bad pixel map and good pix values
         bitmask: ood image
@@ -763,7 +743,7 @@ class Measurer(object):
         # 0 == good, 1 == bad
         zero_one_mask= bitmask.copy()
         for val in good:
-          zero_one_mask[zero_one_mask == val]= 0 
+            zero_one_mask[zero_one_mask == val]= 0 
         zero_one_mask[zero_one_mask > 0]= 1
         return zero_one_mask
 
@@ -771,26 +751,25 @@ class Measurer(object):
         """Convert bitmask into a zero and ones mask, 1 = bad, 0 = good
         bitmask: ood image
         good: (optional) list of values to treat as good in the bitmask
-          default is to use appropiate values for the camera
+            default is to use appropiate values for the camera
         """
         # Defaults
         if len(good) == 0:
-          if self.camera == 'decam':
-            # 7 = transient
-            good=[7]
-          elif self.camera == 'mosaic':
-            # 5 is truly a cosmic ray
-            good=[]
-          elif self.camera == '90prime':
-            # 5 can be really bad for a good image because these are subtracted
-            # and interpolated stats
-            good= []
+            if self.camera == 'decam':
+                # 7 = transient
+                good=[7]
+            elif self.camera == 'mosaic':
+                # 5 is truly a cosmic ray
+                good=[]
+            elif self.camera == '90prime':
+                # 5 can be really bad for a good image because these are subtracted
+                # and interpolated stats
+                good= []
         return self.create_zero_one_mask(bitmask,good=good)
 
     def sensible_sigmaclip(self, arr, nsigma = 4.0):
         '''sigmaclip returns unclipped pixels, lo,hi, where lo,hi are the
         mean(goodpix) +- nsigma * sigma
-
         '''
         goodpix, lo, hi = sigmaclip(arr, low=nsigma, high=nsigma)
         meanval = np.mean(goodpix)
@@ -943,11 +922,11 @@ class Measurer(object):
         """
         assert(len(err_message) > 0 & len(err_message) <= 30)
         if ccds is None:
-          ccds= _ccds_table(self.camera)
+            ccds= _ccds_table(self.camera)
         if stars_photom is None:
-          stars_photom= _stars_table()
+            stars_photom= _stars_table()
         if stars_astrom is None:
-          stars_astrom= _stars_table()
+            stars_astrom= _stars_table()
         ccds['err_message']= err_message
         ccds['zpt']= np.nan
         return ccds, stars_photom, stars_astrom
@@ -956,13 +935,16 @@ class Measurer(object):
         """Computes statistics for 1 CCD
         
         Args: 
-          ext: ccdname
-          save_xy: save daophot x,y and x,y after various cuts to dict and save
-            to json
+            ext: ccdname
+            save_xy: save daophot x,y and x,y after various cuts to dict and save
+                to json
         
         Returns:
-          ccds, stars_photom, stars_astrom
+            ccds, stars_photom, stars_astrom
         """
+        if not self.goodWcs:
+            print('WCS Failed')
+            return self.return_on_error(err_message='WCS Failed')
         self.set_hdu(ext)
         # 
         t0= Time()
@@ -971,11 +953,11 @@ class Measurer(object):
         # Initialize 
         ccds = _ccds_table(self.camera)
         if STAGING_CAMERAS[self.camera] in self.fn:
-          ccds['image_filename'] = self.fn[self.fn.rfind('/%s/' % \
+            ccds['image_filename'] = self.fn[self.fn.rfind('/%s/' % \
                                            STAGING_CAMERAS[self.camera])+1:]
         else:
-          # img not on proj
-          ccds['image_filename'] = os.path.basename(self.fn)
+            # img not on proj
+            ccds['image_filename'] = self.fn #os.path.basename(self.fn)
         ccds['image_hdu'] = self.image_hdu 
         ccds['ccdnum'] = self.ccdnum 
         ccds['camera'] = self.camera
@@ -1000,23 +982,23 @@ class Measurer(object):
         hdrVal={}
         # values we want
         for ccd_col in ['width','height','fwhm_cp']:
-          # Possible keys in hdr for these values
-          for key in self.cp_header_keys[ccd_col]:
-            if key in self.hdr.keys():
-              hdrVal[ccd_col]= self.hdr[key]
-              break
+            # Possible keys in hdr for these values
+            for key in self.cp_header_keys[ccd_col]:
+                if key in self.hdr.keys():
+                    hdrVal[ccd_col]= self.hdr[key]
+                    break
         for ccd_col in ['width','height','fwhm_cp']:
-          if ccd_col in hdrVal.keys():
-            print('CP Header: %s = ' % ccd_col,hdrVal[ccd_col])
-            ccds[ccd_col]= hdrVal[ccd_col]
-          else:
-            warning='Could not find %s, keys not in cp header: %s' % \
-                    (ccd_col,self.cp_header_keys[ccd_col])
-            if ccd_col == 'fwhm_cp':
-              print('WARNING: %s' % warning)
-              ccds[ccd_col]= np.nan
+            if ccd_col in hdrVal.keys():
+                print('CP Header: %s = ' % ccd_col,hdrVal[ccd_col])
+                ccds[ccd_col]= hdrVal[ccd_col]
             else:
-              raise KeyError(warning)
+                warning='Could not find %s, keys not in cp header: %s' % \
+                        (ccd_col,self.cp_header_keys[ccd_col])
+                if ccd_col == 'fwhm_cp':
+                    print('WARNING: %s' % warning)
+                    ccds[ccd_col]= np.nan
+                else:
+                    raise KeyError(warning)
         hdr_fwhm= ccds['fwhm_cp'].data[0]
         #hdr_fwhm=-1
         #for fwhm_key in self.cp_fwhm_keys:
@@ -1032,15 +1014,15 @@ class Measurer(object):
         notneeded_cols= ['avsky']
         for ccd_col in ['avsky', 'crpix1', 'crpix2', 'crval1', 'crval2', 
                         'cd1_1','cd1_2', 'cd2_1', 'cd2_2']:
-          if ccd_col.upper() in self.hdr.keys():
-            print('CP Header: %s = ' % ccd_col,self.hdr[ccd_col])
-            ccds[ccd_col]= self.hdr[ccd_col]
-          else:
-            if ccd_col in notneeded_cols:
-              ccds[ccd_col]= np.nan
+            if ccd_col.upper() in self.hdr.keys():
+                print('CP Header: %s = ' % ccd_col,self.hdr[ccd_col])
+                ccds[ccd_col]= self.hdr[ccd_col]
             else:
-              raise KeyError('Could not find %s, keys not in cp header:' \
-                           % ccd_col,ccd_col)
+                if ccd_col in notneeded_cols:
+                    ccds[ccd_col]= np.nan
+                else:
+                    raise KeyError('Could not find %s, keys not in cp header:' \
+                               % ccd_col,ccd_col)
         #hdrkey = ('avsky', 'crpix1', 'crpix2', 'crval1', 'crval2', 'cd1_1',
         #          'cd1_2', 'cd2_1', 'cd2_2')
         #ccdskey = ('avsky', 'crpix1', 'crpix2', 'crval1', 'crval2', 'cd1_1',
@@ -1081,13 +1063,9 @@ class Measurer(object):
         if (self.camera == 'decam') & (ext == 'S7'):
             return self.return_on_error(err_message='S7', ccds=ccds)
 
-        if self.camera == 'decam':
-            # Simultaneous image,bitmask read
-            # funpack optional (funpack = slower!)
-            hdr, self.img, self.bitmask = self.read_image_and_bitmask(funpack=False)
-        else:
-            self.img,hdr= self.read_image() 
-            self.bitmask= self.read_bitmask()
+        self.img,hdr= self.read_image() 
+        self.bitmask= self.read_bitmask()
+
         t0= ptime('read image',t0)
 
         # Measure the sky brightness and (sky) noise level.  Need to capture
@@ -1116,10 +1094,22 @@ class Measurer(object):
         t0= ptime('measure-sky',t0)
 
         # Load PS1 and PS1-Gaia Catalogues 
-        ps1 = ps1cat(ccdwcs=self.wcs, 
-                     pattern= self.ps1_pattern).get_stars(magrange=None)
-        ps1_gaia = ps1cat(ccdwcs=self.wcs,
-                          pattern= self.ps1_gaia_pattern).get_stars(magrange=None)
+        # We will only used detected sources that have PS1 or PS1-gaia matches
+        # So cut to this super set immediately
+        
+        #pattern={'ps1':'/project/projectdirs/cosmo/work/ps1/cats/chunks-qz-star-v3/ps1-%(hp)05d.fits',
+        #         'ps1_gaia':'/project/projectdirs/cosmo/work/gaia/chunks-ps1-gaia/chunk-%(hp)05d.fits'}
+        #ps1_pattern= #os.environ["PS1CAT_DIR"]=PS1
+        #ps1_gaia_patternos.environ["PS1_GAIA_MATCHES"]= PS1_GAIA_MATCHES
+        try:
+            ps1 = ps1cat(ccdwcs=self.wcs, 
+                         pattern= self.ps1_pattern).get_stars(magrange=None)
+            ps1_gaia = ps1cat(ccdwcs=self.wcs,
+                              pattern= self.ps1_gaia_pattern).get_stars(magrange=None)
+        except OSError:
+            txt="outside PS1 footprint,In Gal. Plane"
+            print(txt)
+            return self.return_on_error(mess,ccds=ccds)
         assert(len(ps1_gaia.columns()) > len(ps1.columns())) 
         ps1band = ps1cat.ps1band[self.band]
         # PS1 cuts
@@ -1141,17 +1131,17 @@ class Measurer(object):
         if not psfex:
             # badpix5 test, all good PS1 
             if self.camera in ['90prime','mosaic']:
-              _, ps1_x, ps1_y = self.wcs.radec2pixelxy(ps1.ra_ok,ps1.dec_ok)
-              ps1_x-= 1.
-              ps1_y-= 1.
-              ap_for_ps1 = CircularAperture((ps1_x, ps1_y), 5.)
-              # special mask, only gt 0 where badpix eq 5
-              img_mask_5= np.zeros(self.bitmask.shape, dtype=self.bitmask.dtype)
-              img_mask_5[self.bitmask == 5]= 1
-              phot_for_mask_5 = aperture_photometry(img_mask_5, ap_for_ps1)
-              flux_for_mask_5 = phot_for_mask_5['aperture_sum'] 
-              ccds['goodps1']= len(ps1)
-              ccds['goodps1_wbadpix5']= len(ps1[flux_for_mask_5.data > 0])
+                _, ps1_x, ps1_y = self.wcs.radec2pixelxy(ps1.ra_ok,ps1.dec_ok)
+                ps1_x-= 1.
+                ps1_y-= 1.
+                ap_for_ps1 = CircularAperture((ps1_x, ps1_y), 5.)
+                # special mask, only gt 0 where badpix eq 5
+                img_mask_5= np.zeros(self.bitmask.shape, dtype=self.bitmask.dtype)
+                img_mask_5[self.bitmask == 5]= 1
+                phot_for_mask_5 = aperture_photometry(img_mask_5, ap_for_ps1)
+                flux_for_mask_5 = phot_for_mask_5['aperture_sum'] 
+                ccds['goodps1']= len(ps1)
+                ccds['goodps1_wbadpix5']= len(ps1[flux_for_mask_5.data > 0])
 
             # Detect stars on the image.  
             # 10 sigma, sharpness, roundness all same as IDL zeropoints (also the defaults)
@@ -1261,9 +1251,9 @@ class Measurer(object):
             sn_cut= ((star_SN >= 10.) &
                      (star_SN <= 100.))
             if len(star_SN[sn_cut]) < 10.:
-              sn_cut= star_SN >= 10.
-              if len(star_SN[sn_cut]) < 10.:
-                sn_cut= np.ones(len(star_SN),bool)
+                sn_cut= star_SN >= 10.
+                if len(star_SN[sn_cut]) < 10.:
+                    sn_cut= np.ones(len(star_SN),bool)
             i_low_hi= np.argsort(star_SN)[sn_cut] 
             # brightest stars in sample, at most self.tractor_nstars
             sample=dict(x= stars_photom['x'][i_low_hi][-self.tractor_nstars:],
@@ -1299,7 +1289,6 @@ class Measurer(object):
             psf = self.get_psfex_model()
             ccds['fwhm'] = psf.fwhm
 
-
             fit_img = img_sub_sky
 
             if splinesky:
@@ -1307,8 +1296,8 @@ class Measurer(object):
                 print('Instantiating and subtracting sky model')
                 skymod = np.zeros_like(self.img)
                 sky.addTo(skymod)
-                # We apply the gain to the image...
-                skymod *= self.gain
+                # Apply the same transformation that was applied to the image...
+                skymod = self.scale_image(skymod)
 
                 print('Old sky_img: avg', np.mean(sky_img), 'min/max', np.min(sky_img), np.max(sky_img))
                 print('Skymod: avg', np.mean(skymod), 'min/max', skymod.min(), skymod.max())
@@ -1322,6 +1311,9 @@ class Measurer(object):
             flux0 = 10.**((zp0 - ps1.legacy_survey_mag) / 2.5) * exptime
             # Inverse-error of sky image
             ierr = 1.0/np.sqrt(sky_img)
+
+            # Zero out masked pixels.
+            ierr[self.bitmask > 0] = 0
 
             # plt.clf()
             # plt.hist((fit_img * ierr).ravel(), range=(-10,10), bins=100)
@@ -1398,6 +1390,8 @@ class Measurer(object):
             phot.ccd_zpt    = np.zeros(len(phot), np.float32) + zptmed
             phot.expnum = np.zeros(len(phot), np.int32) + self.expnum
             phot.ccdname = np.array([self.ccdname] * len(phot))
+            phot.exptime = np.zeros(len(phot), np.float32) + self.exptime
+            phot.gain = np.zeros(len(phot), np.float32) + self.gain
 
             # Convert to astropy Table
             cols = phot.get_columns()
@@ -1639,20 +1633,19 @@ class Measurer(object):
             # FIXME -- check that ierr is correct
             subie = ierr[ylo:yhi+1, xlo:xhi+1]
             subpsf = psf.constantPsfAt(x, y)
+            psfsum = np.sum(subpsf.img)
             if normalize_psf:
-                s = np.sum(subpsf.img)
                 # print('Normalizing PsfEx model with sum:', s)
-                subpsf.img /= s
-                cal.psfsum.append(s)
-            else:
-                cal.psfsum.append(1.) # ??
+                subpsf.img /= psfsum
+
+            print('PSF model:', subpsf)
+            print('PSF image sum:', subpsf.img.sum())
+
             tim = tractor.Image(data=subimg, inverr=subie, psf=subpsf)
             flux0 = ref_flux[istar]
             #print('Zp0', zp0, 'mag', ref.mag[istar], 'flux', flux0)
             x0 = x - xlo
             y0 = y - ylo
-            cal.x0.append(x0 + xlo)
-            cal.y0.append(y0 + ylo)
             src = tractor.PointSource(tractor.PixPos(x0, y0),
                                       tractor.Flux(flux0))
             tr = tractor.Tractor([tim], [src])
@@ -1687,8 +1680,18 @@ class Measurer(object):
                 #      'flux', src.brightness, 'dlnp', dlnp)
                 if dlnp == 0:
                     break
-            dlnp,x,alpha,variance = tr.optimize(variance=True, **optargs)
 
+            print('Getting variance estimate: thawed params:')
+            tr.printThawedParams()
+            variance = tr.optimize(variance=True, just_variance=True, **optargs)
+            # Yuck -- if inverse-variance is all zero, weird-shaped result...
+            if len(variance) == 4 and variance[3] is None:
+                print('No variance estimate available')
+                continue
+
+            cal.psfsum.append(psfsum)
+            cal.x0.append(x0 + xlo)
+            cal.y0.append(y0 + ylo)
             cal.x1.append(src.pos.x + xlo)
             cal.y1.append(src.pos.y + ylo)
             cal.flux.append(src.brightness.getValue())
@@ -1760,17 +1763,17 @@ class Measurer(object):
         """Measure zeropoint relative to PS1
         
         Args:
-          obj: ps1-matched sources detected with dao phot
-          ps1: ps1 source matched to obj
-          ccds: partially filled _ccds_table
-          save_xy: if True save a fits table containing 
-            ps1_mag and apmag for matches sources and associated
-            photometric cuts
+            obj: ps1-matched sources detected with dao phot
+            ps1: ps1 source matched to obj
+            ccds: partially filled _ccds_table
+            save_xy: if True save a fits table containing 
+                ps1_mag and apmag for matches sources and associated
+                photometric cuts
 
         Returns:
-          stars_photom: fits table for stars
-          err_message: '' if okay, 'some error text' otherwise, this will end up being
-            stored in ccds['err_message']
+            stars_photom: fits table for stars
+            err_message: '' if okay, 'some error text' otherwise, this will end up being
+                stored in ccds['err_message']
         """
         print('Photometry on %s stars' % len(ps1))
         objra, objdec = self.wcs.pixelxy2radec(obj['xcentroid']+1, obj['ycentroid']+1)
@@ -1791,21 +1794,21 @@ class Measurer(object):
         stars_photom['ps1_mag'] = ps1.legacy_survey_mag[final_cut]
 
         if save_xy:
-          # Save ps1_mag and apmag for every matched source
-          all_stars=fits_table()
-          all_stars.set('apmag', phot['apmags'].data)
-          all_stars.set('ps1_mag', ps1.legacy_survey_mag)
-          all_stars.set('match_x', obj['xcentroid'].data)
-          all_stars.set('match_y', obj['ycentroid'].data)
-          all_stars.set('match_ra', objra)
-          all_stars.set('match_dec', objdec)
-          # Then bool cuts for the above arrays
-          for key in cuts.keys():
-            all_stars.set(key, cuts[key])
-          # Avoid memoryview write error
-          for col in all_stars.get_columns(): 
-            all_stars.set(col,np.array(all_stars.get(col)))
-          all_stars.writeto('%s_%s_all_stars.fits' % 
+            # Save ps1_mag and apmag for every matched source
+            all_stars=fits_table()
+            all_stars.set('apmag', phot['apmags'].data)
+            all_stars.set('ps1_mag', ps1.legacy_survey_mag)
+            all_stars.set('match_x', obj['xcentroid'].data)
+            all_stars.set('match_y', obj['ycentroid'].data)
+            all_stars.set('match_ra', objra)
+            all_stars.set('match_dec', objdec)
+            # Then bool cuts for the above arrays
+            for key in cuts.keys():
+                all_stars.set(key, cuts[key])
+            # Avoid memoryview write error
+            for col in all_stars.get_columns(): 
+                all_stars.set(col,np.array(all_stars.get(col)))
+            all_stars.writeto('%s_%s_all_stars.fits' % 
                   (os.path.basename(self.fn).replace('.fits','').replace('.fz',''),
                    self.ccdname))
 
@@ -1839,17 +1842,17 @@ class Measurer(object):
 
         # Badpix 5 test
         if self.camera in ['90prime','mosaic']:
-          # good sources but treat badpix=5 as OK
-          final_cut= ((cuts['good_flux_and_mag']) &
+            # good sources but treat badpix=5 as OK
+            final_cut= ((cuts['good_flux_and_mag']) &
                       (cuts['no_badpix_in_ap_0_5']) &
                       (cuts['is_iso']))
-          dmagall= ps1.legacy_survey_mag[final_cut] - phot['apmags'][final_cut]
-          dmag, _, _ = sigmaclip(dmagall, low=2.5, high=2.5)
-          dmagmed = np.median(dmag)
-          zp0 = self.zeropoint(self.band)
-          kext = self.extinction(self.band)
-          zptmed = zp0 + dmagmed
-          ccds['zpt_wbadpix5'] = zptmed
+            dmagall= ps1.legacy_survey_mag[final_cut] - phot['apmags'][final_cut]
+            dmag, _, _ = sigmaclip(dmagall, low=2.5, high=2.5)
+            dmagmed = np.median(dmag)
+            zp0 = self.zeropoint(self.band)
+            kext = self.extinction(self.band)
+            zptmed = zp0 + dmagmed
+            ccds['zpt_wbadpix5'] = zptmed
 
         # star,empty string tuple if succeeded
         return stars_photom,''
@@ -1858,14 +1861,14 @@ class Measurer(object):
         """Measure ra,dec offsets from Gaia or PS1
        
         Args:
-          obj: ps1-matched sources detected with dao phot
-          ref_ra,ref_dec: ra and dec of ther ps1 or gaia sources matched to obj
-          ccds: partially filled _ccds_table
+            obj: ps1-matched sources detected with dao phot
+            ref_ra,ref_dec: ra and dec of ther ps1 or gaia sources matched to obj
+            ccds: partially filled _ccds_table
         
         Returns:
-          stars_astrom: fits table for stars
-          err_message: '' if okay, 'some error text' otherwise, this will end up being
-            stored in ccds['err_message']
+            stars_astrom: fits table for stars
+            err_message: '' if okay, 'some error text' otherwise, this will end up being
+                stored in ccds['err_message']
         """
         print('Astrometry on %s stars' % len(obj))
         # Cut to obj with good photometry
@@ -1906,15 +1909,15 @@ class Measurer(object):
         """Do aperture photometry and create a photometric cut base on those measurements
        
         Args:
-          obj: sources detected with dao phot
-          cuts_only: the final photometric cut will be returned in either case
-            True to not compute extra things
+            obj: sources detected with dao phot
+            cuts_only: the final photometric cut will be returned in either case
+                True to not compute extra things
 
         Returns:
-          two dicts, cuts and phot
-          cuts: keys are ['good_flux_and_mag',
+            two dicts, cuts and phot
+            cuts: keys are ['good_flux_and_mag',
                           'no_badpix_in_ap_0','no_badpix_in_ap_0_5','is_iso']
-          phot: keys are ["apflux","apmags","apskyflux","apskyflux_perpix"]
+            phot: keys are ["apflux","apmags","apskyflux","apskyflux_perpix"]
         """
         print('Performing aperture photometry')
         cuts,phot= {},{}
@@ -2007,50 +2010,50 @@ class Measurer(object):
         print("isolated source: %d/%d" % (len(obj[cuts['is_iso']]),len(obj)) )
       
         if cuts_only:
-          return cuts
+            return cuts
         else:
-          phot={"apflux":apflux,
+            phot={"apflux":apflux,
                 "apmags":apmags,
                 "apskyflux":apskyflux,
                 "apskyflux_perpix":apskyflux_perpix}
-          return cuts, phot
+            return cuts, phot
 
     def add_ccd_info_to_stars_table(self,stars,ccds):
-      """Adds info to stars table that is inferable from ccd header
-      
-      Args:
-        stars: the stars table
-        ccds: ccds table
-      """
-      stars['image_filename'] =ccds['image_filename']
-      stars['image_hdu']= ccds['image_hdu'] 
-      stars['expnum'] = self.expnum
-      stars['expid'] = self.expid
-      stars['filter'] = self.band
-      stars['ccdname'] = self.ccdname
-      stars['gain'] = self.gain
-      stars['exptime'] = self.exptime
+        """Adds info to stars table that is inferable from ccd header
+
+        Args:
+            stars: the stars table
+            ccds: ccds table
+        """
+        stars['image_filename'] =ccds['image_filename']
+        stars['image_hdu']= ccds['image_hdu'] 
+        stars['expnum'] = self.expnum
+        stars['expid'] = self.expid
+        stars['filter'] = self.band
+        stars['ccdname'] = self.ccdname
+        stars['gain'] = self.gain
+        stars['exptime'] = self.exptime
  
     def add_obj_info_to_stars_table(self,stars,
                                     keep,obj,
                                     objra,objdec,
                                     apflux,apskyflux,apskyflux_perpix):
-      """Adds arrays from obj to stars table
-      
-      Args:
-        stars: the stars table
-        keep: bool array of obj indices to include in stars table 
-        obj: 
-        objra,objdec,apflux,apskyflux,apskyflux_perpix:
-      """
-      assert(len(stars) == len(obj[keep]))
-      stars['x'] = obj['xcentroid'][keep]
-      stars['y'] = obj['ycentroid'][keep]
-      stars['ra'] = objra[keep]
-      stars['dec'] = objdec[keep]
-      stars['apflux'] = apflux[keep]
-      stars['apskyflux'] = apskyflux[keep]
-      stars['apskyflux_perpix'] = apskyflux_perpix[keep]
+        """Adds arrays from obj to stars table
+
+        Args:
+            stars: the stars table
+            keep: bool array of obj indices to include in stars table 
+            obj: 
+            objra,objdec,apflux,apskyflux,apskyflux_perpix:
+        """
+        assert(len(stars) == len(obj[keep]))
+        stars['x'] = obj['xcentroid'][keep]
+        stars['y'] = obj['ycentroid'][keep]
+        stars['ra'] = objra[keep]
+        stars['dec'] = objdec[keep]
+        stars['apflux'] = apflux[keep]
+        stars['apskyflux'] = apskyflux[keep]
+        stars['apskyflux_perpix'] = apskyflux_perpix[keep]
 
     def make_plots(self,stars,dmag,zpt,transp):
         '''stars -- stars table'''
@@ -2216,40 +2219,8 @@ class DecamMeasurer(Measurer):
         from legacyanalysis.ps1cat import ps1_to_decam
         return ps1_to_decam(ps1stars, band)
 
-    def read_image_and_bitmask(self,funpack=True):
-        '''funpack, then read'''
-        imgfn= self.fn
-        maskfn= get_bitmask_fn(self.fn)
-        print('Reading %s %s' % (imgfn,maskfn))
-        if funpack:
-            todelete=[]
-            imgfn,maskfn = funpack_files(imgfn, maskfn, self.ext, todelete)
-            # Read
-            img, hdr = fitsio.read(imgfn, ext=self.ext, header=True)
-            mask, junk = fitsio.read(maskfn, ext=self.ext, header=True)
-            for fn in todelete:
-               os.unlink(fn)
-        else:
-            # Read
-            try: 
-                img, hdr = fitsio.read(imgfn, ext=self.ext, header=True)
-            except IOError:
-                raise ValueError('error reading ext=%s from imgfn=%s' % (self.ext,imgfn))
-            mask, junk = fitsio.read(maskfn, ext=self.ext, header=True)
-        # ADU --> e
-        img *= self.gain 
-        return hdr,img,mask
-    
-    def read_image(self):
-        '''Read the image and header.  Convert image from ADU to electrons.'''
-        img, hdr = fitsio.read(self.fn, ext=self.ext, header=True)
-        #fits=fitsio.FITS(fn,mode='r',clobber=False,lower=True)
-        #hdr= fits[0].read_header()
-        #img= fits[ext].read()
-        #img *= self.gain
-        #img *= self.gain / self.exptime
-        img *= self.gain 
-        return img, hdr
+    def scale_image(self, img):
+        return img * self.gain
     
     def get_wcs(self):
         return wcs_pv2sip_hdr(self.hdr) # PV distortion
@@ -2297,14 +2268,9 @@ class Mosaic3Measurer(Measurer):
         from legacyanalysis.ps1cat import ps1_to_mosaic
         return ps1_to_mosaic(ps1stars, band)
 
-    def read_image(self):
-        '''Read the image and header.  Convert image from electrons/sec to electrons.'''
-        img, hdr = fitsio.read(self.fn, ext=self.ext, header=True)
-        #fits=fitsio.FITS(fn,mode='r',clobber=False,lower=True)
-        #hdr= fits[0].read_header()
-        #img= fits[ext].read()
-        img *= self.exptime 
-        return img, hdr
+    def scale_image(self, img):
+        '''Convert image from electrons/sec to electrons.'''
+        return img * self.exptime
 
     def get_wcs(self):
         return wcs_pv2sip_hdr(self.hdr) # PV distortion
@@ -2353,7 +2319,7 @@ class NinetyPrimeMeasurer(Measurer):
                               'fwhm_cp':['SEEINGP1','SEEINGP']}
     
     def get_gain(self,hdr):
-        self.gain= 1.4 # no GAINA,B
+        return 1.4 # no GAINA,B
 
     def get_band(self):
         band = self.primhdr['FILTER']
@@ -2365,11 +2331,9 @@ class NinetyPrimeMeasurer(Measurer):
         from legacyanalysis.ps1cat import ps1_to_90prime
         return ps1_to_90prime(ps1stars, band)
 
-    def read_image(self):
-        '''Read the image and header.  Convert image from electrons/sec to electrons.'''
-        img, hdr = fitsio.read(self.fn, ext=self.ext, header=True)
-        img *= self.exptime
-        return img, hdr
+    def scale_image(self, img):
+        '''Convert image from electrons/sec to electrons.'''
+        return img * self.exptime
 
     def get_wcs(self):
         return wcs_pv2sip_hdr(self.hdr) # PV distortion
@@ -2378,39 +2342,33 @@ class NinetyPrimeMeasurer(Measurer):
 def get_extlist(camera,fn,debug=False,choose_ccd=None):
     '''
     Args:
-      fn: image fn to read hdu from
-      debug: use subset of the ccds
-      choose_ccd: if not None, use only this ccd given
+        fn: image fn to read hdu from
+        debug: use subset of the ccds
+        choose_ccd: if not None, use only this ccd given
 
-    Returns 'mosaic', 'decam', or '90prime'
+    Returns: 
+        list of hdu names 
     '''
     if camera == '90prime':
         extlist = ['CCD1', 'CCD2', 'CCD3', 'CCD4']
         if debug:
-          extlist = ['CCD1']
-          #extlist = ['CCD1','CCD2']
+            extlist = ['CCD1']
+            #extlist = ['CCD1','CCD2']
     elif camera == 'mosaic':
         extlist = ['CCD1', 'CCD2', 'CCD3', 'CCD4']
         if debug:
-          extlist = ['CCD2']
+            extlist = ['CCD2']
     elif camera == 'decam':
         hdu= fitsio.FITS(fn)
         extlist= [hdu[i].get_extname() for i in range(1,len(hdu))]
         if debug:
-          extlist = ['N4'] #,'S4', 'S22','N19']
-        #extlist = ['S29', 'S31', 'S25', 'S26', 'S27', 'S28', 'S20', 'S21', 'S22',
-        #           'S23', 'S24', 'S14', 'S15', 'S16', 'S17', 'S18', 'S19', 'S8',
-        #           'S9', 'S10', 'S11', 'S12', 'S13', 'S1', 'S2', 'S3', 'S4', 'S5',
-        #           'S6', 'S7', 'N1', 'N2', 'N3', 'N4', 'N5', 'N6', 'N7', 'N8', 'N9',
-        #           'N10', 'N11', 'N12', 'N13', 'N14', 'N15', 'N16', 'N17', 'N18',
-        #           'N19', 'N20', 'N21', 'N22', 'N23', 'N24', 'N25', 'N26', 'N27',
-        #           'N28', 'N29', 'N31']
+            extlist = ['N4'] #,'S4', 'S22','N19']
     else:
         print('Camera {} not recognized!'.format(camera))
         pdb.set_trace() 
     if choose_ccd:
-      print('CHOOSING CCD %s' % choose_ccd)
-      extlist= [choose_ccd]
+        print('CHOOSING CCD %s' % choose_ccd)
+        extlist= [choose_ccd]
     return extlist
    
  
@@ -2509,42 +2467,42 @@ class outputFns(object):
         """Assigns filename, makes needed dirs, and copies images to scratch if needed
 
         Args:
-          imgfn: abs path to image, should be a ooi or oki file
-          outdir: root dir for outptus
-          not_on_proj: True if image not stored on project or projecta
-          copy_from_proj: True if want to copy all image files from project to scratch
-          debug: 4 ccds only if true
+            imgfn: abs path to image, should be a ooi or oki file
+            outdir: root dir for outptus
+            not_on_proj: True if image not stored on project or projecta
+            copy_from_proj: True if want to copy all image files from project to scratch
+            debug: 4 ccds only if true
 
         Attributes:
-          imgfn: image that will be read
-          zptfn: zeropoints file
-          starfn: stars file
+            imgfn: image that will be read
+            zptfn: zeropoints file
+            starfn: stars file
 
         Example:
-        outdir/decam/DECam_CP/CP20151226/img_fn.fits.fz
-        outdir/decam/DECam_CP/CP20151226/img_fn-zpt%s.fits
-        outdir/decam/DECam_CP/CP20151226/img_fn-star%s.fits
+            outdir/decam/DECam_CP/CP20151226/img_fn.fits.fz
+            outdir/decam/DECam_CP/CP20151226/img_fn-zpt%s.fits
+            outdir/decam/DECam_CP/CP20151226/img_fn-star%s.fits
         """
         # img fns
         if not_on_proj:
-          # Don't worry about mirroring path, just get image's fn
-          self.imgfn= imgfn
-          dirname='' 
-          basename= os.path.basename(imgfn) 
-        else:
-          # Mirror path to image but write to scratch
-          proj_dir= '/project/projectdirs/cosmo/staging/'
-          proja_dir= '/global/projecta/projectdirs/cosmo/staging/'
-          assert( (proj_dir in imgfn) |
-                  (proja_dir in imgfn))
-          relative_fn= imgfn.replace(proj_dir,'').replace(proja_dir,'')
-          dirname= os.path.dirname(relative_fn) 
-          basename= os.path.basename(relative_fn) 
-          if copy_from_proj:
-            # somwhere on scratch
-            self.imgfn= os.path.join(outdir,dirname,basename)
-          else:
+            # Don't worry about mirroring path, just get image's fn
             self.imgfn= imgfn
+            dirname='' 
+            basename= os.path.basename(imgfn) 
+        else:
+            # Mirror path to image but write to scratch
+            proj_dir= '/project/projectdirs/cosmo/staging/'
+            proja_dir= '/global/projecta/projectdirs/cosmo/staging/'
+            assert( (proj_dir in imgfn) |
+                  (proja_dir in imgfn))
+            relative_fn= imgfn.replace(proj_dir,'').replace(proja_dir,'')
+            dirname= os.path.dirname(relative_fn) 
+            basename= os.path.basename(relative_fn) 
+            if copy_from_proj:
+                # somwhere on scratch
+                self.imgfn= os.path.join(outdir,dirname,basename)
+            else:
+                self.imgfn= imgfn
         # zpt,star fns
         self.zptfn= os.path.join(outdir,dirname,
                                  basename.replace('.fits.fz','-zpt.fits')) 
@@ -2553,20 +2511,20 @@ class outputFns(object):
         self.starfn_astrom= os.path.join(outdir,dirname,
                                  basename.replace('.fits.fz','-star-astrom.fits')) 
         if debug:
-          self.zptfn= self.zptfn.replace('-zpt','-debug-zpt')
-          self.starfn_photom= self.starfn_photom.replace('-star','-debug-star')
-          self.starfn_astrom= self.starfn_astrom.replace('-star','-debug-star')
+            self.zptfn= self.zptfn.replace('-zpt','-debug-zpt')
+            self.starfn_photom= self.starfn_photom.replace('-star','-debug-star')
+            self.starfn_astrom= self.starfn_astrom.replace('-star','-debug-star')
         # Makedirs
         try:
-          os.makedirs(os.path.join(outdir,dirname))
+            os.makedirs(os.path.join(outdir,dirname))
         except FileExistsError: 
-          print('Directory already exists: %s' % os.path.join(outdir,dirname))
+            print('Directory already exists: %s' % os.path.join(outdir,dirname))
         # Copy if need
         if copy_from_proj:
-          if not os.path.exists(self.imgfn): 
-            dobash("cp %s %s" % (imgfn,self.imgfn))
-          if not os.path.exists( get_bitmask_fn(self.imgfn)): 
-            dobash("cp %s %s" % ( get_bitmask_fn(imgfn), get_bitmask_fn(self.imgfn)))
+            if not os.path.exists(self.imgfn): 
+                dobash("cp %s %s" % (imgfn,self.imgfn))
+            if not os.path.exists( get_bitmask_fn(self.imgfn)): 
+                dobash("cp %s %s" % ( get_bitmask_fn(imgfn), get_bitmask_fn(self.imgfn)))
 
             
 #def success(ccds,imgfn, debug=False, choose_ccd=None):
