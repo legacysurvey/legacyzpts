@@ -121,11 +121,11 @@ script:
   - pwd
   - cd $LEGACYZPTS_DIR
   - pwd
-  #- cd $HOME/legacyzpts
+  - find .
   - pytest -v tests/test_run.py::test_main 
   - pytest -v tests/test_against_surveyccds.py::test_main 
   - pytest -v tests/test_against_idl.py::test_main
-  #- coverage run --source py/legacyzpts tests/test_run.py
+  - coverage run --source py/legacyzpts tests/test_run.py
 
 after_success:
   - coverage report
