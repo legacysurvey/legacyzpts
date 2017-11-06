@@ -22,7 +22,10 @@ class LegacypipeCuts(object):
 		assert(camera in CAMERAS)
 	    self.camera= camera
 		self.ccds= self.create_legacypipe_table(T=T_zpt.copy(), camera=self.camera)
-		self.good= np.ones(len(self.T_leg),bool)
+		self.good= np.ones(len(self.ccds),bool)
+        # From legacypipe
+        if self.camera == 'decam':
+			self.ccds.ccdzpt += 2.5 * np.log10(self.ccds.exptime)
 
     def photometric(self):
         z0 = self.nominal_zeropoints()
