@@ -272,15 +272,16 @@ def cols_for_legacypipe_table(which='all'):
     return need_arjuns_keys + dustins_keys
  
 
-def create_legacypipe_table(ccds_fn, camera=None):
+def create_legacypipe_table(ccds_fn=None,T=None, camera=None):
     """input _ccds_table fn
     output a table formatted for legacypipe/runbrick
     """
     assert(camera in CAMERAS)
     need_keys= cols_for_legacypipe_table(which='all')
-    # Load full zpt table
-    assert('-zpt.fits' in ccds_fn)
-    T = fits_table(ccds_fn)
+    # zpt table
+	if T is None:
+		assert('-zpt.fits' in ccds_fn)
+		T = fits_table(ccds_fn)
     #hdr = T.get_header()
     #primhdr = fitsio.read_header(ccds_fn)
     #units= get_units()
@@ -329,9 +330,12 @@ def create_legacypipe_table(ccds_fn, camera=None):
     #if dr4:
     #    cols.append('release')
     #    T.release = np.zeros(len(T), np.int32) + 4000
-    outfn=ccds_fn.replace('-zpt.fits','-legacypipe.fits')
-    T.writeto(outfn) #, columns=cols, header=hdr, primheader=primhdr, units=units)
-    print('Wrote %s' % outfn)
+	if ccds_fn is None:
+		return T
+	else:
+		outfn=ccds_fn.replace('-zpt.fits','-legacypipe.fits')
+		T.writeto(outfn) #, columns=cols, header=hdr, primheader=primhdr, units=units)
+		print('Wrote %s' % outfn)
 
 
 def cols_for_converted_star_table(star_table=None,
