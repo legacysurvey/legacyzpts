@@ -160,39 +160,39 @@ class LoadData(object):
         assert(len(star.legacy.data) == len(star.idl.data) )
         return star
 
-  def stars_new(self,camera='decam',
-                star_table='photom',indir='ps1_gaia'):
-    """Two tables are possible, photom and astrom
+    def stars_new(self,camera='decam',
+                  star_table='photom',indir='ps1_gaia'):
+        """Two tables are possible, photom and astrom
 
-    Args:
+        Args:
         star_table: photom or astrom
         indir: the testoutput directory to read from
-    """
-    assert(camera in CAMERAS)
-    assert(star_table in ['photom','astrom'])
-    assert(indir in ['ps1_gaia','ps1_only'])
-    leg_dir= os.path.join(os.path.dirname(__file__),
-                          'testoutput',camera,
-                           indir,'against_idl')
-    print('leg_dir=%s' % leg_dir)
-    leg_fns= glob(os.path.join(leg_dir,
-                               '*%s*-star-%s.fits' % (FN_SUFFIX[camera],star_table)))
+        """
+        assert(camera in CAMERAS)
+        assert(star_table in ['photom','astrom'])
+        assert(indir in ['ps1_gaia','ps1_only'])
+        leg_dir= os.path.join(os.path.dirname(__file__),
+                              'testoutput',camera,
+                              indir,'against_idl')
+        print('leg_dir=%s' % leg_dir)
+        leg_fns= glob(os.path.join(leg_dir,
+                                   '*%s*-star-%s.fits' % (FN_SUFFIX[camera],star_table)))
 
-    idl_fns= glob(os.path.join(get_data_dir(),
-                               'good_idlzpts_data',
-                               'matches-%s*.fits' %
-                                 FN_SUFFIX[camera]))
-    assert(len(leg_fns) > 0 and len(idl_fns) > 0)
-    star= StarResiduals(camera=camera, star_table=star_table,
-                        savedir= leg_dir,
-                        leg_list=leg_fns,
-                        idl_list=idl_fns,
-                        loadable=False)
-    star.load_data()
-    star.convert_legacy()
-    star.match(ra_key='ccd_ra',dec_key='ccd_dec')
-    assert(len(star.legacy.data) == len(star.idl.data) )
-    return star
+        idl_fns= glob(os.path.join(get_data_dir(),
+                                   'good_idlzpts_data',
+                                   'matches-%s*.fits' %
+                                   FN_SUFFIX[camera]))
+        assert(len(leg_fns) > 0 and len(idl_fns) > 0)
+        star= StarResiduals(camera=camera, star_table=star_table,
+                            savedir= leg_dir,
+                            leg_list=leg_fns,
+                            idl_list=idl_fns,
+                            loadable=False)
+        star.load_data()
+        star.convert_legacy()
+        star.match(ra_key='ccd_ra',dec_key='ccd_dec')
+        assert(len(star.legacy.data) == len(star.idl.data) )
+        return star
 
 class CheckDifference(object):
     """checks that legazpts tables are sufficienlty close to idl zpts tables
