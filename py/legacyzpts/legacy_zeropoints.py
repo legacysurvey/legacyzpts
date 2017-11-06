@@ -2187,7 +2187,6 @@ class Measurer(object):
             return
 
         from legacypipe.survey import LegacySurveyData
-        from legacypipe.decam import DecamImage
 
         class FakeLegacySurveyData(LegacySurveyData):
             def get_calib_dir(self):
