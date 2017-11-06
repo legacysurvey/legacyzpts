@@ -85,6 +85,7 @@ install:
 
 before_script:
     - pwd
+    - export LEGACYZPTS_DIR=$(pwd)
     - export MYCODE=$HOME/mycode
     - sudo rm -rf $HOME/astrometry.net
     - if [ ! -d "$HOME/astrometry.net" ]; then (cd $HOME && curl -SL https://github.com/dstndstn/astrometry.net/releases/download/0.72/astrometry.net-0.72.tar.gz -o astrometry.net.tar.gz && tar -xzf astrometry.net.tar.gz && mv astrometry.net-0.72 astrometry.net); fi
@@ -113,16 +114,19 @@ before_script:
     - export PYTHONPATH=$HOME/theValidator:$PYTHONPATH
     # - cd $HOME && git clone https://github.com/legacysurvey/legacyzpts.git
     #- export PYTHONPATH=$HOME/legacyzpts/py:$PYTHONPATH
-    - export PYTHONPATH=${PYTHONPATH}:.
+    - export PYTHONPATH=${PYTHONPATH}:${LEGACYZPTS_DIR}/py:.
     - echo PYTHONPATH is $PYTHONPATH
 
 script:
   - pwd
-  #- cd $HOME/legacyzpts
+  - cd $LEGACYZPTS_DIR
+  - pwd
+  - find .
   - pytest -v tests/test_run.py::test_main 
   - pytest -v tests/test_against_surveyccds.py::test_main 
   - pytest -v tests/test_against_idl.py::test_main
-  #- coverage run --source py/legacyzpts tests/test_run.py
+  - coverage run --source py/legacyzpts tests/test_run.py
+  - find .
 
 after_success:
   - coverage report
