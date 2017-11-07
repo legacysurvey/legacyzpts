@@ -2186,7 +2186,8 @@ class Measurer(object):
             # Nothing to do!
             return
 
-        from legacypipe.survey import LegacySurveyData
+        import legacypipe
+        from legacypipe.survey import LegacySurveyData, get_git_version
 
         class FakeLegacySurveyData(LegacySurveyData):
             def get_calib_dir(self):
@@ -2220,7 +2221,8 @@ class Measurer(object):
         ccd.arawgain = self.gain
         
         im = survey.get_image_object(ccd)
-        im.run_calibs(psfex=psfex, sky=splinesky, splinesky=True)
+        git_version = get_git_version(dir=os.path.dirname(legacypipe.__file__))
+        im.run_calibs(psfex=psfex, sky=splinesky, splinesky=True, git_version=git_version)
 
 
 class DecamMeasurer(Measurer):
