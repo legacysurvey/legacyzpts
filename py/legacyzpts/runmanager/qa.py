@@ -55,10 +55,10 @@ class QaPlots(object):
         errs= list(set(self.df['errs']))
         print('Error Messages= ',errs)
         for err in errs:
-        print('%d/%d: %s' % 
-              (self.df[self.df['errs'] == err].shape[0],
-               self.df.shape[0],
-               err))
+            print('%d/%d: %s' % 
+                  (self.df[self.df['errs'] == err].shape[0],
+                   self.df.shape[0],
+                   err))
         for col in self.zpt.get_columns():
             if isinstance(self.zpt.get(col)[0], numbers.Real):
                 hasNan= np.isfinite(self.zpt.get(col)) == False

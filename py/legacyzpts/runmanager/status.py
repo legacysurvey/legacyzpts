@@ -57,6 +57,14 @@ class QdoList(object):
         self.que_name= que_name
         self.skip_suceeded= skip_suceeded
 
+    def get_all_tasks(self):
+        """returns a list of all tasks in the que"""
+        q = qdo.connect(self.que_name)
+        states=['waiting','pending','running','succeeded','failed']
+        return [a.task 
+                for res in states 
+                for a in q.tasks(state= getattr(qdo.Task, res.upper()))]
+
     def get_tasks_logs(self):
         """get tasks, logs for the three types of qdo status
         Running, Succeeded, Failed"""
@@ -87,10 +95,11 @@ class QdoList(object):
                 logs[res].append( logfn )
         return tasks,ids,logs
 
-    def rerun_tasks(self,task_ids, modify=False):
-        """set qdo tasks state to Pending for these task_ids
+    def change_task_state(self,task_ids,to=None, modify=False):
+        """change qdo tasks state, for tasks with task_ids, to pending,failed, etc
 
         Args:
+          to: change qdo state to this, pending,failed
           modify: True to actually reset the qdo tasks state AND to delete
           all output files for that task
         """
@@ -100,13 +109,21 @@ class QdoList(object):
                 task_obj= q.tasks(id= int(task_id))
                 camera,projfn = task_obj.task.split(' ')
                 logfn= get_logfile(projfn, self.outdir)
-                rmcmd= "rm %s*" % logfn.replace('.log',"")
-                if modify:
-                    task_obj.set_state(qdo.Task.PENDING)
-                    dobash(rmcmd)
+                if to == 'pending':
+                    rmcmd= "rm %s*" % logfn.replace('.log',"")
+                    if modify:
+                        task_obj.set_state(qdo.Task.PENDING)
+                        dobash(rmcmd)
+                    else:
+                        print('would remove id=%d, which corresponds to taks_obj=' % task_id,task_obj)
+                        print('would call dobash(%s)' % rmcmd)
+                elif to == 'failed':
+                    if modify:
+                        task_obj.set_state(qdo.Task.FAILED)
+                    else:
+                        print('would set id=%d to Failed' % task_id)
                 else:
-                    print('would remove id=%d, which corresponds to taks_obj=' % task_id,task_obj)
-                    print('would call dobash(%s)' % rmcmd)
+                    print('WARNING: to is either None or is not a supported value, to=',to)
             except ValueError:
                 print('cant find task_id=%d' % task_id)
 
@@ -215,13 +232,18 @@ if __name__ == '__main__':
     parser.add_argument('--outdir',default='/global/cscratch1/sd/kaylanb/zpts_out/ebossDR5',help='',required=False)
     parser.add_argument('--skip_suceeded',action='store_true',default=False,help='number succeeded tasks can be very large for production runs and slows down status code',required=False)
     parser.add_argument('--running_to_pending',action="store_true",default=False,help='set to reset all "running" jobs to "pending"')
+    parser.add_argument('--running_to_failed',action="store_true",default=False,help='set to reset all "running" jobs to "failed"')
     parser.add_argument('--failed_message_to_pending',action='store',default=None,help='set to message of failed tak and reset all failed tasks with that message to pending')
     parser.add_argument('--modify',action='store_true',default=False,help='set to actually reset the qdo tasks state AND to delete IFF running_to_pending or failed_message_to_pending are set')
+    parser.add_argument('--list_tasks',action='store_true',default=False,help='write a list of ALL tasks in the queue to a file')
     args = parser.parse_args()
     print(args)
 
     Q= QdoList(args.outdir,que_name=args.qdo_quename,
              skip_suceeded=args.skip_suceeded)
+    if args.list_tasks:
+       all_tasks= Q.get_all_tasks()
+       writelist(all_tasks,"all_tasks_%s.txt" % args.qdo_quename)
     tasks,ids,logs= Q.get_tasks_logs()
 
     # Write log fns so can inspect
@@ -246,11 +268,14 @@ if __name__ == '__main__':
 
     if args.running_to_pending:
         if len(ids['running']) > 0:
-            Q.rerun_tasks(ids['running'], modify=args.modify)
+            Q.change_task_state(ids['running'], to='pending',modify=args.modify)
+    elif args.running_to_failed:
+        if len(ids['running']) > 0:
+            Q.change_task_state(ids['running'], to='failed',modify=args.modify)
     if args.failed_message_to_pending:
         hasMessage= np.where(tally['failed'] == args.failed_message_to_pending)[0]
         if hasMessage.size > 0:
             theIds= np.array(ids['failed'])[hasMessage]
-            Q.rerun_tasks(theIds, modify=args.modify)
+            Q.change_task_state(theIds, to='pending', modify=args.modify)
 
 
