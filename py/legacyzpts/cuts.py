@@ -18,6 +18,7 @@ import seaborn as sns
 import fitsio
 from legacyzpts.legacy_zeropoints import create_legacypipe_table
 from legacyzpts.runmanager.qa import big2small_endian
+from legacyzpts.common import dobash
 # Sphinx build would crash
 try:
     from astrometry.util.fits import fits_table, merge_tables
@@ -57,18 +58,38 @@ class LegacyzptsCuts(object):
                                'band':big2small_endian(self.T.filter)})
         self.df['err']= self.df['err'].str.strip()
 
-    def err_message(self):
-        self.good[self.df['err'].str.len() > 0]= False
+    def cuts(self):
+        n0 = sum(self.good)
+        for name in set(self.df.loc[self.df['err'].str.len() > 0,'err']):
+            self.good[self.df['err'] == name] = False
+            #continue as usual
+            n = sum(self.good)
+            print('Flagged', n0-n, 'more:',
+                  name)
+            n0 = n
+        for name,crit in [
+            ("not grz filter", (self.correct_bands())),
+            #('not 1/3 pix interpolated', (self.third_pix())),
+        ]:
+            self.good[crit] = False
+            #continue as usual
+            n = sum(self.good)
+            print('Flagged', n0-n, 'more:',
+                  name)
+            n0 = n
+
+    #def err_message(self):
+    #    self.good[self.df['err'].str.len() > 0]= False
 
     def third_pix(self):
         if self.camera == 'mosaic':
             # The 1/3-pixel shift problem was fixed in hardware on MJD 57674,
             # so only check for problems in data before then.
-            self.good[((self.T.has_yshift == False) & 
-                       (self.T.mjd_obs < 57674.))]= False
+            return ((self.T.has_yshift == False) & 
+                    (self.T.mjd_obs < 57674.))
 
-    def correct_band(self):
-        self.good[self.df['band'].str.strip().isin(self.bands()) == False]= False
+    def correct_bands(self):
+        return self.df['band'].str.strip().isin(self.bands()) == False
 
     def bands(self):
         return {'decam':['g','r','z'],
@@ -92,11 +113,10 @@ class LegacypipeCuts(object):
         if self.camera == 'decam':
             self.ccds.ccdzpt += 2.5 * np.log10(self.ccds.exptime)
 
-    def photometric(self):
+    def cuts(self):
         z0 = self.nominal_zeropoints()
         z0 = np.array([z0[f[0]] for f in self.ccds.filter])
         n0 = sum(self.good)
-        # This is our list of cuts to remove non-photometric CCD images
         for name,crit in [
             ('exptime < 30 s', (self.ccds.exptime < 30)),
             ('ccdnmatch < 20', (self.ccds.ccdnmatch < 20)),
@@ -106,6 +126,10 @@ class LegacypipeCuts(object):
              (self.ccds.zpt < self.min_zeropoint(z0))),
             ('zpt greater than maximum',
              (self.ccds.zpt > self.max_zeropoint(z0))),
+            ('sky too bright',
+             (self.sky_too_bright())),
+            #('bad exposure',
+            # (self.bad_exposures())),
         ]:
             self.good[crit] = False
             #continue as usual
@@ -123,20 +147,12 @@ class LegacypipeCuts(object):
             for expnum in bad_expids:
                 self.good[self.ccds.expnum == expnum]= False
 
-    def bright_sky(self):
+    def sky_too_bright(self):
         if self.camera == 'mosaic':
-            for name,crit in [
-                ('sky too bright', 
-                 (self.ccds.ccdskycounts >= 150)),
-            ]:
-                self.good[crit] = False
-                #continue as usual
-                n = sum(self.ccd_cuts)
-                print('Flagged', n0-n, 'more:',
-                      name)
-                n0 = n    
-
-
+            return self.ccds.ccdskycounts >= 150
+        else:
+            return np.zeros(len(self.ccds),bool)
+                
     def nominal_zeropoints(self):
         if self.camera == 'decam':
             return dict(g = 25.08,
@@ -165,7 +181,26 @@ class LegacypipeCuts(object):
             return z0 + 0.6
         elif self.camera == '90prime':
              return z0 + 0.18
-            
+
+def write_survey_ccds(good,T_zpt,camera=None,gzip=True):
+    assert(camera in CAMERAS)
+    T_zpt.set('good',good)
+    fn='survey-ccds-'+camera+'.fits'
+    T_zpt.writeto(fn)
+    print('Wrote %s' % fn)
+    if gzip:
+        dobash('gzip %s' % fn)
+        print('Wrote '+fn+'.gz')
+    T_leg= create_legacypipe_table(T=T_zpt, camera=camera)
+    T_leg.set('good',good)
+    fn=fn.replace('.fits','-legacypipe.fits')
+    T_zpt.writeto(fn)
+    print('Wrote %s' % fn)
+    if gzip:
+        dobash('gzip %s' % fn)
+        print('Wrote '+fn+'.gz')
+	
+
 if __name__ == '__main__':
     from argparse import ArgumentParser
     parser = ArgumentParser()
@@ -179,31 +214,13 @@ if __name__ == '__main__':
         print('Warning removing %d CCDs because filter is " "' % len(T_zpt[isEmpty]))
         T_zpt.cut(isEmpty == False)
 
-    print('legacyzpts cuts')
     zpt_cuts= LegacyzptsCuts(T_zpt,args.camera)
-    zpt_cuts.err_message()
-    zpt_cuts.third_pix()
-    zpt_cuts.correct_band()
+    zpt_cuts.cuts()
 
-    print('legacypipe cuts')
     leg_cuts= LegacypipeCuts(T_zpt,args.camera)
-    leg_cuts.photometric()
-    #leg_cuts.bad_exposures()
-    print('Warning: skipping bad_exposures')
-    leg_cuts.bright_sky()
+    leg_cuts.cuts()
 
-    T_zpt.set('good',((zpt_cuts.good) & 
-                      (leg_cuts.good)))
-    fn=args.zpt_fn.replace('.fits.fz','').replace('.fits','') + 'survey-ccds-'+args.camera+'.fits'
-    T_zpt.writeto(fn)
-    print('Wrote %s' % fn)
-    T_leg= create_legacypipe_table(T_zpt, camera=args.camera)
-    T_leg.set('good',T_zpt.good)
-    fn=fn.replace('.fits','-legacypipe.fits')
-    T_zpt.writeto(fn)
-    print('Wrote %s' % fn)
-	
-	
+    good= ((zpt_cuts.good) & 
+           (leg_cuts.good))
+    write_survey_ccds(good,T_zpt,camera=args.camera)
 
-	
-	
