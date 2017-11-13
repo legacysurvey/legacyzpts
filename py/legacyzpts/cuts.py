@@ -28,19 +28,22 @@ except ImportError:
 
 CAMERAS= ['decam','90prime','mosaic']
 
-def bit_codes():
 # Bit codes for why a CCD got cut, used in cut_ccds().
-    return dict(
-        BLACKLIST = 0x1,
-        BAD_EXPID = 0x2,
-        CCDNAME_HDU_MISMATCH = 0x4,
-        BAD_ASTROMETRY = 0x8,
-        a = 0x10, # Mosaic3 one-third-pixel interpolation problem
-        b = 0x20, # Mosaic3 one-third-pixel interpolation problem
-        c = 0x40, # Mosaic3 one-third-pixel interpolation problem
-        d = 0x80, # Mosaic3 one-third-pixel interpolation problem
+CCD_CUT_BITS= dict(
+    err_legacyzpts = 0x1,
+    not_grz = 0x2,
+    not_third_pix = 0x4, # Mosaic3 one-third-pixel interpolation problem
+    exptime_lt_30 = 0x8,
+    ccdnmatch_lt_20 = 0x10, 
+    zpt_diff_avg = 0x20, 
+    zpt_small = 0x40,  
+    zpt_large = 0x80,
+    sky_is_bright = 0x100,
+    badexp_file = 0x200,
     )
 
+def get_bits(name):
+    return CCD_CUT_BITS[name]
 
 class LegacyzptsCuts(object):
     """Applies legacyzpts cuts
@@ -57,32 +60,38 @@ class LegacyzptsCuts(object):
                                'band':big2small_endian(self.T.filter)})
         self.df['err']= self.df['err'].str.strip()
 
-    def cuts(self,good=None):
+    def cuts(self,good=None,ccd_cuts=None):
         """Returns bool array, True where CCD should be kept"""
         if good is None:
             good= np.ones(len(self.T),bool)
-        else:
-            assert(len(good) == len(self.T))
+        if ccd_cuts is None:
+            ccd_cuts = np.zeros(len(self.T), np.int16)
+        assert(len(good) == len(self.T))
+        assert(len(ccd_cuts) == len(self.T))
 
         n0 = sum(good)
         for name in set(self.df.loc[self.df['err'].str.len() > 0,'err']):
-            good[self.df['err'] == name] = False
+            crit= self.df['err'] == name
+            good[crit] = False
+            ccd_cuts[crit] += get_bits('err_legacyzpts')
             #continue as usual
             n = sum(good)
             print('Flagged', n0-n, 'more:',
                   name)
             n0 = n
+
         for name,crit in [
-            ("not grz filter", (self.correct_bands())),
-            #('not 1/3 pix interpolated', (self.third_pix())),
+            ("not_grz", (self.correct_bands())),
+            #('not_third_pix', (self.third_pix())),
         ]:
             good[crit] = False
+            ccd_cuts[crit] += get_bits(name)
             #continue as usual
             n = sum(good)
             print('Flagged', n0-n, 'more:',
                   name)
             n0 = n
-        return good
+        return good,ccd_cuts
 
     #def err_message(self):
     #    self.good[self.df['err'].str.len() > 0]= False
@@ -129,37 +138,40 @@ class LegacypipeCuts(object):
         if self.camera == 'decam':
             self.ccds.ccdzpt += 2.5 * np.log10(self.ccds.exptime)
 
-    def cuts(self, good=None):
-        """Returns bool array, True where CCD should be kept"""
+    def cuts(self, good=None, ccd_cuts=None):
+        """Returns bool array and bitmask, True where CCD should be kept"""
         if good is None:
             good= np.ones(len(self.ccds),bool)
-        else:
-            assert(len(good) == len(self.ccds))
+        if ccd_cuts is None:
+            ccd_cuts = np.zeros(len(self.ccds), np.int16)
+        assert(len(good) == len(self.ccds))
+        assert(len(ccd_cuts) == len(self.ccds))
 
         z0 = self.nominal_zeropoints()
         z0 = np.array([z0[f[0]] for f in self.ccds.filter])
         n0 = sum(good)
         for name,crit in [
-            ('exptime < 30 s', (self.ccds.exptime < 30)),
-            ('ccdnmatch < 20', (self.ccds.ccdnmatch < 20)),
-            ('abs(zpt - ccdzpt) > 0.1',
+            ('exptime_lt_30', (self.ccds.exptime < 30)),
+            ('ccdnmatch_lt_20', (self.ccds.ccdnmatch < 20)),
+            ('zpt_diff_avg',
              (np.abs(self.ccds.zpt - self.ccds.ccdzpt) > 0.1)),
-            ('zpt less than minimum',
+            ('zpt_small',
              (self.ccds.zpt < self.min_zeropoint(z0))),
-            ('zpt greater than maximum',
+            ('zpt_large',
              (self.ccds.zpt > self.max_zeropoint(z0))),
-            ('sky too bright',
+            ('sky_is_bright',
              (self.sky_too_bright())),
-            ('bad exposure',
+            ('badexp_file',
              (self.bad_exposure())),
         ]:
             good[crit] = False
+            ccd_cuts[crit] += get_bits(name)
             #continue as usual
             n = sum(good)
             print('Flagged', n0-n, 'more:',
                   name)
             n0 = n
-        return good
+        return good,ccd_cuts
 
     def bad_exposure(self):
         if self.camera == '90prime':
@@ -206,9 +218,9 @@ class LegacypipeCuts(object):
         elif self.camera == '90prime':
              return z0 + 0.18
 
-def write_survey_ccds(good,T_zpt,camera=None,gzip=True):
+def write_survey_ccds(ccd_cuts,T_zpt,camera=None,gzip=True):
     assert(camera in CAMERAS)
-    T_zpt.set('good',good)
+    T_zpt.set('ccd_cuts',ccd_cuts)
     fn='survey-ccds-'+camera+'.fits'
     T_zpt.writeto(fn)
     print('Wrote %s' % fn)
@@ -216,7 +228,7 @@ def write_survey_ccds(good,T_zpt,camera=None,gzip=True):
         dobash('gzip %s' % fn)
         print('Wrote '+fn+'.gz')
     T_leg= create_legacypipe_table(T=T_zpt, camera=camera)
-    T_leg.set('good',good)
+    T_leg.set('ccd_cuts',ccd_cuts)
     fn=fn.replace('.fits','-legacypipe.fits')
     T_zpt.writeto(fn)
     print('Wrote %s' % fn)
@@ -239,11 +251,11 @@ if __name__ == '__main__':
         print('Removed %d, filter is empty string' % len(T_zpt[isEmpty]))
         T_zpt.cut(isEmpty == False)
 
-    zpt_cuts= LegacyzptsCuts(T_zpt,args.camera)
-    good= zpt_cuts.cuts()
+    Z= LegacyzptsCuts(T_zpt,args.camera)
+    good,ccd_cuts= Z.cuts()
 
-    leg_cuts= LegacypipeCuts(T_zpt,args.camera)
-    good= leg_cuts.cuts(good=good)
+    L= LegacypipeCuts(T_zpt,args.camera)
+    good,ccd_cuts= L.cuts(good=good,ccd_cuts=ccd_cuts)
 
-    write_survey_ccds(good,T_zpt,camera=args.camera)
+    write_survey_ccds(ccd_cuts,T_zpt,camera=args.camera)
 
