@@ -1637,7 +1637,7 @@ class Measurer(object):
 
         # Look for single-CCD file
         fn = os.path.join(self.calibdir, self.camera, 'splinesky', expstr[:5], expstr,
-                          '%s-%s-%s.fits' % (self.camera, expstr, self.ext))
+                          '%s-%s-%s.fits' % (self.camera, expstr, self.ext.lower()))
         print('Reading file', fn)
         if not os.path.exists(fn):
             return None
@@ -1814,7 +1814,7 @@ class Measurer(object):
 
         # Look for single-CCD PsfEx file
         fn = os.path.join(self.calibdir, self.camera, 'psfex', expstr[:5], expstr,
-                          '%s-%s-%s.fits' % (self.camera, expstr, self.ext))
+                          '%s-%s-%s.fits' % (self.camera, expstr, self.ext.lower()))
         print('Reading PsfEx file', fn)
         if not os.path.exists(fn):
             return None

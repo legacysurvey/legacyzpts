@@ -20,9 +20,11 @@ export MKL_NUM_THREADS=1
 export OMP_NUM_THREADS=1
 
 export PYTHONPATH=~/astrometry:~/tractor:~/legacypipe/py:.:${PYTHONPATH}
-echo "PYTHONPATH: $PYTHONPATH"
 
-python legacyzpts/legacy_zeropoints.py \
+# symlinks to image data in $out_dir/images
+export LEGACY_SURVEY_DIR=$out_dir
+
+python -u legacyzpts/legacy_zeropoints.py \
 	--camera ${camera} --image ${image_fn} --outdir ${out_dir} \
     --not_on_proj \
     --calibdir ${cal_dir} --splinesky --psf \
