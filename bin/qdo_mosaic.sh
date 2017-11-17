@@ -29,4 +29,4 @@ python -u legacyzpts/legacy_zeropoints.py \
     --not_on_proj \
     --calibdir ${cal_dir} --splinesky --psf \
     --run-calibs \
-    >> $log 2>&1
+    > $log 2>&1

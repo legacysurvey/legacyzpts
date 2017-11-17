@@ -989,10 +989,22 @@ class Measurer(object):
         if not self.goodWcs:
             print('WCS Failed')
             return self.return_on_error(err_message='WCS Failed')
+        if self.exptime == 0:
+            print('Exptime = 0')
+            return self.return_on_error(err_message='Exptime = 0')
         self.set_hdu(ext)
         # 
         t0= Time()
         t0= ptime('Measuring CCD=%s from image=%s' % (self.ccdname,self.fn),t0)
+
+        if psfex:
+            # Quick check for PsfEx file
+            psf = self.get_psfex_model()
+            if psf.psfex.sampling == 0.:
+                print('PsfEx model has SAMPLING=0')
+                nacc = psf.header.get('ACCEPTED')
+                print('PsfEx model number of stars accepted:', nacc)
+                return self.return_on_error(err_message='Bad PSF model')
 
         # Initialize 
         ccds = _ccds_table(self.camera)
@@ -1810,6 +1822,7 @@ class Measurer(object):
                 psfex = tractor.PsfExModel(Ti=Ti)
                 psf = tractor.PixelizedPsfEx(None, psfex=psfex)
                 psf.fwhm = Ti.psf_fwhm
+                psf.header = {}
                 return psf
 
         # Look for single-CCD PsfEx file
@@ -1819,9 +1832,9 @@ class Measurer(object):
         if not os.path.exists(fn):
             return None
         psf = tractor.PixelizedPsfEx(fn)
-
         import fitsio
         hdr = fitsio.read_header(fn, ext=1)
+        psf.header = hdr
         psf.fwhm = hdr['PSF_FWHM']
         return psf
     
@@ -2175,6 +2188,12 @@ class Measurer(object):
         print('Wrote %s' % fn)
 
     def run_calibs(self, ext):
+        if not self.goodWcs:
+            print('WCS Failed; not trying to run calibs')
+            return
+        if self.exptime == 0:
+            print('Exptime = 0')
+            return
         self.set_hdu(ext)
         psfex = False
         splinesky = False
