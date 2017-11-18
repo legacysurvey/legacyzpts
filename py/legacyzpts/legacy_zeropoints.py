@@ -662,9 +662,9 @@ class Measurer(object):
             tmp.close()
             del tmp
         # CP WCS succeed?
-        assert('WCSCAL' in self.primhdr.keys())
         self.goodWcs=True  
-        if not 'success' in self.primhdr['WCSCAL'].strip().lower():
+        if not ('WCSCAL' in self.primhdr.keys() and
+                'success' in self.primhdr['WCSCAL'].strip().lower()):
             self.goodWcs=False  
 
         # Camera-agnostic primary header cards
