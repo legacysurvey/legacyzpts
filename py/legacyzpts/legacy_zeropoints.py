@@ -219,12 +219,6 @@ def cuts_for_brick_2016p122(legacy_fn,survey_fn):
     print('Wrote %s' % fn)
      
 
-def primary_hdr(fn):
-    a= fitsio.FITS(fn)
-    h= a[0].read_header()
-    a.close()
-    return h 
-
 def get_pixscale(camera='decam'):
   assert(camera in CAMERAS)
   return {'decam':0.262,
@@ -669,7 +663,7 @@ class Measurer(object):
         self.nominal_fwhm = 5.0 # [pixels]
         
         try:
-            self.primhdr = fitsio.read_header(fn, ext=0)
+            self.primhdr = read_primary_header(fn)
         except ValueError:
             # astropy can handle it
             tmp= fits_astropy.open(fn)
@@ -1654,7 +1648,7 @@ class Measurer(object):
         if not os.path.exists(fn):
             return None
         
-        hdr = fitsio.read_header(fn)
+        hdr = read_primary_header(fn)
         try:
             skyclass = hdr['SKY']
         except NameError:
@@ -2488,7 +2482,7 @@ def measure_image(img_fn, run_calibs=False, **measureargs):
     # Fitsio can throw error: ValueError: CONTINUE not supported
     try:
         print('img_fn=%s' % img_fn)
-        primhdr = fitsio.read_header(img_fn, ext=0)
+        primhdr = read_primary_header(img_fn)
     except ValueError:
         # astropy can handle it
         tmp= fits_astropy.open(img_fn)
@@ -2776,6 +2770,48 @@ def main(image_list=None,args=None):
     tnow= Time()
     print("TIMING:total %s" % (tnow-tbegin,))
     print("Done")
+
+def read_primary_header(fn):
+    '''
+    Reads the FITS primary header (HDU 0) from the given filename.
+    This is just a faster version of fitsio.read_header(fn).
+    '''
+    if fn.endswith('.gz'):
+        return fitsio.read_header(fn)
+
+    # Weirdly, this can be MUCH faster than letting fitsio do it...
+    hdr = fitsio.FITSHDR()
+    foundEnd = False
+    ff = open(fn, 'rb')
+    h = b''
+    while True:
+        h = h + ff.read(32768)
+        while True:
+            line = h[:80]
+            h = h[80:]
+            #print('Header line "%s"' % line)
+            # HACK -- fitsio apparently can't handle CONTINUE.
+            # It also has issues with slightly malformed cards, like
+            # KEYWORD  =      / no value
+            if line[:8] != b'CONTINUE':
+                try:
+                    hdr.add_record(line.decode())
+                except:
+                    print('Warning: failed to parse FITS header line: ' +
+                          ('"%s"; skipped' % line.strip()))
+                    #import traceback
+                    #traceback.print_exc()
+                          
+            if line == (b'END' + b' '*77):
+                foundEnd = True
+                break
+            if len(h) < 80:
+                break
+        if foundEnd:
+            break
+    ff.close()
+    return hdr
+
    
 if __name__ == "__main__":
     parser= get_parser()  
