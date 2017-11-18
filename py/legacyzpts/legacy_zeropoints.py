@@ -596,15 +596,6 @@ def get_weight_fn(imgfn):
         raise ValueError('bad imgfn? no ooi or oki: %s' % imgfn)
     return fn
 
-def get_90prime_expnum(primhdr):
-    """converts 90prime header key DTACQNAM into the unique exposure number"""
-    # /descache/bass/20160710/d7580.0144.fits --> 75800144
-    base= (os.path.basename(primhdr['DTACQNAM'])
-           .replace('.fits','')
-           .replace('.fz',''))
-    return int( re.sub(r'([a-z]+|\.+)','',base) )
-
-
 class Measurer(object):
     """Main image processing functions for all cameras.
 
@@ -693,12 +684,12 @@ class Measurer(object):
                 print('WARNING! not in primhdr: %s' % key) 
             setattr(self, key.lower(),val)
 
-        if kwargs['camera'] in ['decam','mosaic']:
-            self.expnum= self.primhdr['EXPNUM']
-        elif kwargs['camera'] == '90prime':
-            self.expnum= get_90prime_expnum(self.primhdr)
+        self.expnum = self.get_expnum(self.primhdr)
         print('CP Header: EXPNUM = ',self.expnum)
         self.obj = self.primhdr['OBJECT']
+
+    def get_expnum(self, primhdr):
+        return self.primhdr['EXPNUM']
 
     def zeropoint(self, band):
         return self.zp0[band]
@@ -2336,7 +2327,21 @@ class Mosaic3Measurer(Measurer):
         self.cp_header_keys= {'width':['ZNAXIS1','NAXIS1'],
                               'height':['ZNAXIS2','NAXIS2'],
                               'fwhm_cp':['SEEINGP1','SEEINGP']}
-   
+
+    def get_expnum(self, primhdr):
+        if 'EXPNUM' in primhdr:
+            return primhdr['EXPNUM']
+        # At the beginning of the survey, eg 2016-01-24, the EXPNUM
+        # cards are blank.  Fake up an expnum like 160125082555
+        # (yymmddhhmmss), same as the CP filename.
+        # OBSID   = 'kp4m.20160125T082555' / Observation ID
+        obsid = primhdr['OBSID']
+        obsid = obsid.strip().split('.')[1]
+        obsid = obsid.replace('T', '')
+        obsid = int(obsid[2:], 10)
+        print('Faked up EXPNUM', obsid)
+        return obsid
+
     def get_band(self):
         band = self.primhdr['FILTER']
         band = band.split()[0][0] # zd --> z
@@ -2407,6 +2412,14 @@ class NinetyPrimeMeasurer(Measurer):
         self.cp_header_keys= {'width':['ZNAXIS1','NAXIS1'],
                               'height':['ZNAXIS2','NAXIS2'],
                               'fwhm_cp':['SEEINGP1','SEEINGP']}
+
+    def get_expnum(self, primhdr):
+        """converts 90prime header key DTACQNAM into the unique exposure number"""
+        # /descache/bass/20160710/d7580.0144.fits --> 75800144
+        base= (os.path.basename(primhdr['DTACQNAM'])
+               .replace('.fits','')
+               .replace('.fz',''))
+        return int( re.sub(r'([a-z]+|\.+)','',base) )
     
     def get_gain(self,hdr):
         return 1.4 # no GAINA,B
