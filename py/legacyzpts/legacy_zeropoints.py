@@ -2664,7 +2664,7 @@ def runit(imgfn,zptfn,starfn_photom,starfn_astrom,
     #           debug=measureargs['debug'],
     #           choose_ccd=measureargs['choose_ccd']):
     # Write out.
-    ccds.write(zptfn)
+    ccds.write(zptfn, overwrite=True)
     # Header <-- fiducial zp,sky,ext, also exptime, pixscale
     hdulist = fits_astropy.open(zptfn, mode='update')
     prihdr = hdulist[0].header
@@ -2675,8 +2675,8 @@ def runit(imgfn,zptfn,starfn_photom,starfn_astrom,
     # zpt --> Legacypipe table
     create_legacypipe_table(zptfn, camera=measureargs['camera'])
     # Two stars tables
-    stars_photom.write(starfn_photom)
-    stars_astrom.write(starfn_astrom)
+    stars_photom.write(starfn_photom, overwrite=True)
+    stars_astrom.write(starfn_astrom, overwrite=True)
     print('Wrote 2 stars tables\n%s\n%s' %  (starfn_photom,starfn_astrom))
     # Clean up
     t0= ptime('write-results-to-fits',t0)
