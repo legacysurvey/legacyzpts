@@ -982,15 +982,6 @@ class Measurer(object):
         t0= Time()
         t0= ptime('Measuring CCD=%s from image=%s' % (self.ccdname,self.fn),t0)
 
-        if psfex:
-            # Quick check for PsfEx file
-            psf = self.get_psfex_model()
-            if psf.psfex.sampling == 0.:
-                print('PsfEx model has SAMPLING=0')
-                nacc = psf.header.get('ACCEPTED')
-                print('PsfEx model number of stars accepted:', nacc)
-                return self.return_on_error(err_message='Bad PSF model')
-
         # Initialize 
         ccds = _ccds_table(self.camera)
         if STAGING_CAMERAS[self.camera] in self.fn:
@@ -1105,9 +1096,24 @@ class Measurer(object):
         if (self.camera == 'decam') & (ext == 'S7'):
             return self.return_on_error(err_message='S7', ccds=ccds)
 
+        weight = self.read_weight()
+
+        if np.all(weight == 0):
+            txt = 'All weight-map pixels are zero'
+            print(txt)
+            return self.return_on_error(txt,ccds=ccds)
+
+        if psfex:
+            # Quick check for PsfEx file
+            psf = self.get_psfex_model()
+            if psf.psfex.sampling == 0.:
+                print('PsfEx model has SAMPLING=0')
+                nacc = psf.header.get('ACCEPTED')
+                print('PsfEx model number of stars accepted:', nacc)
+                return self.return_on_error(err_message='Bad PSF model', ccds=ccds)
+
         self.img,hdr= self.read_image() 
         self.bitmask= self.read_bitmask()
-        weight = self.read_weight()
 
         # Per-pixel error -- weight is 1/sig*2, scaled by scale_weight()
         medweight = np.median(weight[(weight > 0) * (self.bitmask == 0)])
@@ -1179,6 +1185,12 @@ class Measurer(object):
             colorterm = self.colorterm_ps1_to_observed(ps1_gaia.median, self.band)
             ps1_gaia.legacy_survey_mag = ps1_gaia.median[:, ps1band] + np.clip(colorterm, -1., +1.)
         
+
+        if len(ps1) == 0 and len(ps1_gaia) == 0:
+            txt = 'No PS1 or PS1/Gaia stars'
+            print(txt)
+            return self.return_on_error(txt,ccds=ccds)
+
         if not psfex:
             # badpix5 test, all good PS1 
             if self.camera in ['90prime','mosaic']:
@@ -2190,6 +2202,12 @@ class Measurer(object):
             # Nothing to do!
             return
 
+        # Check for all-zero weight maps
+        wt = self.read_weight()
+        if np.all(wt == 0):
+            print('Weight map is all zero -- skipping')
+            return
+
         import legacypipe
         from legacypipe.survey import LegacySurveyData, get_git_version
 
@@ -2223,7 +2241,7 @@ class Measurer(object):
         ccd.width = 0
         ccd.height = 0
         ccd.arawgain = self.gain
-        
+
         im = survey.get_image_object(ccd)
         git_version = get_git_version(dir=os.path.dirname(legacypipe.__file__))
         im.run_calibs(psfex=psfex, sky=splinesky, splinesky=True, git_version=git_version)
