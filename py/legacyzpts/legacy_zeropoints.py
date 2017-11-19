@@ -722,10 +722,11 @@ class Measurer(object):
         mask = fitsio.read(dqfn, ext=self.ext)
         return mask
 
-    def read_weight(self):
+    def read_weight(self, scale=True):
         fn= get_weight_fn(self.fn)
         wt = fitsio.read(fn, ext=self.ext)
-        wt = self.scale_weight(wt)
+        if scale:
+            wt = self.scale_weight(wt)
         return wt
 
     def read_image(self):
@@ -1096,12 +1097,23 @@ class Measurer(object):
         if (self.camera == 'decam') & (ext == 'S7'):
             return self.return_on_error(err_message='S7', ccds=ccds)
 
-        weight = self.read_weight()
+        weight = self.read_weight(scale=False)
 
         if np.all(weight == 0):
             txt = 'All weight-map pixels are zero'
             print(txt)
             return self.return_on_error(txt,ccds=ccds)
+        # bizarro image CP20151119/k4m_151120_040715_oow_zd_v1.fits.fz
+        if np.all(np.logical_or(weight == 0, weight == 1)):
+            txt = 'All weight-map pixels are zero or one'
+            print(txt)
+            return self.return_on_error(txt,ccds=ccds)
+
+        from collections import Counter
+        print('Most common weight-map values:', Counter(weight.ravel()).most_common(10))
+
+        weight = self.scale_weight(weight)
+
 
         if psfex:
             # Quick check for PsfEx file
