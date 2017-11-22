@@ -142,12 +142,14 @@ def _ccds_table(camera='decam'):
         ('cd2_2', '>f4'),
         ('pixscale', 'f4'),   
         ('zptavg', '>f4'),   
+        ('yshift', 'bool'),
         # -- CCD-level quantities --
         ('ra', '>f8'),        
         ('dec', '>f8'),      
         ('skymag', '>f4'),  
         ('skycounts', '>f4'),
-        ('skyrms', '>f4'),    
+        ('skyrms', '>f4'),
+        ('sig1', '>f4'),
         ('nmatch_photom', '>i2'),   
         ('nmatch_astrom', '>i2'),  
         ('goodps1', '>i2'),   
@@ -217,12 +219,6 @@ def cuts_for_brick_2016p122(legacy_fn,survey_fn):
     print('Wrote %s' % fn)
      
 
-def primary_hdr(fn):
-    a= fitsio.FITS(fn)
-    h= a[0].read_header()
-    a.close()
-    return h 
-
 def get_pixscale(camera='decam'):
   assert(camera in CAMERAS)
   return {'decam':0.262,
@@ -255,7 +251,7 @@ def cols_for_legacypipe_table(which='all'):
                            'ccdphrms',
                            'cd1_1','cd2_2','cd1_2','cd2_1',
                            'crval1','crval2','crpix1','crpix2']
-        dustins_keys= ['skyrms']
+        dustins_keys= ['skyrms', 'sig1', 'yshift']
     elif which == 'numeric':
         need_arjuns_keys= ['ra','dec','ra_bore','dec_bore',
                            'expnum',
@@ -591,14 +587,14 @@ def get_bitmask_fn(imgfn):
         raise ValueError('bad imgfn? no ooi or oki: %s' % imgfn)
     return fn
 
-def get_90prime_expnum(primhdr):
-    """converts 90prime header key DTACQNAM into the unique exposure number"""
-    # /descache/bass/20160710/d7580.0144.fits --> 75800144
-    base= (os.path.basename(primhdr['DTACQNAM'])
-           .replace('.fits','')
-           .replace('.fz',''))
-    return int( re.sub(r'([a-z]+|\.+)','',base) )
-
+def get_weight_fn(imgfn):
+    if 'ooi' in imgfn: 
+        fn= imgfn.replace('ooi','oow')
+    elif 'oki' in imgfn: 
+        fn= imgfn.replace('oki','oow')
+    else:
+        raise ValueError('bad imgfn? no ooi or oki: %s' % imgfn)
+    return fn
 
 class Measurer(object):
     """Main image processing functions for all cameras.
@@ -658,7 +654,7 @@ class Measurer(object):
         self.nominal_fwhm = 5.0 # [pixels]
         
         try:
-            self.primhdr = fitsio.read_header(fn, ext=0)
+            self.primhdr = read_primary_header(fn)
         except ValueError:
             # astropy can handle it
             tmp= fits_astropy.open(fn)
@@ -666,9 +662,9 @@ class Measurer(object):
             tmp.close()
             del tmp
         # CP WCS succeed?
-        assert('WCSCAL' in self.primhdr.keys())
         self.goodWcs=True  
-        if not 'success' in self.primhdr['WCSCAL'].strip().lower():
+        if not ('WCSCAL' in self.primhdr.keys() and
+                'success' in self.primhdr['WCSCAL'].strip().lower()):
             self.goodWcs=False  
 
         # Camera-agnostic primary header cards
@@ -688,12 +684,12 @@ class Measurer(object):
                 print('WARNING! not in primhdr: %s' % key) 
             setattr(self, key.lower(),val)
 
-        if kwargs['camera'] in ['decam','mosaic']:
-            self.expnum= self.primhdr['EXPNUM']
-        elif kwargs['camera'] == '90prime':
-            self.expnum= get_90prime_expnum(self.primhdr)
+        self.expnum = self.get_expnum(self.primhdr)
         print('CP Header: EXPNUM = ',self.expnum)
         self.obj = self.primhdr['OBJECT']
+
+    def get_expnum(self, primhdr):
+        return self.primhdr['EXPNUM']
 
     def zeropoint(self, band):
         return self.zp0[band]
@@ -723,8 +719,14 @@ class Measurer(object):
 
     def read_bitmask(self):
         dqfn= get_bitmask_fn(self.fn)
-        mask, junk = fitsio.read(dqfn, ext=self.ext, header=True)
+        mask = fitsio.read(dqfn, ext=self.ext)
         return mask
+
+    def read_weight(self):
+        fn= get_weight_fn(self.fn)
+        wt = fitsio.read(fn, ext=self.ext)
+        wt = self.scale_weight(wt)
+        return wt
 
     def read_image(self):
         '''Read the image and header; scale the image.'''
@@ -734,6 +736,33 @@ class Measurer(object):
 
     def scale_image(self, img):
         return img
+
+    def scale_weight(self, img):
+        return img
+
+    def remap_invvar(self, invvar, primhdr, img, dq):
+        # By default, *do not* remap
+        return invvar
+
+    # A function that can be called by a subclasser's remap_invvar() method
+    def remap_invvar_shotnoise(self, invvar, primhdr, img, dq):
+        #
+        # All three cameras scale the image and weight to units of electrons.
+        #
+        print('Remapping weight map for', self.fn)
+        const_sky = primhdr['SKYADU'] # e/s, Recommended sky level keyword from Frank 
+        expt = primhdr['EXPTIME'] # s
+        with np.errstate(divide='ignore'):
+            var_SR = 1./invvar # e**2
+
+        print('median img:', np.median(img), 'vs sky estimate * exptime', const_sky*expt)
+
+        var_Astro = np.abs(img - const_sky * expt) # img in electrons; Poisson process so variance = mean
+        wt = 1./(var_SR + var_Astro) # 1/(e**2)
+        # Zero out NaNs and masked pixels 
+        wt[np.isfinite(wt) == False] = 0.
+        wt[dq != 0] = 0.
+        return wt
 
     def create_zero_one_mask(self,bitmask,good=[]):
         """Return zero_one_mask arraygiven a bad pixel map and good pix values
@@ -945,6 +974,9 @@ class Measurer(object):
         if not self.goodWcs:
             print('WCS Failed')
             return self.return_on_error(err_message='WCS Failed')
+        if self.exptime == 0:
+            print('Exptime = 0')
+            return self.return_on_error(err_message='Exptime = 0')
         self.set_hdu(ext)
         # 
         t0= Time()
@@ -977,6 +1009,7 @@ class Measurer(object):
         ccds['airmass'] = self.airmass
         ccds['gain'] = self.gain
         ccds['pixscale'] = self.pixscale
+        ccds['yshift'] = 'YSHIFT' in self.primhdr
         
         # From CP Header
         hdrVal={}
@@ -1063,8 +1096,32 @@ class Measurer(object):
         if (self.camera == 'decam') & (ext == 'S7'):
             return self.return_on_error(err_message='S7', ccds=ccds)
 
+        weight = self.read_weight()
+
+        if np.all(weight == 0):
+            txt = 'All weight-map pixels are zero'
+            print(txt)
+            return self.return_on_error(txt,ccds=ccds)
+
+        if psfex:
+            # Quick check for PsfEx file
+            psf = self.get_psfex_model()
+            if psf.psfex.sampling == 0.:
+                print('PsfEx model has SAMPLING=0')
+                nacc = psf.header.get('ACCEPTED')
+                print('PsfEx model number of stars accepted:', nacc)
+                return self.return_on_error(err_message='Bad PSF model', ccds=ccds)
+
         self.img,hdr= self.read_image() 
         self.bitmask= self.read_bitmask()
+
+        # Per-pixel error -- weight is 1/sig*2, scaled by scale_weight()
+        medweight = np.median(weight[(weight > 0) * (self.bitmask == 0)])
+        # Undo the weight scaling to get sig1 back into native image units
+        wscale = self.scale_weight(1.)
+        ccds['sig1'] = 1. / np.sqrt(medweight / wscale)
+
+        self.invvar = self.remap_invvar(weight, self.primhdr, self.img, self.bitmask)
 
         t0= ptime('read image',t0)
 
@@ -1109,7 +1166,7 @@ class Measurer(object):
         except OSError:
             txt="outside PS1 footprint,In Gal. Plane"
             print(txt)
-            return self.return_on_error(mess,ccds=ccds)
+            return self.return_on_error(txt,ccds=ccds)
         assert(len(ps1_gaia.columns()) > len(ps1.columns())) 
         ps1band = ps1cat.ps1band[self.band]
         # PS1 cuts
@@ -1128,6 +1185,12 @@ class Measurer(object):
             colorterm = self.colorterm_ps1_to_observed(ps1_gaia.median, self.band)
             ps1_gaia.legacy_survey_mag = ps1_gaia.median[:, ps1band] + np.clip(colorterm, -1., +1.)
         
+
+        if len(ps1) == 0 and len(ps1_gaia) == 0:
+            txt = 'No PS1 or PS1/Gaia stars'
+            print(txt)
+            return self.return_on_error(txt,ccds=ccds)
+
         if not psfex:
             # badpix5 test, all good PS1 
             if self.camera in ['90prime','mosaic']:
@@ -1309,16 +1372,29 @@ class Measurer(object):
 
             # Initial flux estimate, from nominal zeropoint
             flux0 = 10.**((zp0 - ps1.legacy_survey_mag) / 2.5) * exptime
-            # Inverse-error of sky image
-            ierr = 1.0/np.sqrt(sky_img)
 
-            # Zero out masked pixels.
-            ierr[self.bitmask > 0] = 0
+            ierr = np.sqrt(self.invvar)
 
             # plt.clf()
-            # plt.hist((fit_img * ierr).ravel(), range=(-10,10), bins=100)
+            # n,b,p = plt.hist((fit_img * ierr)[ierr > 0], range=(-6,6), bins=100)
             # plt.xlabel('Image pixel chi')
+            # xx = np.linspace(-6,6, 100)
+            # yy = 1./np.sqrt(2.*np.pi) * np.exp(-0.5 * xx**2)
+            # yy *= sum(n)
+            # db = b[1]-b[0]
+            # plt.plot(xx, yy * db, 'r-')
+            # plt.xlim(-6,6)
             # fn = 'chi-%i-%s.png' % (self.expnum, self.ccdname)
+            # plt.savefig(fn)
+            # print('Wrote', fn)
+            # 
+            # plt.clf()
+            # I = (ierr > 0) * (fit_img > 1)
+            # plt.hexbin(fit_img[I], 1. / ierr[I],
+            #            xscale='log', yscale='log')
+            # plt.xlabel('Image pixel value')
+            # plt.ylabel('Uncertainty')
+            # fn = 'unc-%i-%s.png' % (self.expnum, self.ccdname)
             # plt.savefig(fn)
             # print('Wrote', fn)
 
@@ -1575,7 +1651,7 @@ class Measurer(object):
         if not os.path.exists(fn):
             return None
         
-        hdr = fitsio.read_header(fn)
+        hdr = read_primary_header(fn)
         try:
             skyclass = hdr['SKY']
         except NameError:
@@ -1638,8 +1714,8 @@ class Measurer(object):
                 # print('Normalizing PsfEx model with sum:', s)
                 subpsf.img /= psfsum
 
-            print('PSF model:', subpsf)
-            print('PSF image sum:', subpsf.img.sum())
+            #print('PSF model:', subpsf)
+            #print('PSF image sum:', subpsf.img.sum())
 
             tim = tractor.Image(data=subimg, inverr=subie, psf=subpsf)
             flux0 = ref_flux[istar]
@@ -1681,8 +1757,8 @@ class Measurer(object):
                 if dlnp == 0:
                     break
 
-            print('Getting variance estimate: thawed params:')
-            tr.printThawedParams()
+            #print('Getting variance estimate: thawed params:')
+            #tr.printThawedParams()
             variance = tr.optimize(variance=True, just_variance=True, **optargs)
             # Yuck -- if inverse-variance is all zero, weird-shaped result...
             if len(variance) == 4 and variance[3] is None:
@@ -1743,6 +1819,7 @@ class Measurer(object):
                 psfex = tractor.PsfExModel(Ti=Ti)
                 psf = tractor.PixelizedPsfEx(None, psfex=psfex)
                 psf.fwhm = Ti.psf_fwhm
+                psf.header = {}
                 return psf
 
         # Look for single-CCD PsfEx file
@@ -1752,9 +1829,9 @@ class Measurer(object):
         if not os.path.exists(fn):
             return None
         psf = tractor.PixelizedPsfEx(fn)
-
         import fitsio
         hdr = fitsio.read_header(fn, ext=1)
+        psf.header = hdr
         psf.fwhm = hdr['PSF_FWHM']
         return psf
     
@@ -2108,6 +2185,12 @@ class Measurer(object):
         print('Wrote %s' % fn)
 
     def run_calibs(self, ext):
+        if not self.goodWcs:
+            print('WCS Failed; not trying to run calibs')
+            return
+        if self.exptime == 0:
+            print('Exptime = 0')
+            return
         self.set_hdu(ext)
         psfex = False
         splinesky = False
@@ -2119,8 +2202,14 @@ class Measurer(object):
             # Nothing to do!
             return
 
-        from legacypipe.survey import LegacySurveyData
-        from legacypipe.decam import DecamImage
+        # Check for all-zero weight maps
+        wt = self.read_weight()
+        if np.all(wt == 0):
+            print('Weight map is all zero -- skipping')
+            return
+
+        import legacypipe
+        from legacypipe.survey import LegacySurveyData, get_git_version
 
         class FakeLegacySurveyData(LegacySurveyData):
             def get_calib_dir(self):
@@ -2152,9 +2241,10 @@ class Measurer(object):
         ccd.width = 0
         ccd.height = 0
         ccd.arawgain = self.gain
-        
+
         im = survey.get_image_object(ccd)
-        im.run_calibs(psfex=psfex, sky=splinesky, splinesky=True)
+        git_version = get_git_version(dir=os.path.dirname(legacypipe.__file__))
+        im.run_calibs(psfex=psfex, sky=splinesky, splinesky=True, git_version=git_version)
 
 
 class DecamMeasurer(Measurer):
@@ -2221,7 +2311,10 @@ class DecamMeasurer(Measurer):
 
     def scale_image(self, img):
         return img * self.gain
-    
+
+    def scale_weight(self, img):
+        return img / (self.gain**2)
+
     def get_wcs(self):
         return wcs_pv2sip_hdr(self.hdr) # PV distortion
     
@@ -2252,7 +2345,21 @@ class Mosaic3Measurer(Measurer):
         self.cp_header_keys= {'width':['ZNAXIS1','NAXIS1'],
                               'height':['ZNAXIS2','NAXIS2'],
                               'fwhm_cp':['SEEINGP1','SEEINGP']}
-   
+
+    def get_expnum(self, primhdr):
+        if 'EXPNUM' in primhdr:
+            return primhdr['EXPNUM']
+        # At the beginning of the survey, eg 2016-01-24, the EXPNUM
+        # cards are blank.  Fake up an expnum like 160125082555
+        # (yymmddhhmmss), same as the CP filename.
+        # OBSID   = 'kp4m.20160125T082555' / Observation ID
+        obsid = primhdr['OBSID']
+        obsid = obsid.strip().split('.')[1]
+        obsid = obsid.replace('T', '')
+        obsid = int(obsid[2:], 10)
+        print('Faked up EXPNUM', obsid)
+        return obsid
+
     def get_band(self):
         band = self.primhdr['FILTER']
         band = band.split()[0][0] # zd --> z
@@ -2271,6 +2378,12 @@ class Mosaic3Measurer(Measurer):
     def scale_image(self, img):
         '''Convert image from electrons/sec to electrons.'''
         return img * self.exptime
+
+    def scale_weight(self, img):
+        return img / (self.exptime**2)
+
+    def remap_invvar(self, invvar, primhdr, img, dq):
+        return self.remap_invvar_shotnoise(invvar, primhdr, img, dq)
 
     def get_wcs(self):
         return wcs_pv2sip_hdr(self.hdr) # PV distortion
@@ -2317,6 +2430,14 @@ class NinetyPrimeMeasurer(Measurer):
         self.cp_header_keys= {'width':['ZNAXIS1','NAXIS1'],
                               'height':['ZNAXIS2','NAXIS2'],
                               'fwhm_cp':['SEEINGP1','SEEINGP']}
+
+    def get_expnum(self, primhdr):
+        """converts 90prime header key DTACQNAM into the unique exposure number"""
+        # /descache/bass/20160710/d7580.0144.fits --> 75800144
+        base= (os.path.basename(primhdr['DTACQNAM'])
+               .replace('.fits','')
+               .replace('.fz',''))
+        return int( re.sub(r'([a-z]+|\.+)','',base) )
     
     def get_gain(self,hdr):
         return 1.4 # no GAINA,B
@@ -2334,6 +2455,12 @@ class NinetyPrimeMeasurer(Measurer):
     def scale_image(self, img):
         '''Convert image from electrons/sec to electrons.'''
         return img * self.exptime
+
+    def scale_weight(self, img):
+        return img / (self.exptime**2)
+
+    def remap_invvar(self, invvar, primhdr, img, dq):
+        return self.remap_invvar_shotnoise(invvar, primhdr, img, dq)
 
     def get_wcs(self):
         return wcs_pv2sip_hdr(self.hdr) # PV distortion
@@ -2353,7 +2480,6 @@ def get_extlist(camera,fn,debug=False,choose_ccd=None):
         extlist = ['CCD1', 'CCD2', 'CCD3', 'CCD4']
         if debug:
             extlist = ['CCD1']
-            #extlist = ['CCD1','CCD2']
     elif camera == 'mosaic':
         extlist = ['CCD1', 'CCD2', 'CCD3', 'CCD4']
         if debug:
@@ -2387,7 +2513,7 @@ def measure_image(img_fn, run_calibs=False, **measureargs):
     # Fitsio can throw error: ValueError: CONTINUE not supported
     try:
         print('img_fn=%s' % img_fn)
-        primhdr = fitsio.read_header(img_fn, ext=0)
+        primhdr = read_primary_header(img_fn)
     except ValueError:
         # astropy can handle it
         tmp= fits_astropy.open(img_fn)
@@ -2556,7 +2682,7 @@ def runit(imgfn,zptfn,starfn_photom,starfn_astrom,
     #           debug=measureargs['debug'],
     #           choose_ccd=measureargs['choose_ccd']):
     # Write out.
-    ccds.write(zptfn)
+    ccds.write(zptfn, overwrite=True)
     # Header <-- fiducial zp,sky,ext, also exptime, pixscale
     hdulist = fits_astropy.open(zptfn, mode='update')
     prihdr = hdulist[0].header
@@ -2567,8 +2693,8 @@ def runit(imgfn,zptfn,starfn_photom,starfn_astrom,
     # zpt --> Legacypipe table
     create_legacypipe_table(zptfn, camera=measureargs['camera'])
     # Two stars tables
-    stars_photom.write(starfn_photom)
-    stars_astrom.write(starfn_astrom)
+    stars_photom.write(starfn_photom, overwrite=True)
+    stars_astrom.write(starfn_astrom, overwrite=True)
     print('Wrote 2 stars tables\n%s\n%s' %  (starfn_photom,starfn_astrom))
     # Clean up
     t0= ptime('write-results-to-fits',t0)
@@ -2675,6 +2801,48 @@ def main(image_list=None,args=None):
     tnow= Time()
     print("TIMING:total %s" % (tnow-tbegin,))
     print("Done")
+
+def read_primary_header(fn):
+    '''
+    Reads the FITS primary header (HDU 0) from the given filename.
+    This is just a faster version of fitsio.read_header(fn).
+    '''
+    if fn.endswith('.gz'):
+        return fitsio.read_header(fn)
+
+    # Weirdly, this can be MUCH faster than letting fitsio do it...
+    hdr = fitsio.FITSHDR()
+    foundEnd = False
+    ff = open(fn, 'rb')
+    h = b''
+    while True:
+        h = h + ff.read(32768)
+        while True:
+            line = h[:80]
+            h = h[80:]
+            #print('Header line "%s"' % line)
+            # HACK -- fitsio apparently can't handle CONTINUE.
+            # It also has issues with slightly malformed cards, like
+            # KEYWORD  =      / no value
+            if line[:8] != b'CONTINUE':
+                try:
+                    hdr.add_record(line.decode())
+                except:
+                    print('Warning: failed to parse FITS header line: ' +
+                          ('"%s"; skipped' % line.strip()))
+                    #import traceback
+                    #traceback.print_exc()
+                          
+            if line == (b'END' + b' '*77):
+                foundEnd = True
+                break
+            if len(h) < 80:
+                break
+        if foundEnd:
+            break
+    ff.close()
+    return hdr
+
    
 if __name__ == "__main__":
     parser= get_parser()  

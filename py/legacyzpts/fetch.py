@@ -21,6 +21,8 @@ def fetch_targz(targz_url, outdir):
         print('Grabbing: %s\n Putting here: %s' % (targz_url,outfn))
         urllib.request.urlretrieve(targz_url, outfn)
         tgz = tarfile.open(outfn)
+        print('Tarfile contents:')
+        tgz.list()
         tgz.extractall(path= outdir)
         tgz.close()
     else:
