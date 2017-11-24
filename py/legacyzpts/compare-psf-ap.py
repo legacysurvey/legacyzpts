@@ -103,7 +103,32 @@ def run(apfn,psffn,plotfn,tt,band,zplolo,zplo,zphi,pixscale,
 
     bad = np.array([expnum in bad_expid for expnum in P.expnum])
     print(sum(bad), 'exposures are in the bad_expid file')
-    
+
+
+    J = np.flatnonzero(bad)
+    print('Sampling of bad_expids:')
+    for j in J[np.random.permutation(len(J))[:20]]:
+        print(P.image_filename[j].strip(), 'PSF nmatch', P.ccdnmatch[j], 'phrms', P.ccdphrms[j], 'AP phrms', A.ccdphrms[j], 'exptime', A.exptime[j], 'seeing', A.fwhm[j] * pixscale)
+        print('  AP err', A.err_message[j], 'CCD cuts', A.ccd_cuts[j])
+        print('  Expnum', P.expnum[j], 'Bad expid:', bad_expid.get(int(P.expnum[j]), '(none)'))
+
+        ttxt = '%s %s %i\n%s' % (P.image_filename[j].strip().replace('.fits.fz','').replace('_ooi','').replace('_zd',''),
+                                 P.ccdname[j].strip(), P.expnum[j], bad_expid[P.expnum[j]])
+
+        plt.clf()
+        img = fitsio.read(P.image_filename[j].strip(), ext=P.ccdname[j].strip())
+        mn,mx = np.percentile(img.ravel(), [25,98])
+        plt.imshow(img, interpolation='nearest', origin='lower', vmin=mn, vmax=mx)
+        plt.title(ttxt)
+        ps.savefig()
+
+        H,W = img.shape
+        plt.axis([W//2-250, W//2+250, H//2-250, H//2+250])
+        plt.title(ttxt)
+        ps.savefig()
+
+
+
     plt.clf()
     mn,mx = zplo,zphi
     plt.plot([mn,mx],[mn,mx], 'k-', alpha=0.5)
