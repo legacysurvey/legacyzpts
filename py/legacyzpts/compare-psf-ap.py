@@ -10,7 +10,7 @@ plt.figure(figsize=(10,7))
 plt.subplots_adjust(hspace=0.01, wspace=0.01, left=0.15, bottom=0.1, top=0.95, right=0.95)
 
 def run(apfn,psffn,plotfn,tt,band,zplolo,zplo,zphi,pixscale,
-        zpt_cut_lo, zpt_cut_hi, bad_expid):
+        zpt_cut_lo, zpt_cut_hi, bad_expid, camera):
 
     ps = PlotSequence('zp-' + plotfn)
     A = fits_table(apfn)
@@ -33,30 +33,63 @@ def run(apfn,psffn,plotfn,tt,band,zplolo,zplo,zphi,pixscale,
     print('Cut to', len(A), 'aperture in band', band)
     print('Cut to', len(P), 'PSF in band', band)
 
+    # Bit codes for why a CCD got cut, used in cut_ccds().
+    CCD_CUT_BITS= dict(
+        err_legacyzpts = 0x1,
+        not_grz = 0x2,
+        not_third_pix = 0x4, # Mosaic3 one-third-pixel interpolation problem
+        exptime_lt_30 = 0x8,
+        ccdnmatch_lt_20 = 0x10, 
+        zpt_diff_avg = 0x20, 
+        zpt_small = 0x40,  
+        zpt_large = 0x80,
+        sky_is_bright = 0x100,
+        badexp_file = 0x200,
+        phrms = 0x400,
+        radecrms = 0x800,
+        seeing_bad = 0x1000,
+    )
+
     ## PSF zeropoints cuts
+
+    P.ccd_cuts = np.zeros(len(P), np.int32)
 
     seeing = np.isfinite(P.fwhm) * P.fwhm * pixscale
     P.ccdzpt[np.logical_not(np.isfinite(P.ccdzpt))] = 0.
-    I = np.flatnonzero(
-        #(A.ccd_cuts == 0) *
-        #np.isfinite(A.ccdzpt) *
-        (P.ccdzpt >= zpt_cut_lo) *
-        (P.ccdzpt <= zpt_cut_hi) *
-        (P.ccdphrms < 0.1) *
-        (P.ccdrarms  < 0.25) *
-        (P.ccddecrms < 0.25) *
-        (P.exptime > 30) *
-        (np.abs(P.ccdzpt - P.zpt) < 0.25) *
-        (seeing < 3.0) * (seeing > 0)
-    )
+
+    cuts = [
+        ('zpt_small', P.ccdzpt < zpt_cut_lo),
+        ('zpt_large', P.ccdzpt > zpt_cut_hi),
+        ('phrms',     P.ccdphrms > 0.1),
+        ('radecrms',  np.logical_or(P.ccdrarms > 0.25,
+                                    P.ccddecrms > 0.25)),
+        ('exptime_lt_30', P.exptime < 30),
+        ('zpt_diff_avg', (np.abs(P.ccdzpt - P.zpt) > 0.25)),
+        ('seeing_bad', np.logical_or(seeing < 0, seeing > 3.0)),
+        ('badexp_file', np.array([expnum in bad_expid for expnum in P.expnum])),
+    ]
+    if camera == 'mosaic':
+        cuts.append(('not_third_pix', (np.logical_not(P.yshift) * (P.mjd_obs < 57674.))))
+
+    for name,cut in cuts:
+        P.ccd_cuts += CCD_CUT_BITS[name] * cut
+
+    I = np.flatnonzero(P.ccd_cuts == 0)
     P.cut(I)
     print(len(P), 'pass cuts')
 
-    bad = np.array([expnum in bad_expid for expnum in P.expnum])
-    print(sum(bad), 'CCDs are in the bad_expid file')
+    fn = 'survey-ccds-%s-%s.fits' % (camera, band)
+    S = P.copy()
+    S.delete_column('yshift')
+    S.delete_column('ccdnmatch')
+    print('Filters:', np.unique(S.filter))
+    S.filter = np.array([f[0] for f in S.filter])
+    S.writeto(fn)
+    print('Wrote', fn)
 
-    P.cut(np.logical_not(bad))
-    print(len(P), 'pass not-in-bad-expid cut')
+    #print(sum(bad), 'CCDs are in the bad_expid file')
+    #P.cut(np.logical_not(bad))
+    #print(len(P), 'pass not-in-bad-expid cut')
 
     plt.clf()
     mn,mx = 0,0.25
@@ -397,25 +430,36 @@ if __name__ == '__main__':
         reason = ' '.join(words[1:])
         bad_expid[expnum] = reason
 
+    g0 = 25.74
+    r0 = 25.52
+    z0 = 26.20
+
+    dg = (-0.5, 0.18)
+    dr = (-0.5, 0.18)
+    dz = (-0.6, 0.6)
+
     for X in [
             (#'apzpts/survey-ccds-90prime-legacypipe.fits.gz',
                 'apzpts/survey-ccds-90prime.fits.gz',
                 'survey-ccds-90prime-psfzpts.fits',
                 #'90prime-psfzpts.fits',
                 'g', 'BASS g', 'g', 20, 25, 26.25, 0.45,
-                25.2, 26.0, {}),
+                #25.2, 26.0,
+                g0+dg[0], g0+dg[1], {}, '90prime'),
             (#'apzpts/survey-ccds-90prime-legacypipe.fits.gz',
                 'apzpts/survey-ccds-90prime.fits.gz',
                 'survey-ccds-90prime-psfzpts.fits',
                 #'90prime-psfzpts.fits',
                 'r', 'BASS r', 'r', 19.5, 24.75, 25.75, 0.45,
-                24.9, 25.7, {}),
+                #24.9, 25.7,
+                r0+dr[0], r0+dr[1], {}, '90prime'),
             (#'apzpts/survey-ccds-mosaic-legacypipe.fits.gz',
                 'apzpts/survey-ccds-mosaic.fits.gz',
                 'survey-ccds-mosaic-psfzpts.fits',
                 #'mosaic-psfzpts.fits',
                 'z', 'MzLS z', 'z', 19.5, 25, 27, 0.262,
-                25.2, 26.8, bad_expid),
+                #25.2, 26.8,
+                z0+dz[0], z0+dz[1], bad_expid, 'mosaic'),
     ]:
         run(*X)    
 
