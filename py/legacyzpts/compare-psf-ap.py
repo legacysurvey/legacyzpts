@@ -6,7 +6,7 @@ from astrometry.util.fits import fits_table
 from astrometry.util.plotutils import PlotSequence
 from collections import Counter
 
-plt.figure(figsize=(10,7))
+#plt.figure(figsize=(10,7))
 plt.subplots_adjust(hspace=0.01, wspace=0.01, left=0.15, bottom=0.1, top=0.95, right=0.95)
 
 def run(apfn,psffn,plotfn,tt,band,zplolo,zplo,zphi,pixscale,
@@ -55,7 +55,11 @@ def run(apfn,psffn,plotfn,tt,band,zplolo,zplo,zphi,pixscale,
     P.ccd_cuts = np.zeros(len(P), np.int32)
 
     seeing = np.isfinite(P.fwhm) * P.fwhm * pixscale
+    P.zpt[np.logical_not(np.isfinite(P.zpt))] = 0.
     P.ccdzpt[np.logical_not(np.isfinite(P.ccdzpt))] = 0.
+    P.ccdphrms[np.logical_not(np.isfinite(P.ccdphrms))] = 1.
+    P.ccdrarms[np.logical_not(np.isfinite(P.ccdrarms))] = 1.
+    P.ccddecrms[np.logical_not(np.isfinite(P.ccddecrms))] = 1.
 
     cuts = [
         ('zpt_small', P.ccdzpt < zpt_cut_lo),
@@ -84,6 +88,14 @@ def run(apfn,psffn,plotfn,tt,band,zplolo,zplo,zphi,pixscale,
     S.delete_column('ccdnmatch')
     print('Filters:', np.unique(S.filter))
     S.filter = np.array([f[0] for f in S.filter])
+
+    for k,n in [('image_filename', 55),
+                ('camera', 7),
+                ('ccdname', 4),
+                ('object', 24),
+                ('propid', 10),]:
+        S.set(k, np.array([s[:n] for s in S.get(k)]))
+
     S.writeto(fn)
     print('Wrote', fn)
 
