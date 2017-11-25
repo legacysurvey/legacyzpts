@@ -13,9 +13,6 @@ def run(apfn,psffn,plotfn,tt,band,zplolo,zplo,zphi,pixscale,
         zpt_cut_lo, zpt_cut_hi, bad_expid):
 
     ps = PlotSequence('zp-' + plotfn)
-    #A = fits_table('~desiproc/dr6/survey-ccds-mosaic-legacypipe.fits.gz')
-    #A = fits_table('apzpts/survey-ccds-mosaic-legacypipe.fits.gz')
-    #P = fits_table('survey-ccds-mosaic-psfzpts.fits')
     A = fits_table(apfn)
     P = fits_table(psffn)
     print(len(A), 'aperture')
@@ -28,9 +25,6 @@ def run(apfn,psffn,plotfn,tt,band,zplolo,zplo,zphi,pixscale,
     # P.ccdphrms = P.phrms
     # P.ccdnmatch = P.nmatch_photom
 
-    #A.about()
-    #P.about()
-
     print('Aperture unique bands:', np.unique(A.filter))
     print('PSF unique bands:', np.unique(P.filter))
 
@@ -39,9 +33,138 @@ def run(apfn,psffn,plotfn,tt,band,zplolo,zplo,zphi,pixscale,
     print('Cut to', len(A), 'aperture in band', band)
     print('Cut to', len(P), 'PSF in band', band)
 
-    #print('PSF error messages:')
-    #print(np.unique(P.err_message))
+    ## PSF zeropoints cuts
+
+    seeing = np.isfinite(P.fwhm) * P.fwhm * pixscale
+    P.ccdzpt[np.logical_not(np.isfinite(P.ccdzpt))] = 0.
+    I = np.flatnonzero(
+        #(A.ccd_cuts == 0) *
+        #np.isfinite(A.ccdzpt) *
+        (P.ccdzpt >= zpt_cut_lo) *
+        (P.ccdzpt <= zpt_cut_hi) *
+        (P.ccdphrms < 0.1) *
+        (P.ccdrarms  < 0.25) *
+        (P.ccddecrms < 0.25) *
+        (P.exptime > 30) *
+        (np.abs(P.ccdzpt - P.zpt) < 0.25) *
+        (seeing < 3.0) * (seeing > 0)
+    )
+    P.cut(I)
+    print(len(P), 'pass cuts')
+
+    bad = np.array([expnum in bad_expid for expnum in P.expnum])
+    print(sum(bad), 'CCDs are in the bad_expid file')
+
+    P.cut(np.logical_not(bad))
+    print(len(P), 'pass not-in-bad-expid cut')
+
+    plt.clf()
+    mn,mx = 0,0.25
+    plt.hist(np.clip(P.ccdrarms ,mn,mx), bins=50, range=(mn,mx), histtype='step', color='b', label='RA' , log=True)
+    plt.hist(np.clip(P.ccddecrms,mn,mx), bins=50, range=(mn,mx), histtype='step', color='g', label='Dec', log=True)
+    plt.xlim(mn,mx)
+    plt.legend()
+    plt.xlabel('Astrometric scatter')
+    plt.suptitle(tt)
+    ps.savefig()
+
+    plt.clf()
+    plt.hist(P.ccdskycounts,  bins=50, log=True)
+    plt.xlabel('CCD sky counts')
+    plt.suptitle(tt)
+    ps.savefig()
+
+    plt.clf()
+    plt.hist(P.exptime,  bins=50, log=True)
+    plt.xlabel('Exptime (s)')
+    plt.suptitle(tt)
+    ps.savefig()
+
+    plt.clf()
+    plt.hist(P.ccdzpt - P.zpt,  bins=50, log=True)
+    plt.xlabel('CCD zpt - average zpt')
+    plt.suptitle(tt)
+    ps.savefig()
+
+    plt.clf()
+    plt.hist(P.fwhm * pixscale,  bins=50, log=True)
+    plt.xlabel('Seeing (arcsec)')
+    plt.suptitle(tt)
+    ps.savefig()
+
+    plt.clf()
+    plt.hist(P.skyrms,  bins=50, log=True)
+    plt.xlabel('Skyrms')
+    plt.suptitle(tt)
+    ps.savefig()
+
+    plt.clf()
+    plt.hist(P.sig1,  bins=50, log=True)
+    plt.xlabel('sig1')
+    plt.suptitle(tt)
+    ps.savefig()
+
+    if False:
+        ### Sort by expnum and CCDname
+        I = np.lexsort((P.ccdname, P.expnum))
+        P.cut(I)
+
+        bad = np.array([expnum in bad_expid for expnum in P.expnum])
+        print(sum(bad), 'CCDs are in the bad_expid file')
+
+        expnums = np.unique(P.expnum)
+        print(len(expnums), 'unique exposure numbers')
+        ebad = np.array([expnum in bad_expid for expnum in expnums])
+        print(sum(ebad), 'exposures are in the bad_expid file')
     
+        J = np.flatnonzero(bad)
+    
+        badtxt = [bad_expid[expnum] for expnum in P.expnum[J]]
+    
+        known_bad = np.zeros(len(J), bool)
+        known_ok  = np.zeros(len(J), bool)
+    
+        # These are "not necessarily bad": low transparency, and bad amps
+        # (not processed by the CP in the first place; ie, only 3/4 CCDs exist)
+        for word in ['bad amp', 'trans', 'vignet', 'depth factor', 'depfac', 'depth',
+                     'expfactor', 'sky background',
+                     'pass2 image in poor', 'pass2 seeing', 'pass1 image taken',
+                     'pointing', 'clouds']:
+            # Find indices in J where 'word' is found in the bad_expid entry.
+            I = np.array([i for i in range(len(J)) if word in badtxt[i].lower()])
+            print(len(I), 'with "%s" in description' % word)
+            known_ok[I] = True
+    
+        for word in ['4maps', 'focus', 'jump', 'tails', 'trail', 'tracking',
+                     'elong', 'triangle']:
+            # Find indices in J where 'word' is found in the bad_expid entry.
+            I = np.array([i for i in range(len(J)) if word in badtxt[i].lower()])
+            print(len(I), 'with "%s" in description' % word)
+            known_bad[I] = True
+    
+        known = np.logical_or(known_bad, known_ok)
+        Jun = J[known == False]
+        print(len(Jun), 'unclassified bad exposures')
+        ub = Counter([badtxt[i] for i in np.flatnonzero(known == False)])
+        print('Unclassified descriptions:')
+        for k,n in ub.most_common():
+            print(n, k)
+    
+        isbad = np.ones(len(J), bool)
+        isbad[known_ok] = False
+        isbad[known_bad] = True
+        J = J[isbad]
+        print('Keeping', len(J), 'of the bad-expid CCDs')
+    
+        keep = np.ones(len(P), bool)
+        keep[J] = False
+        print('Keeping', np.sum(keep), 'of', len(keep), 'CCDs')
+        P.cut(keep)
+
+
+
+
+
     amap = dict([((expnum,ccdname.strip()),i) for i,(expnum,ccdname)
                  in enumerate(zip(A.expnum, A.ccdname))])
 
@@ -53,113 +176,23 @@ def run(apfn,psffn,plotfn,tt,band,zplolo,zplo,zphi,pixscale,
     P.cut([pa >= 0])
     A.cut(pa[pa >= 0])
 
+    I = np.isfinite(A.ccdzpt)
+    P.cut(I)
+    A.cut(I)
+    print('Cut to', len(P), 'with finite aperture zeropoints')
+
+    print('AP  zpt range', A.ccdzpt.min(), A.ccdzpt.max())
+    print('PSF zpt range', P.ccdzpt.min(), P.ccdzpt.max())
+
     plt.clf()
     mn,mx = zplolo,zphi
     plt.plot(np.clip(A.ccdzpt, mn,mx), np.clip(P.ccdzpt,mn,mx), 'b.', alpha=0.1)
-    #I = np.flatnonzero(A.ccd_cuts > 0)
-    #plt.plot(np.clip(A.ccdzpt[I], mn,mx), np.clip(P[I].ccdzpt,mn,mx), 'r.', alpha=0.5)
     plt.xlabel('Aperture zeropoint')
     plt.ylabel('PSF zeropoint')
-    #ax = plt.axis()
-    #ax = [19.5,27,19.5,27]
-    #mn,mx = min(ax[0], ax[2]), max(ax[1],ax[3])
     plt.plot([mn,mx],[mn,mx], 'k-', alpha=0.5)
     plt.axis([mn,mx,mn,mx])
-    #plt.axis(ax)
     ps.savefig()
 
-    plt.clf()
-    plt.hist(P.fwhm, bins=50)
-    plt.xlabel('PSF FWHM (pix)')
-    ps.savefig()
-    
-    seeing = np.isfinite(P.fwhm) * P.fwhm * pixscale
-    P.ccdzpt[np.logical_not(np.isfinite(P.ccdzpt))] = 0.
-    I = np.flatnonzero(
-        #(A.ccd_cuts == 0) *
-        np.isfinite(A.ccdzpt) *
-        (P.ccdzpt >= zpt_cut_lo) *
-        (P.ccdzpt <= zpt_cut_hi) *
-        (P.ccdphrms < 0.1) *
-        (P.ccdrarms  < 0.25) *
-        (P.ccddecrms < 0.25) *
-        (P.exptime > 30) *
-        (np.abs(P.ccdzpt - P.zpt) < 0.25) *
-        (seeing < 3.0) * (seeing > 0)
-    )
-    #(seeing < 2.5) * (seeing > 0)
-
-    A.cut(I)
-    P.cut(I)
-    print(len(A), 'pass cuts')
-
-    ### Sort by expnum and CCDname
-    I = np.lexsort((P.ccdname, P.expnum))
-    P.cut(I)
-    A.cut(I)
-
-    #I = np.flatnonzero(np.logical_not(np.isfinite(A.ccdzpt)))
-    #print(len(I), 'AP zpts are NaN')
-    #A.ccdzpt[I] = 0.
-
-    print('After cuts: AP  zpt range', A.ccdzpt.min(), A.ccdzpt.max())
-    print('After cuts: PSF zpt range', P.ccdzpt.min(), P.ccdzpt.max())
-
-    #print('PSF error messages:')
-    #print(np.unique(P.err_message))
-
-    bad = np.array([expnum in bad_expid for expnum in P.expnum])
-    print(sum(bad), 'CCDs are in the bad_expid file')
-
-    expnums = np.unique(P.expnum)
-    print(len(expnums), 'unique exposure numbers')
-    ebad = np.array([expnum in bad_expid for expnum in expnums])
-    print(sum(ebad), 'exposures are in the bad_expid file')
-
-    J = np.flatnonzero(bad)
-
-    badtxt = [bad_expid[expnum] for expnum in P.expnum[J]]
-
-    known_bad = np.zeros(len(J), bool)
-    known_ok  = np.zeros(len(J), bool)
-
-    # These are "not necessarily bad": low transparency, and bad amps
-    # (not processed by the CP in the first place; ie, only 3/4 CCDs exist)
-    for word in ['bad amp', 'trans', 'vignet', 'depth factor', 'depfac', 'depth',
-                 'expfactor', 'sky background',
-                 'pass2 image in poor', 'pass2 seeing', 'pass1 image taken',
-                 'pointing', 'clouds']:
-        # Find indices in J where 'word' is found in the bad_expid entry.
-        I = np.array([i for i in range(len(J)) if word in badtxt[i].lower()])
-        print(len(I), 'with "%s" in description' % word)
-        known_ok[I] = True
-
-    for word in ['4maps', 'focus', 'jump', 'tails', 'trail', 'tracking',
-                 'elong', 'triangle']:
-        # Find indices in J where 'word' is found in the bad_expid entry.
-        I = np.array([i for i in range(len(J)) if word in badtxt[i].lower()])
-        print(len(I), 'with "%s" in description' % word)
-        known_bad[I] = True
-
-    known = np.logical_or(known_bad, known_ok)
-    Jun = J[known == False]
-    print(len(Jun), 'unclassified bad exposures')
-    ub = Counter([badtxt[i] for i in np.flatnonzero(known == False)])
-    print('Unclassified descriptions:')
-    for k,n in ub.most_common():
-        print(n, k)
-
-    isbad = np.ones(len(J), bool)
-    isbad[known_ok] = False
-    isbad[known_bad] = True
-    J = J[isbad]
-    print('Keeping', len(J), 'of the bad-expid CCDs')
-
-    keep = np.ones(len(P), bool)
-    keep[J] = False
-    print('Keeping', np.sum(keep), 'of', len(keep), 'CCDs')
-    P.cut(keep)
-    A.cut(keep)
 
     #print('Sampling of bad_expids:')
     #for j in J[np.random.permutation(len(J))[:20]]:
@@ -278,52 +311,6 @@ def run(apfn,psffn,plotfn,tt,band,zplolo,zplo,zphi,pixscale,
     ps.savefig()
 
 
-    plt.clf()
-    mn,mx = 0,0.25
-    plt.hist(np.clip(P.ccdrarms ,mn,mx), bins=50, range=(mn,mx), histtype='step', color='b', label='RA' , log=True)
-    plt.hist(np.clip(P.ccddecrms,mn,mx), bins=50, range=(mn,mx), histtype='step', color='g', label='Dec', log=True)
-    plt.xlim(mn,mx)
-    plt.legend()
-    plt.xlabel('Astrometric scatter')
-    plt.suptitle(tt)
-    ps.savefig()
-
-    plt.clf()
-    plt.hist(P.ccdskycounts,  bins=50, log=True)
-    plt.xlabel('CCD sky counts')
-    plt.suptitle(tt)
-    ps.savefig()
-
-    plt.clf()
-    plt.hist(P.exptime,  bins=50, log=True)
-    plt.xlabel('Exptime (s)')
-    plt.suptitle(tt)
-    ps.savefig()
-
-    plt.clf()
-    plt.hist(P.ccdzpt - P.zpt,  bins=50, log=True)
-    plt.xlabel('CCD zpt - average zpt')
-    plt.suptitle(tt)
-    ps.savefig()
-
-    plt.clf()
-    plt.hist(P.fwhm * pixscale,  bins=50, log=True)
-    plt.xlabel('Seeing (arcsec)')
-    plt.suptitle(tt)
-    ps.savefig()
-
-    plt.clf()
-    plt.hist(P.skyrms,  bins=50, log=True)
-    plt.xlabel('Skyrms')
-    plt.suptitle(tt)
-    ps.savefig()
-
-    plt.clf()
-    plt.hist(P.sig1,  bins=50, log=True)
-    plt.xlabel('sig1')
-    plt.suptitle(tt)
-    ps.savefig()
-
     
     J = np.flatnonzero(np.logical_or((P.ccdzpt - A.ccdzpt) < -0.1,
                                      (P.ccdzpt - A.ccdzpt) >  0.2))
@@ -411,18 +398,18 @@ if __name__ == '__main__':
         bad_expid[expnum] = reason
 
     for X in [
-            # (#'apzpts/survey-ccds-90prime-legacypipe.fits.gz',
-            #     'apzpts/survey-ccds-90prime.fits.gz',
-            #     'survey-ccds-90prime-psfzpts.fits',
-            #     #'90prime-psfzpts.fits',
-            #     'g', 'BASS g', 'g', 20, 25, 26.25, 0.45,
-            #     25.2, 26.0, {}),
-            # (#'apzpts/survey-ccds-90prime-legacypipe.fits.gz',
-            #     'apzpts/survey-ccds-90prime.fits.gz',
-            #     'survey-ccds-90prime-psfzpts.fits',
-            #     #'90prime-psfzpts.fits',
-            #     'r', 'BASS r', 'r', 19.5, 24.75, 25.75, 0.45,
-            #     24.9, 25.7, {}),
+            (#'apzpts/survey-ccds-90prime-legacypipe.fits.gz',
+                'apzpts/survey-ccds-90prime.fits.gz',
+                'survey-ccds-90prime-psfzpts.fits',
+                #'90prime-psfzpts.fits',
+                'g', 'BASS g', 'g', 20, 25, 26.25, 0.45,
+                25.2, 26.0, {}),
+            (#'apzpts/survey-ccds-90prime-legacypipe.fits.gz',
+                'apzpts/survey-ccds-90prime.fits.gz',
+                'survey-ccds-90prime-psfzpts.fits',
+                #'90prime-psfzpts.fits',
+                'r', 'BASS r', 'r', 19.5, 24.75, 25.75, 0.45,
+                24.9, 25.7, {}),
             (#'apzpts/survey-ccds-mosaic-legacypipe.fits.gz',
                 'apzpts/survey-ccds-mosaic.fits.gz',
                 'survey-ccds-mosaic-psfzpts.fits',
