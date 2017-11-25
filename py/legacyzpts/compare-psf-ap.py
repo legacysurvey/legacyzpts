@@ -4,7 +4,9 @@ import pylab as plt
 import fitsio
 from astrometry.util.fits import fits_table
 from astrometry.util.plotutils import PlotSequence
+from collections import Counter
 
+plt.figure(figsize=(10,7))
 plt.subplots_adjust(hspace=0.01, wspace=0.01, left=0.15, bottom=0.1, top=0.95, right=0.95)
 
 def run(apfn,psffn,plotfn,tt,band,zplolo,zplo,zphi,pixscale,
@@ -91,6 +93,11 @@ def run(apfn,psffn,plotfn,tt,band,zplolo,zplo,zphi,pixscale,
     P.cut(I)
     print(len(A), 'pass cuts')
 
+    ### Sort by expnum and CCDname
+    I = np.lexsort((P.ccdname, P.expnum))
+    P.cut(I)
+    A.cut(I)
+
     #I = np.flatnonzero(np.logical_not(np.isfinite(A.ccdzpt)))
     #print(len(I), 'AP zpts are NaN')
     #A.ccdzpt[I] = 0.
@@ -102,30 +109,116 @@ def run(apfn,psffn,plotfn,tt,band,zplolo,zplo,zphi,pixscale,
     #print(np.unique(P.err_message))
 
     bad = np.array([expnum in bad_expid for expnum in P.expnum])
-    print(sum(bad), 'exposures are in the bad_expid file')
+    print(sum(bad), 'CCDs are in the bad_expid file')
 
+    expnums = np.unique(P.expnum)
+    print(len(expnums), 'unique exposure numbers')
+    ebad = np.array([expnum in bad_expid for expnum in expnums])
+    print(sum(ebad), 'exposures are in the bad_expid file')
 
     J = np.flatnonzero(bad)
-    print('Sampling of bad_expids:')
-    for j in J[np.random.permutation(len(J))[:20]]:
-        print(P.image_filename[j].strip(), 'PSF nmatch', P.ccdnmatch[j], 'phrms', P.ccdphrms[j], 'AP phrms', A.ccdphrms[j], 'exptime', A.exptime[j], 'seeing', A.fwhm[j] * pixscale)
-        print('  AP err', A.err_message[j], 'CCD cuts', A.ccd_cuts[j])
-        print('  Expnum', P.expnum[j], 'Bad expid:', bad_expid.get(int(P.expnum[j]), '(none)'))
 
-        ttxt = '%s %s %i\n%s' % (P.image_filename[j].strip().replace('.fits.fz','').replace('_ooi','').replace('_zd',''),
-                                 P.ccdname[j].strip(), P.expnum[j], bad_expid[P.expnum[j]])
+    badtxt = [bad_expid[expnum] for expnum in P.expnum[J]]
 
-        plt.clf()
-        img = fitsio.read(P.image_filename[j].strip(), ext=P.ccdname[j].strip())
-        mn,mx = np.percentile(img.ravel(), [25,98])
-        plt.imshow(img, interpolation='nearest', origin='lower', vmin=mn, vmax=mx)
-        plt.title(ttxt)
-        ps.savefig()
+    known_bad = np.zeros(len(J), bool)
+    known_ok  = np.zeros(len(J), bool)
 
-        H,W = img.shape
-        plt.axis([W//2-250, W//2+250, H//2-250, H//2+250])
-        plt.title(ttxt)
-        ps.savefig()
+    # These are "not necessarily bad": low transparency, and bad amps
+    # (not processed by the CP in the first place; ie, only 3/4 CCDs exist)
+    for word in ['bad amp', 'trans', 'vignet', 'depth factor', 'depfac', 'depth',
+                 'expfactor', 'sky background',
+                 'pass2 image in poor', 'pass2 seeing', 'pass1 image taken',
+                 'pointing', 'clouds']:
+        # Find indices in J where 'word' is found in the bad_expid entry.
+        I = np.array([i for i in range(len(J)) if word in badtxt[i].lower()])
+        print(len(I), 'with "%s" in description' % word)
+        known_ok[I] = True
+
+    for word in ['4maps', 'focus', 'jump', 'tails', 'trail', 'tracking',
+                 'elong', 'triangle']:
+        # Find indices in J where 'word' is found in the bad_expid entry.
+        I = np.array([i for i in range(len(J)) if word in badtxt[i].lower()])
+        print(len(I), 'with "%s" in description' % word)
+        known_bad[I] = True
+
+    known = np.logical_or(known_bad, known_ok)
+    Jun = J[known == False]
+    print(len(Jun), 'unclassified bad exposures')
+    ub = Counter([badtxt[i] for i in np.flatnonzero(known == False)])
+    print('Unclassified descriptions:')
+    for k,n in ub.most_common():
+        print(n, k)
+
+    isbad = np.ones(len(J), bool)
+    isbad[known_ok] = False
+    isbad[known_bad] = True
+    J = J[isbad]
+    print('Keeping', len(J), 'of the bad-expid CCDs')
+
+    keep = np.ones(len(P), bool)
+    keep[J] = False
+    print('Keeping', np.sum(keep), 'of', len(keep), 'CCDs')
+    P.cut(keep)
+    A.cut(keep)
+
+    #print('Sampling of bad_expids:')
+    #for j in J[np.random.permutation(len(J))[:20]]:
+    # for j in Jun:
+    #     print(P.image_filename[j].strip(), 'PSF nmatch', P.ccdnmatch[j], 'phrms', P.ccdphrms[j], 'AP phrms', A.ccdphrms[j], 'exptime', A.exptime[j], 'seeing', A.fwhm[j] * pixscale)
+    #     print('  AP err', A.err_message[j], 'CCD cuts', A.ccd_cuts[j])
+    #     print('  Expnum', P.expnum[j], 'Bad expid:', bad_expid.get(int(P.expnum[j]), '(none)'))
+    # 
+    #     ttxt = '%s %s %i %s' % (P.image_filename[j].strip().replace('.fits.fz','').replace('_ooi','').replace('_zd',''),
+    #                              P.ccdname[j].strip(), P.expnum[j], bad_expid[P.expnum[j]])
+    # 
+    #     # plt.clf()
+    #     # img = fitsio.read(P.image_filename[j].strip(), ext=P.ccdname[j].strip())
+    #     # mn,mx = np.percentile(img.ravel(), [25,98])
+    #     # plt.imshow(img, interpolation='nearest', origin='lower', vmin=mn, vmax=mx)
+    #     # plt.title(ttxt)
+    #     # ps.savefig()
+    #     # H,W = img.shape
+    #     # plt.axis([W//2-250, W//2+250, H//2-250, H//2+250])
+    #     # plt.title(ttxt)
+    #     # ps.savefig()
+    # 
+    #     plt.clf()
+    # 
+    #     plt.subplot2grid((2, 3), (0, 0), colspan=2, rowspan=2)
+    #     img = fitsio.read(P.image_filename[j].strip(), ext=P.ccdname[j].strip())
+    #     H,W = img.shape
+    # 
+    #     fn = P.image_filename[j].strip().replace('_ooi_','_ood_')
+    #     dq = fitsio.read(fn, ext=P.ccdname[j].strip())
+    #     fn = P.image_filename[j].strip().replace('_ooi_','_oow_')
+    #     wt = fitsio.read(fn, ext=P.ccdname[j].strip())
+    #     wt[dq != 0] = 0.
+    # 
+    #     binned,nil = bin_image(img, wt, 4)
+    #     mn,mx = np.percentile(binned.ravel(), [40,99])
+    #     plt.imshow(binned, interpolation='nearest', origin='lower', vmin=mn, vmax=mx,
+    #                cmap='gray', extent=[0,W,0,H])
+    # 
+    #     #mn,mx = np.percentile(img.ravel(), [40,99])
+    #     #plt.imshow(img, interpolation='nearest', origin='lower', vmin=mn, vmax=mx,
+    #     #           cmap='gray')
+    # 
+    #     plt.subplot2grid((2, 3), (0, 2))
+    #     x0,x1,y0,y1 = W//2-200, W//2+200, H//2-200, H//2+200
+    #     #mn = np.percentile(img.ravel(), 40)
+    #     #mx = img[y0:y1, x0:x1].max()
+    #     mn,mx = np.percentile(img.ravel(), [40,99.5])
+    #     plt.imshow(img, interpolation='nearest', origin='lower', vmin=mn, vmax=mx,
+    #                cmap='gray')
+    #     plt.axis([x0,x1,y0,y1])
+    # 
+    #     plt.subplot2grid((2, 3), (1, 2))
+    #     mn,mx = 0, np.percentile(wt, 95)
+    #     plt.imshow(wt, interpolation='nearest', origin='lower', vmin=mn, vmax=mx, cmap='gray')
+    #     plt.xticks([]); plt.yticks([])
+    # 
+    #     plt.suptitle(ttxt, fontsize=8)
+    #     ps.savefig()
 
 
 
@@ -218,6 +311,19 @@ def run(apfn,psffn,plotfn,tt,band,zplolo,zplo,zphi,pixscale,
     plt.xlabel('Seeing (arcsec)')
     plt.suptitle(tt)
     ps.savefig()
+
+    plt.clf()
+    plt.hist(P.skyrms,  bins=50, log=True)
+    plt.xlabel('Skyrms')
+    plt.suptitle(tt)
+    ps.savefig()
+
+    plt.clf()
+    plt.hist(P.sig1,  bins=50, log=True)
+    plt.xlabel('sig1')
+    plt.suptitle(tt)
+    ps.savefig()
+
     
     J = np.flatnonzero(np.logical_or((P.ccdzpt - A.ccdzpt) < -0.1,
                                      (P.ccdzpt - A.ccdzpt) >  0.2))
@@ -267,6 +373,21 @@ def run(apfn,psffn,plotfn,tt,band,zplolo,zplo,zphi,pixscale,
         plt.suptitle(ttxt)
         ps.savefig()
 
+def bin_image(data, invvar, S):
+    # rebin image data
+    H,W = data.shape
+    sH,sW = (H+S-1)//S, (W+S-1)//S
+    newdata = np.zeros((sH,sW), dtype=data.dtype)
+    newiv = np.zeros((sH,sW), dtype=invvar.dtype)
+    for i in range(S):
+        for j in range(S):
+            iv = invvar[i::S, j::S]
+            subh,subw = iv.shape
+            newdata[:subh,:subw] += data[i::S, j::S] * iv
+            newiv  [:subh,:subw] += iv
+    newdata /= (newiv + (newiv == 0)*1.)
+    newdata[newiv == 0] = 0.
+    return newdata,newiv
 
 if __name__ == '__main__':
 
@@ -290,18 +411,18 @@ if __name__ == '__main__':
         bad_expid[expnum] = reason
 
     for X in [
-            (#'apzpts/survey-ccds-90prime-legacypipe.fits.gz',
-                'apzpts/survey-ccds-90prime.fits.gz',
-                'survey-ccds-90prime-psfzpts.fits',
-                #'90prime-psfzpts.fits',
-                'g', 'BASS g', 'g', 20, 25, 26.25, 0.45,
-                25.2, 26.0, {}),
-            (#'apzpts/survey-ccds-90prime-legacypipe.fits.gz',
-                'apzpts/survey-ccds-90prime.fits.gz',
-                'survey-ccds-90prime-psfzpts.fits',
-                #'90prime-psfzpts.fits',
-                'r', 'BASS r', 'r', 19.5, 24.75, 25.75, 0.45,
-                24.9, 25.7, {}),
+            # (#'apzpts/survey-ccds-90prime-legacypipe.fits.gz',
+            #     'apzpts/survey-ccds-90prime.fits.gz',
+            #     'survey-ccds-90prime-psfzpts.fits',
+            #     #'90prime-psfzpts.fits',
+            #     'g', 'BASS g', 'g', 20, 25, 26.25, 0.45,
+            #     25.2, 26.0, {}),
+            # (#'apzpts/survey-ccds-90prime-legacypipe.fits.gz',
+            #     'apzpts/survey-ccds-90prime.fits.gz',
+            #     'survey-ccds-90prime-psfzpts.fits',
+            #     #'90prime-psfzpts.fits',
+            #     'r', 'BASS r', 'r', 19.5, 24.75, 25.75, 0.45,
+            #     24.9, 25.7, {}),
             (#'apzpts/survey-ccds-mosaic-legacypipe.fits.gz',
                 'apzpts/survey-ccds-mosaic.fits.gz',
                 'survey-ccds-mosaic-psfzpts.fits',
@@ -310,4 +431,5 @@ if __name__ == '__main__':
                 25.2, 26.8, bad_expid),
     ]:
         run(*X)    
+
 
