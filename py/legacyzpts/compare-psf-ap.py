@@ -9,29 +9,11 @@ from collections import Counter
 #plt.figure(figsize=(10,7))
 plt.subplots_adjust(hspace=0.01, wspace=0.01, left=0.15, bottom=0.1, top=0.95, right=0.95)
 
-def run(apfn,psffn,plotfn,tt,band,zplolo,zplo,zphi,pixscale,
-        zpt_cut_lo, zpt_cut_hi, bad_expid, camera):
+def psf_zeropoint_cuts(P, bands, pixscale,
+                       zpt_cut_lo, zpt_cut_hi, bad_expid, camera):
 
-    ps = PlotSequence('zp-' + plotfn)
-    A = fits_table(apfn)
-    P = fits_table(psffn)
-    print(len(A), 'aperture')
-    print(len(P), 'PSF')
-
-    A.ccdzpt = A.zpt
-    A.ccdphrms = A.phrms
-
-    # P.ccdzpt = P.zpt
-    # P.ccdphrms = P.phrms
-    # P.ccdnmatch = P.nmatch_photom
-
-    print('Aperture unique bands:', np.unique(A.filter))
-    print('PSF unique bands:', np.unique(P.filter))
-
-    A.cut(np.array([f.strip() == band for f in A.filter]))
-    P.cut(np.array([f.strip() == band for f in P.filter]))
-    print('Cut to', len(A), 'aperture in band', band)
-    print('Cut to', len(P), 'PSF in band', band)
+    P.cut(np.array([f.strip() in bands for f in P.filter]))
+    print('Cut to', len(P), 'PSF in bands', bands)
 
     # Bit codes for why a CCD got cut, used in cut_ccds().
     CCD_CUT_BITS= dict(
@@ -82,7 +64,6 @@ def run(apfn,psffn,plotfn,tt,band,zplolo,zplo,zphi,pixscale,
     P.cut(I)
     print(len(P), 'pass cuts')
 
-    fn = 'survey-ccds-%s-%s.fits' % (camera, band)
     S = P.copy()
     S.delete_column('yshift')
     S.delete_column('ccdnmatch')
@@ -95,9 +76,37 @@ def run(apfn,psffn,plotfn,tt,band,zplolo,zplo,zphi,pixscale,
                 ('object', 24),
                 ('propid', 10),]:
         S.set(k, np.array([s[:n] for s in S.get(k)]))
+    #fn = 'survey-ccds-%s-%s.fits' % (camera, band)
+    #S.writeto(fn)
+    #print('Wrote', fn)
 
-    S.writeto(fn)
-    print('Wrote', fn)
+    return S
+
+
+def run(apfn,psffn,plotfn,tt,band,zplolo,zplo,zphi,pixscale,
+        zpt_cut_lo, zpt_cut_hi, bad_expid, camera):
+
+    ps = PlotSequence('zp-' + plotfn)
+    A = fits_table(apfn)
+    P = fits_table(psffn)
+    print(len(A), 'aperture')
+    print(len(P), 'PSF')
+
+    A.ccdzpt = A.zpt
+    A.ccdphrms = A.phrms
+
+    # P.ccdzpt = P.zpt
+    # P.ccdphrms = P.phrms
+    # P.ccdnmatch = P.nmatch_photom
+
+    print('Aperture unique bands:', np.unique(A.filter))
+    print('PSF unique bands:', np.unique(P.filter))
+
+    A.cut(np.array([f.strip() == band for f in A.filter]))
+    print('Cut to', len(A), 'aperture in band', band)
+
+    P = psf_zeropoint_cuts(P, [band])
+
 
     #print(sum(bad), 'CCDs are in the bad_expid file')
     #P.cut(np.logical_not(bad))
@@ -449,6 +458,13 @@ if __name__ == '__main__':
     dg = (-0.5, 0.18)
     dr = (-0.5, 0.18)
     dz = (-0.6, 0.6)
+
+    P = fits_table('dr6plus.fits')
+    S = psf_zeropoint_cuts(P, ['z'], 0.262,
+                           z0+dz[0], z0+dz[1], bad_expid, 'mosaic')
+    S.writeto('survey-ccds-dr6plus.fits')
+    sys.exit(0)
+    
 
     for X in [
             (#'apzpts/survey-ccds-90prime-legacypipe.fits.gz',
