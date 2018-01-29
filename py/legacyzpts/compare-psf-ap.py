@@ -59,6 +59,7 @@ def psf_zeropoint_cuts(P, bands, pixscale,
 
     for name,cut in cuts:
         P.ccd_cuts += CCD_CUT_BITS[name] * cut
+        print(np.count_nonzero(cut), 'CCDs cut by', name)
 
     I = np.flatnonzero(P.ccd_cuts == 0)
     P.cut(I)
@@ -458,6 +459,24 @@ if __name__ == '__main__':
     dg = (-0.5, 0.18)
     dr = (-0.5, 0.18)
     dz = (-0.6, 0.6)
+
+    P = fits_table('psfzpts-pre-cuts-mosaic-dr6plus4.fits')
+    S = psf_zeropoint_cuts(P, ['z'], 0.262,
+                           z0+dz[0], z0+dz[1], bad_expid, 'mosaic')
+    S.writeto('survey-ccds-mosaic-dr6plus4.fits')
+    sys.exit(0)
+
+    P = fits_table('psfzpts-pre-cuts-mosaic-dr6plus3.fits')
+    S = psf_zeropoint_cuts(P, ['z'], 0.262,
+                           z0+dz[0], z0+dz[1], bad_expid, 'mosaic')
+    S.writeto('survey-ccds-mosaic-dr6plus3.fits')
+    sys.exit(0)
+
+    P = fits_table('psfzpts-pre-cuts-mosaic-dr6plus2.fits')
+    S = psf_zeropoint_cuts(P, ['z'], 0.262,
+                           z0+dz[0], z0+dz[1], bad_expid, 'mosaic')
+    S.writeto('survey-ccds-mosaic-dr6plus2.fits')
+    sys.exit(0)
 
     P = fits_table('dr6plus.fits')
     S = psf_zeropoint_cuts(P, ['z'], 0.262,

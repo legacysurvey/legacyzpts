@@ -112,7 +112,7 @@ def _ccds_table(camera='decam'):
         ('image_filename', 'S100'), 
         ('image_hdu', '>i2'),      
         ('camera', 'S7'),          
-        ('expnum', '>i4'),         
+        ('expnum', '>i8'),         
         ('ccdname', 'S4'),         
         ('ccdnum', '>i2'),        
         ('expid', 'S16'),        
@@ -179,7 +179,7 @@ def _stars_table(nstars=1):
     '''
     cols = [('image_filename', 'S100'),('image_hdu', '>i2'),
             ('expid', 'S16'), ('filter', 'S1'),('nmatch', '>i2'), 
-            ('x', 'f4'), ('y', 'f4'),('expnum', '>i4'),
+            ('x', 'f4'), ('y', 'f4'),('expnum', '>i8'),
             ('gain', 'f4'),
             ('ra', 'f8'), ('dec', 'f8'), ('apmag', 'f4'),('apflux', 'f4'),('apskyflux', 'f4'),('apskyflux_perpix', 'f4'),
             ('radiff', 'f8'), ('decdiff', 'f8'),
@@ -1476,7 +1476,7 @@ class Measurer(object):
             phot.ccd_decoff = np.zeros(len(phot), np.float32) + decoff
             phot.ccd_phoff  = np.zeros(len(phot), np.float32) + dmagmed
             phot.ccd_zpt    = np.zeros(len(phot), np.float32) + zptmed
-            phot.expnum = np.zeros(len(phot), np.int32) + self.expnum
+            phot.expnum = np.zeros(len(phot), np.int64) + self.expnum
             phot.ccdname = np.array([self.ccdname] * len(phot))
             phot.exptime = np.zeros(len(phot), np.float32) + self.exptime
             phot.gain = np.zeros(len(phot), np.float32) + self.gain
@@ -1602,7 +1602,7 @@ class Measurer(object):
                 # Save CCD-level information in the per-star table.
                 astrom.ccd_raoff  = np.zeros(len(astrom), np.float32) + raoff
                 astrom.ccd_decoff = np.zeros(len(astrom), np.float32) + decoff
-                astrom.expnum = np.zeros(len(astrom), np.int32) + self.expnum
+                astrom.expnum = np.zeros(len(astrom), np.int64) + self.expnum
                 astrom.ccdname = np.array([self.ccdname] * len(astrom))
 
                 # Convert to astropy Table
@@ -2797,6 +2797,7 @@ def main(image_list=None,args=None):
                      not_on_proj= measureargs['not_on_proj'],
                      copy_from_proj= measureargs['copy_from_proj'],
                      debug=measureargs['debug'])
+
         if (os.path.exists(F.zptfn) & 
             os.path.exists(F.starfn_photom) & 
             os.path.exists(F.starfn_astrom) ):
