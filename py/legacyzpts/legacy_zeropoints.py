@@ -268,7 +268,7 @@ def cols_for_legacypipe_table(which='all'):
     return need_arjuns_keys + dustins_keys
  
 
-def create_legacypipe_table(ccds_fn, camera=None):
+def create_legacypipe_table(ccds_fn, camera=None, psf=False, bad_expid=None):
     """input _ccds_table fn
     output a table formatted for legacypipe/runbrick
     """
@@ -325,10 +325,30 @@ def create_legacypipe_table(ccds_fn, camera=None):
     #if dr4:
     #    cols.append('release')
     #    T.release = np.zeros(len(T), np.int32) + 4000
+
+    if camera == 'mosaic' and psf:
+        from legacyzpts.psfzpt_cuts import psf_zeropoint_cuts
+        #g0 = 25.74
+        #r0 = 25.52
+        z0 = 26.20
+        #dg = (-0.5, 0.18)
+        #dr = (-0.5, 0.18)
+        dz = (-0.6, 0.6)
+        zpt_lo = dict(z=z0+dz[0])
+        zpt_hi = dict(z=z0+dz[1])
+        psf_zeropoint_cuts(T, 0.262, zpt_lo, zpt_hi, bad_expid, camera)
+
     outfn=ccds_fn.replace('-zpt.fits','-legacypipe.fits')
     T.writeto(outfn) #, columns=cols, header=hdr, primheader=primhdr, units=units)
     print('Wrote %s' % outfn)
 
+def create_annotated_table(leg_fn, camera, psf=False):
+    T = fits_table(leg_fn)
+    from legacypipe.annotate_ccds import annotate
+    annotate(T, mzls=(camera == 'mosaic'), normalizePsf=psf)
+    outfn=leg_fn.replace('-legacypipe.fits', '-annotated.fits')
+    T.writeto(outfn)
+    print('Wrote %s' % outfn)
 
 def cols_for_converted_star_table(star_table=None,
                                   which=None):
@@ -2682,11 +2702,11 @@ class outputFns(object):
 
 
 def runit(imgfn,zptfn,starfn_photom,starfn_astrom,
-          **measureargs):
+          psf=False, bad_expid=None, **measureargs):
     '''Generate a legacypipe-compatible CCDs file for a given image.
     '''
     t0 = Time()
-    ccds, stars_photom, stars_astrom, extra_info= measure_image(imgfn, **measureargs)
+    ccds, stars_photom, stars_astrom, extra_info= measure_image(imgfn, psf=psf, **measureargs)
     t0= ptime('measure_image',t0)
 
     # Only write if all CCDs are done
@@ -2703,7 +2723,12 @@ def runit(imgfn,zptfn,starfn_photom,starfn_astrom,
     hdulist.close() # Save changes
     print('Wrote {}'.format(zptfn))
     # zpt --> Legacypipe table
-    create_legacypipe_table(zptfn, camera=measureargs['camera'])
+    create_legacypipe_table(zptfn, camera=measureargs['camera'],
+                            psf=psf, bad_expid=bad_expid)
+    # legacypipe --> annotated
+    create_annotated_table(zptfn.replace('-zpt.fits', '-legacypipe.fits'),
+                           camera=measureargs['camera'], psf=psf)
+
     # Two stars tables
     stars_photom.write(starfn_photom, overwrite=True)
     stars_astrom.write(starfn_astrom, overwrite=True)
@@ -2787,6 +2812,12 @@ def main(image_list=None,args=None):
     measureargs.pop('image')
     # Add user specified camera, useful check against primhdr
     #measureargs.update(dict(camera= args.camera))
+
+    psf = measureargs['psf']
+    camera = measureargs['camera']
+    if psf and camera == 'mosaic':
+        from legacyzpts.psfzpt_cuts import read_bad_expid
+        measureargs.update(bad_expid = read_bad_expid())
 
     outdir = measureargs.pop('outdir')
     try_mkdir(outdir)

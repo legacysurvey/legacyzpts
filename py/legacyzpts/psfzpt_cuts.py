@@ -6,12 +6,11 @@ from astrometry.util.fits import fits_table
 from astrometry.util.plotutils import PlotSequence
 from collections import Counter
 
-def psf_zeropoint_cuts(P, bands, pixscale,
+def psf_zeropoint_cuts(P, pixscale,
                        zpt_cut_lo, zpt_cut_hi, bad_expid, camera):
-
-    P.cut(np.array([f.strip() in bands for f in P.filter]))
-    print('Cut to', len(P), 'PSF in bands', bands)
-
+    '''
+    zpt_cut_lo, zpt_cut_hi: dict from band to zeropoint.
+    '''
     # Bit codes for why a CCD got cut, used in cut_ccds().
     CCD_CUT_BITS= dict(
         err_legacyzpts = 0x1,
@@ -40,9 +39,12 @@ def psf_zeropoint_cuts(P, bands, pixscale,
     P.ccdrarms[np.logical_not(np.isfinite(P.ccdrarms))] = 1.
     P.ccddecrms[np.logical_not(np.isfinite(P.ccddecrms))] = 1.
 
+    keys = zpt_cut_lo.keys()
+
     cuts = [
-        ('zpt_small', P.ccdzpt < zpt_cut_lo),
-        ('zpt_large', P.ccdzpt > zpt_cut_hi),
+        ('not_grz',   np.array([f.strip() not in keys for f in P.filter])),
+        ('zpt_small', np.array([ccdzpt < zpt_cut_lo.get(f,0) for f,ccdzpt in zip(P.filter, P.ccdzpt)])),
+        ('zpt_large', np.array([ccdzpt > zpt_cut_hi.get(f,0) for f,ccdzpt in zip(P.filter, P.ccdzpt)])),
         ('phrms',     P.ccdphrms > 0.1),
         ('radecrms',  np.logical_or(P.ccdrarms > 0.25,
                                     P.ccddecrms > 0.25)),
@@ -57,25 +59,6 @@ def psf_zeropoint_cuts(P, bands, pixscale,
     for name,cut in cuts:
         P.ccd_cuts += CCD_CUT_BITS[name] * cut
         print(np.count_nonzero(cut), 'CCDs cut by', name)
-
-    I = np.flatnonzero(P.ccd_cuts == 0)
-    P.cut(I)
-    print(len(P), 'pass cuts')
-
-    S = P.copy()
-    S.delete_column('yshift')
-    S.delete_column('ccdnmatch')
-    print('Filters:', np.unique(S.filter))
-    S.filter = np.array([f[0] for f in S.filter])
-
-    for k,n in [('image_filename', 55),
-                ('camera', 7),
-                ('ccdname', 4),
-                ('object', 24),
-                ('propid', 10),]:
-        S.set(k, np.array([s[:n] for s in S.get(k)]))
-
-    return S
 
 def read_bad_expid(fn='bad_expid.txt'):
     bad_expid = {}
@@ -109,6 +92,13 @@ if __name__ == '__main__':
     dg = (-0.5, 0.18)
     dr = (-0.5, 0.18)
     dz = (-0.6, 0.6)
+
+    P = fits_table('psfzpts-pre-cuts-mosaic-dr6plus5.fits')
+    S = psf_zeropoint_cuts(P, 0.262,
+                           dict(z=z0+dz[0]), dict(z=z0+dz[1]),
+                           bad_expid, 'mosaic')
+    S.writeto('survey-ccds-mosaic-dr6plus5.fits')
+    sys.exit(0)
 
     P = fits_table('psfzpts-pre-cuts-mosaic-dr6plus4.fits')
     S = psf_zeropoint_cuts(P, ['z'], 0.262,
