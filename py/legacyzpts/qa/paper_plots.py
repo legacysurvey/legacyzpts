@@ -1,3 +1,10 @@
+"""This script creates all the ccd statistics including extinction corrected depth histograms in the observing strategy paper
+
+It takes as input one '*-zpt.fits' file for each camera, and that table has AcoEBV column
+No ccd cuts should have been applied to the zpt table, these will be applied in the script
+This script does not rely on tractor,astrometry.net, etc. If you need to add some processing that requires one of these, add it to the legacy_zeropoints_merged.py script instead
+"""
+
 #if __name__ == "__main__":
 #    import matplotlib
 #    matplotlib.use('Agg')
@@ -5,15 +12,11 @@ import matplotlib.pyplot as plt
 import os
 import numpy as np
 import pickle
-#from sklearn.neighbors import KernelDensity
+import pandas as pd
 from collections import defaultdict
 from scipy.stats import sigmaclip
 
-try:
-    from astrometry.util.fits import fits_table
-    from tractor.sfd import SFDMap
-except ImportError:
-    pass            
+from astrometry.util.fits import fits_table
 
 from legacyzpts.qa import params 
 from legacyzpts.qa.params import band2color,col2plotname
@@ -264,22 +267,24 @@ def err_on_radecoff(rarms,decrms,nmatch):
 
 class ZeropointHistograms(object):
     '''Histograms for papers'''
-    def __init__(self,decam_zpts=None,mosaic_zpts=None,bass_zpts=None):
-        self.decam= decam_zpts
-        self.mosaic= mosaic_zpts
-        self.bass= bass_zpts
+    def __init__(self,decam=None,mosaic=None,bass=None):
+        self.decam= decam
+        self.mosaic= mosaic
+        self.bass= bass
         if self.decam:
             self.decam= fits_table(self.decam)
         if self.mosaic:
             self.mosaic= fits_table(self.mosaic)
         if self.bass:
             self.bass= fits_table(self.bass)
-        #self.cameras= [cam for cam in CAMERAS if hasattr(self,cam)]
-        self.add_keys()
         self.clean()
-        self.num_exp= self.store_num_exp()
+        self.add_keys()
+        self.num_exp= self.get_num_exp()
+
+    def plot(self):
         self.plot_hist_1d()
-        self.plot_2d_scatter()
+        #[('rarms','decrms'),('raoff','decoff'),('phrms','phoff')]
+        self.seaborn_contours(x_key='raoff',y_key='decoff')
         self.plot_astro_photo_scatter()
         self.plot_hist_depth(legend=False)
         self.print_ccds_table()
@@ -298,52 +303,71 @@ class ZeropointHistograms(object):
 
     def _clean(self,T):
         if 'err_message' in T.get_columns():
-            ind= pd.Series(T.get('err_message')).str.strip().str.len() == 0).values
-            print('Cutting on err_message to %d/%d' % (cam,len(T[ind]),len(T)))
+            ind= (pd.Series(T.get('err_message')).str.strip().str.len() == 0).values
+            print('Cutting err_message to %d/%d' % (len(T[ind]),len(T)))
+            T.cut(ind)
+        else:
+            # Older processing and have to explicity check for nans
+            ind=np.ones(len(T),dtype=bool)
+            for key in ['zpt','fwhm']:
+                ind*= np.isfinite(T.get(key))
+            print('Cutting finite to %d/%d' % (len(T[ind]),len(T)))
             T.cut(ind)
         isGrz= pd.Series(T.get('filter')).str.strip().isin(['g','r','z']).values
         if len(T[~isGrz]) > 0:
-            print('Cutting on is not Grz to %d/%d' % (cam,len(T[isGrz]),len(T)))
+            print('Cutting is not Grz to %d/%d' % (len(T[isGrz]),len(T)))
             T.cut(ind)
             
 
-
     def add_keys(self):
         if self.decam:
-            self.decam.set('seeing',self.decam.fwhm * 0.262)
-            self.set_Aco_EBV(self.decam,camera='decam')
-            self.decam.set('err_on_phoff',1.253 * self.decam.phrms/np.sqrt(self.decam.nmatch)) # error on median
-            self.decam.set('err_on_radecoff',err_on_radecoff(self.decam.rarms,self.decam.decrms,
-                                                             self.decam.nmatch))
-            # Depths
-            depth_obj= Depth('decam',
-                             self.decam.skyrms,self.decam.gain,
-                             self.decam.fwhm,self.decam.zpt)
-            self.decam.set('psfdepth', depth_obj.get_depth_legacy_zpts('psf'))
-            self.decam.set('galdepth', depth_obj.get_depth_legacy_zpts('gal'))
-            for col in ['psfdepth','galdepth']:
-                self.decam.set(col+'_extcorr', self.decam.get(col) - self.decam.AcoEBV)
+            self._add_keys(self.decam,'decam')
         if self.mosaic:
-            self.mosaic.set('seeing',self.mosaic.fwhm * 0.26)
-            self.set_Aco_EBV(self.mosaic,camera='mosaic')
-            self.mosaic.set('err_on_phoff',1.253 * self.mosaic.phrms/np.sqrt(self.mosaic.nmatch)) # error on median
-            self.mosaic.set('err_on_radecoff',err_on_radecoff(self.mosaic.rarms,self.mosaic.decrms,
-                                                              self.mosaic.nmatch))
-            # Depths
-            depth_obj= Depth('mosaic',
-                             self.mosaic.skyrms,self.mosaic.gain,
-                             self.mosaic.fwhm,self.mosaic.zpt)
-            self.mosaic.set('psfdepth', depth_obj.get_depth_legacy_zpts('psf'))
-            self.mosaic.set('galdepth', depth_obj.get_depth_legacy_zpts('gal'))
-            for col in ['psfdepth','galdepth']:
-                self.mosaic.set(col+'_extcorr', self.mosaic.get(col) - self.mosaic.AcoEBV)
+            self._add_keys(self.mosaic,'mosaic')
+        if self.bass:
+            self._add_keys(self.bass,'bass')
+
+    def _add_keys(self,T,camera=None):
+        assert(camera in CAMERAS)
+        Aco= {'decam':dict(g=3.214,r=2.165,z=1.562),
+              'mosaic':dict(z=1.562),
+              'bass':dict(g=3.214,r=2.165)}
+        Pix= {'decam':0.262,
+              'mosaic':0.26,
+              'bass':0.455}
+        data= np.zeros(len(T))+np.nan
+        for band in Aco[camera].keys():
+            keep= T.filter == band
+            if len(T[keep]) > 0:
+                data[keep]= Aco[camera][band] * T.ebv[keep]
+        T.set('AcoEBV',data)
+        T.set('seeing',T.fwhm * Pix[camera])
+        try:
+            nmatch= T.nmatch_photom
+        except AttributeError:
+            nmatch= T.nmatch
+        T.set('err_on_phoff',1.253 * T.phrms/np.sqrt(nmatch)) # error on median
+        T.set('err_on_radecoff',err_on_radecoff(T.rarms,T.decrms,nmatch))
+        # Depths
+        depth_obj= Depth(camera, T.skyrms,T.gain,
+                         T.fwhm,T.zpt)
+        T.set('psfdepth', depth_obj.get_depth_legacy_zpts('psf'))
+        T.set('galdepth', depth_obj.get_depth_legacy_zpts('gal'))
+        for col in ['psfdepth','galdepth']:
+            T.set(col+'_extcorr', T.get(col) - T.AcoEBV)
  
-    def store_num_exp(self):
+    def get_num_exp(self):
         num={}
-        num['mosaic_z']= len(set(self.mosaic.expnum))
-        for band in ['g','r','z']:
-            keep= self.decam.filter == band
-            num['decam_%s' % band]= len(set(self.decam.expnum[keep]))
+        if self.mosaic:
+            num['mosaic_z']= len(set(self.mosaic.expnum))
+        if self.decam:
+            for band in ['g','r','z']:
+                keep= self.decam.filter == band
+                num['decam_%s' % band]= len(set(self.decam.expnum[keep]))
+        if self.bass:
+            for band in ['g','r']:
+                keep= self.bass.filter == band
+                num['bass_%s' % band]= len(set(self.bass.expnum[keep]))
         return num
 
     def get_numeric_keys(self):
@@ -557,60 +581,85 @@ class ZeropointHistograms(object):
         d= dict(rarms= (0,0.5),
                 decrms= (0,0.5),
                 phrms= (0,0.5),
-                raoff= (-0.7,0.7),
-                decoff= (-0.7,0.7),
+                raoff= dict(decam=(-0.25,0.25),
+                            mosaic=(-0.05,0.05)),
+                decoff= dict(decam=(-0.25,0.1),
+                             mosaic=(-0.05,0.05)),
                 phoff= (-6,6),
                 err_on_phoff= (0,0.08),
                 err_on_radecoff= (0,0.3))
         return d.get(col,None)
 
-    def plot_2d_scatter(self,prefix=''):
-        # Plot
-        FS=14
-        eFS=FS+5
-        tickFS=FS
-        xy_sets= [('rarms','decrms'),
-                  ('raoff','decoff'),
-                  ('phrms','phoff')]
-        for x_key,y_key in xy_sets:
-            fig,ax= plt.subplots(2,1,figsize=(8,10))
-            plt.subplots_adjust(hspace=0.2,wspace=0)
-            # decam
-            if self.decam:            
-                row=0
-                x,y= self.decam.get(x_key), self.decam.get(y_key)
-                for band in set(self.decam.filter):
-                    keep= self.decam.filter == band
-                    myscatter(ax[row],x[keep],y[keep], 
-                              color=band2color(band),s=10.,alpha=0.75,
-                              label='%s (DECam, %d)' % (band,self.num_exp['decam_'+band]))
-            # mosaic
-            if self.mosaic:            
-                row=1
-                x,y= self.mosaic.get(x_key), self.mosaic.get(y_key)
-                for band in set(self.mosaic.filter):
-                    keep= self.mosaic.filter == band
-                    myscatter(ax[row],x[keep],y[keep], 
-                              color=band2color(band),s=10.,alpha=0.75,
-                              label='%s (Mosaic3, %d)' % (band,self.num_exp['mosaic_'+band]))
-            # Crosshairs
-            for row in range(2):
-                ax[row].axhline(0,c='k',ls='dashed',lw=1)
-                ax[row].axvline(0,c='k',ls='dashed',lw=1)
-            # Label
-            xlab=ax[1].set_xlabel(col2plotname(x_key),fontsize=FS) #0.45'' galaxy
-            for row in range(2):
-                ylab=ax[row].set_ylabel(col2plotname(y_key),fontsize=FS)
-                ax[row].tick_params(axis='both', labelsize=tickFS)
-                leg=ax[row].legend(loc='upper right',scatterpoints=1,markerscale=3.,fontsize=FS)
+    def seaborn_contours(self,x_key='raoff',y_key='decoff'):
+        import seaborn as sns
+        fig,ax= plt.subplots(2,3,figsize=(8,6))
+        plt.subplots_adjust(hspace=0.1,wspace=0)
+        # decam
+        if self.decam:
+            x,y= self.decam.get(x_key), self.decam.get(y_key)
+            for band,cmap,col in zip('grz',['Greens_d','Reds_d','Blues_d'],
+                                     [0,1,2]): #set(z.decam.filter):
+                keep= self.decam.filter == band
+                sns.kdeplot(x[keep], y[keep], ax=ax[0,col],
+                            cmap=cmap, shade=False, shade_lowest=False)
+                ax[0,col].text(-0.2,0.05,'%s (decam)' % band, 
+                               horizontalalignment='left',verticalalignment='center')
+                ax[0,col].text(0.15,0.05,'%d' % self.num_exp['decam_'+band], 
+                               horizontalalignment='left',verticalalignment='center')
+                               #transform=ax[1,row].transAxes)
                 if self.get_lim(x_key):
-                    ax[row].set_xlim(self.get_lim(x_key))
+                    xlim= self.get_lim(x_key)
+                    if xlim.__class__() == {}:
+                        xlim= xlim['decam']
+                    ax[0,col].set_xlim(xlim)
                 if self.get_lim(y_key):
-                    ax[row].set_ylim(self.get_lim(y_key))
-            savefn='rms_2panel_%s_%s.png' % (x_key,y_key)
-            plt.savefig(savefn, bbox_extra_artists=[xlab,ylab], bbox_inches='tight')
-            plt.close() 
-            print("wrote %s" % savefn)
+                    ylim= self.get_lim(y_key)
+                    if ylim.__class__() == {}:
+                        ylim= ylim['decam']
+                    ax[0,col].set_ylim(ylim)
+        if self.mosaic:
+            x,y= self.mosaic.get(x_key), self.mosaic.get(y_key)
+            for band,cmap,col in zip('z',['Blues_d'],
+                                     [2]): 
+                keep= self.mosaic.filter == band
+                sns.kdeplot(x[keep], y[keep], ax=ax[1,col],
+                            cmap=cmap, shade=False)
+                ax[1,col].text(0.1,0.8,'%s (mosaic)' % band, 
+                               horizontalalignment='left',verticalalignment='center',
+                               transform=ax[1,col].transAxes)
+                ax[1,col].text(0.75,0.8,'%d' % self.num_exp['mosaic_'+band], 
+                               horizontalalignment='left',verticalalignment='center',
+                               transform=ax[1,col].transAxes)
+                if self.get_lim(x_key):
+                    xlim= self.get_lim(x_key)
+                    if xlim.__class__() == {}:
+                        xlim= xlim['mosaic']
+                    ax[1,col].set_xlim(xlim)
+                if self.get_lim(y_key):
+                    ylim= self.get_lim(y_key)
+                    if ylim.__class__() == {}:
+                        ylim= ylim['mosaic']
+                    ax[1,col].set_ylim(ylim)
+        # Crosshairs
+        for row in range(2):
+            for col in range(3):
+                ax[row,col].axhline(0,c='k',ls='dashed',lw=1)
+                ax[row,col].axvline(0,c='k',ls='dashed',lw=1)
+        # Label
+        for col in range(3):
+            xlab=ax[1,col].set_xlabel(col2plotname(x_key)) #0.45'' galaxy
+            #ax[1,col].tick_params(axis='both')
+        for row in range(2):
+            ylab=ax[row,0].set_ylabel(col2plotname(y_key))
+            #ax[row,0].tick_params(axis='both')
+
+        for row in range(2):
+            for col in [1,2]:
+                ax[row,col].yaxis.set_ticklabels([])
+
+        savefn='seaborn_contours_%s_%s.png' % (x_key,y_key)
+        plt.savefig(savefn, bbox_extra_artists=[xlab,ylab], bbox_inches='tight',dpi=150)
+        print("wrote %s" % savefn)
 
     def plot_astro_photo_scatter(self,prefix=''):
         # Plot
@@ -891,19 +940,19 @@ class ZptsTneed(object):
         self.data.cut(keep)
 
 
-def apply_cuts():
-    
-
 if __name__ == '__main__':
     import argparse
     parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter,\
                             description='Generate a legacypipe-compatible CCDs file \
                                         from a set of reduced imaging.')
-    parser.add_argument('--leg_dir',action='store',default='/global/cscratch1/sd/kaylanb/kaylan_Test',required=False)
+    parser.add_argument('--decam',action='store',default=None,help='path to decam zpt table',required=False)
+    parser.add_argument('--mosaic',action='store',default=None,help='path to mosaic zpt table',required=False)
+    parser.add_argument('--bass',action='store',default=None,help='path to 90prime zpt table',required=False)
     args = parser.parse_args()
 
-    fns= {}
-    fns['decam_l']= '/global/cscratch1/sd/kaylanb/test/legacypipe/py/survey-ccds-decam44k.fits.gz'
-    fns['mosaic_l']= '/global/cscratch1/sd/kaylanb/test/legacypipe/py/survey-ccds-mosaic42k.fits.gz'
-    a= ZeropointHistograms(decam_zpts=fns['decam_l'],
-                           mosaic_zpts=fns['mosaic_l'])
+    #fns['decam_l']= '/global/cscratch1/sd/kaylanb/test/legacypipe/py/survey-ccds-decam44k.fits.gz'
+    #fns['mosaic_l']= '/global/cscratch1/sd/kaylanb/test/legacypipe/py/survey-ccds-mosaic42k.fits.gz'
+    a= ZeropointHistograms(decam=args.decam,
+                           mosaic=args.mosaic,
+                           bass=args.bass)
+    a.plot()
