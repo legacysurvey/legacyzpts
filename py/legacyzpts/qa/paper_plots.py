@@ -1,11 +1,3 @@
-'''
-TO RUN:
-idl vs. legacy comparison: python -c "from simulate_survey import Legacy_vs_IDL;a=Legacy_vs_IDL(camera='decam',leg_dir='/global/cscratch1/sd/kaylanb/kaylan_Test',idl_dir='/global/cscratch1/sd/kaylanb/arjundey_Test')"
-idl vs. legacy number star matches: python -c "from simulate_survey import sn_not_matched_by_arjun;sn_not_matched_by_arjun('/global/cscratch1/sd/kaylanb/kaylan_Test/decam/DECam_CP/CP20170326/c4d_170327_042342_oki_r_v1-*-extra.pkl',arjun_fn='/global/cscratch1/sd/kaylanb/arjundey_Test/matches-c4d_170327_042342_oki_r_v1.fits')"
-idl vs. legacy number star matches: python -c "from simulate_survey import number_matches_by_cut;number_matches_by_cut('/global/cscratch1/sd/kaylanb/kaylan_Test/decam/DECam_CP/CP20170326/c4d_170327_042342_oki_r_v1-*-extra.pkl',arjun_fn='/global/cscratch1/sd/kaylanb/arjundey_Test/matches-c4d_170327_042342_oki_r_v1.fits')"
-oplot stars on ccd: python -c "from simulate_survey import run_imshow_stars;run_imshow_stars('/global/cscratch1/sd/kaylanb/kaylan_Test/decam/DECam_CP/CP20170326/c4d_170327_042342_oki_r_v1-35-extra.pkl',arjun_fn='/global/cscratch1/sd/kaylanb/arjundey_Test/matches-c4d_170327_042342_oki_r_v1.fits')"
-'''
-
 #if __name__ == "__main__":
 #    import matplotlib
 #    matplotlib.use('Agg')
@@ -17,20 +9,16 @@ import pickle
 from collections import defaultdict
 from scipy.stats import sigmaclip
 
-#from PIL import Image, ImageDraw
-import fitsio
 try:
-    from astrometry.util.fits import fits_table, merge_tables
-    from astrometry.libkd.spherematch import match_radec
+    from astrometry.util.fits import fits_table
     from tractor.sfd import SFDMap
-    from tractor.brightness import NanoMaggies 
 except ImportError:
     pass            
 
 from legacyzpts.qa import params 
 from legacyzpts.qa.params import band2color,col2plotname
-from legacyzpts.common import merge_tables_fns
 
+CAMERAS=['decam','mosaic','bass']
 mygray='0.6'
 
 def myhist(ax,data,bins=20,color='b',normed=False,ls='-',label=None):
@@ -85,77 +73,6 @@ def myerrorbar(ax,x,y, yerr=None,xerr=None,color='b',ls='none',m='o',s=10.,mew=1
         ax.errorbar(x,y, xerr=xerr,yerr=yerr,ls=ls,alpha=alpha,label=label,
                     marker=m,ms=s,mfc=color,mec=color,ecolor=color,mew=mew)
         #ax.errorbar(x,y, xerr=xerr,yerr=yerr, c=color,ecolor=color,marker=m,s=s,rasterized=True,alpha=alpha,label=label)
-
-class LegacyZpts(object):
-    """Takes a list of zpt files, combines them, saves for easy reload
-    
-    Has additional info get fiducial values
-
-    Args:
-        zpt_list: list of -zpt or -star.fits file
-        camera: decam,mosaic,90prime
-        savedir: where to write temptable
-        loadable: False to force merging fits tables every time
-
-    Attributes:
-        zpt_list: list of -zpt or -star.fits file
-        camera: decam,mosaic,90prime
-        savedir: where to write temptable
-        temptablename: unique suffix for temptable
-        fid: get_fiducial dict
-        data: merged fits table of zpt_list 
-
-    Example: 
-        fns= glob(os.path.join(os.getenv['CSCRATCH'],
-                              'dr5_zpts/decam',
-                              'c4d*-zpt.fits')
-        Z= LegacyZpts(zpt_list=fns, camera='decam')
-        Z.load_data() 
-    """
-
-    def __init__(self,zpt_list=None,camera=None,
-                 savedir='./', 
-                 loadable=True,temptable_name=None):
-        '''
-        '''
-        self.zpt_list= zpt_list
-        self.camera= camera
-        self.loadable= loadable
-        self.temptable_name= temptable_name
-        if savedir:
-            self.savedir= savedir
-        else:
-            self.savedir= './'
-            #self.outdir='/global/cscratch1/sd/kaylanb/observing_paper_zptfixes'
-        assert(camera in ['decam','mosaic','90prime'])
-        self.fid= params.get_fiducial(camera=self.camera)
-
-    def get_merge_fn(self):
-        suff=''
-        if self.temptable_name:
-            suff= '_%s' % self.temptable_name
-        return os.path.join(self.savedir,
-                            'temptable_%s%s.fits' % 
-                               (self.camera,suff))
-
-    def load_data(self):
-        '''merge the fits_tables in zpt_list 
-        '''
-        if self.loadable & os.path.exists( self.get_merge_fn() ):
-            print('Loading saved merged fits')
-            self.data= fits_table( self.get_merge_fn() )
-        else: 
-            print('Merging tables')
-            self.data= merge_tables_fns(self.zpt_list,textfile=False)
-            self.save_data()
-        print('Merged zpt data: zpts=%d' % self.num_zpts())
-
-    def save_data(self):
-        self.data.writeto( self.get_merge_fn() )
-        print('Wrote %s' % self.get_merge_fn() )
- 
-    def num_zpts(self):
-        return len(self.data)
 
 #######
 # Master depth calculator, uses non galdepth columns to get exactly galdepth in annotated-ccds
@@ -344,24 +261,53 @@ def err_on_radecoff(rarms,decrms,nmatch):
     err_decoff= 1.253 * decrms / np.sqrt(nmatch)
     return np.sqrt(err_raoff**2 + err_decoff**2)
 
+
 class ZeropointHistograms(object):
     '''Histograms for papers'''
-    def __init__(self,decam_zpts=None,mosaic_zpts=None):
+    def __init__(self,decam_zpts=None,mosaic_zpts=None,bass_zpts=None):
         self.decam= decam_zpts
         self.mosaic= mosaic_zpts
+        self.bass= bass_zpts
         if self.decam:
             self.decam= fits_table(self.decam)
         if self.mosaic:
             self.mosaic= fits_table(self.mosaic)
+        if self.bass:
+            self.bass= fits_table(self.bass)
+        #self.cameras= [cam for cam in CAMERAS if hasattr(self,cam)]
         self.add_keys()
+        self.clean()
         self.num_exp= self.store_num_exp()
-        #self.plot_hist_1d()
-        #self.plot_2d_scatter()
-        #self.plot_astro_photo_scatter()
+        self.plot_hist_1d()
+        self.plot_2d_scatter()
+        self.plot_astro_photo_scatter()
         self.plot_hist_depth(legend=False)
         self.print_ccds_table()
         self.print_requirements_table()
-   
+    
+    def clean(self):
+        if self.decam:
+            print('cleaning decam')
+            self._clean(self.decam)
+        if self.mosaic:
+            print('cleaning mosaic')
+            self._clean(self.mosaic)
+        if self.bass:
+            print('cleaning bass')
+            self._clean(self.bass)
+
+    def _clean(self,T):
+        if 'err_message' in T.get_columns():
+            ind= pd.Series(T.get('err_message')).str.strip().str.len() == 0).values
+            print('Cutting on err_message to %d/%d' % (cam,len(T[ind]),len(T)))
+            T.cut(ind)
+        isGrz= pd.Series(T.get('filter')).str.strip().isin(['g','r','z']).values
+        if len(T[~isGrz]) > 0:
+            print('Cutting on is not Grz to %d/%d' % (cam,len(T[isGrz]),len(T)))
+            T.cut(ind)
+            
+
+
     def add_keys(self):
         if self.decam:
             self.decam.set('seeing',self.decam.fwhm * 0.262)
@@ -399,26 +345,6 @@ class ZeropointHistograms(object):
             keep= self.decam.filter == band
             num['decam_%s' % band]= len(set(self.decam.expnum[keep]))
         return num
-
-    def set_Aco_EBV(self,tab,camera=None):
-        '''tab -- legacy zeropoints -zpt.fits table'''
-        assert(camera in ['decam','mosaic'])
-        # Look up E(B-V) in SFD map
-        print('Loading SFD maps...')
-        sfd = SFDMap()
-        ebv= sfd.ebv(tab.ra, tab.dec) 
-        data= np.zeros(len(tab))
-        # Aco coeff
-        if camera == 'decam':
-            Aco= dict(g=3.214,r=2.165,z=1.562)
-        elif camera == 'mosaic':
-            Aco= dict(z=1.562)
-        # Ext corr
-        for band in set(tab.filter):
-            keep= tab.filter == band
-            data[keep]= Aco[band] * ebv[keep]
-        assert(np.all(data > 0.))
-        tab.set('AcoEBV',data)
 
     def get_numeric_keys(self):
         keys= \
@@ -963,6 +889,10 @@ class ZptsTneed(object):
                         keep[ inds[1:] ] = False
         print('number duplicate exposures=%d, ccds=%d' % (num_dup_exp,num_dup_ccds))
         self.data.cut(keep)
+
+
+def apply_cuts():
+    
 
 if __name__ == '__main__':
     import argparse
