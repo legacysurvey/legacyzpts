@@ -278,9 +278,21 @@ class ZeropointHistograms(object):
         if self.bass:
             self.bass= fits_table(self.bass)
         self.clean()
+        self.mjd_sorted_order()
         self.add_keys()
         self.num_exp= self.get_num_exp()
 
+    def mjd_sorted_order(self):
+        if self.decam:
+            isort= np.argsort(self.decam.mjd_obs)
+            self.decam= self.decam[isort]
+        if self.mosaic:
+            isort= np.argsort(self.mosaic.mjd_obs)
+            self.mosaic= self.mosaic[isort]
+        if self.bass:
+            isort= np.argsort(self.bass.mjd_obs)
+            self.bass= self.bass[isort]
+    
     def plot(self):
         self.plot_hist_1d()
         #[('rarms','decrms'),('raoff','decoff'),('phrms','phoff')]
@@ -321,13 +333,16 @@ class ZeropointHistograms(object):
 
     def add_keys(self):
         if self.decam:
-            self._add_keys(self.decam,'decam')
+            self.add_keys_numeric(self.decam,'decam')
+            self.add_keys_actualDate(self.decam,'decam')
         if self.mosaic:
-            self._add_keys(self.mosaic,'mosaic')
+            self.add_keys_numeric(self.mosaic,'mosaic')
+            self.add_keys_actualDate(self.mosaic,'mosaic')
         if self.bass:
-            self._add_keys(self.bass,'bass')
+            self.add_keys_numeric(self.bass,'bass')
+            self.add_keys_actualDate(self.bass,'bass')
 
-    def _add_keys(self,T,camera=None):
+    def add_keys_numeric(self,T,camera=None):
         assert(camera in CAMERAS)
         Aco= {'decam':dict(g=3.214,r=2.165,z=1.562),
               'mosaic':dict(z=1.562),
@@ -356,6 +371,26 @@ class ZeropointHistograms(object):
         for col in ['psfdepth','galdepth']:
             T.set(col+'_extcorr', T.get(col) - T.AcoEBV)
  
+    def add_keys_actualDate(self,T,camera=None):
+        if camera == 'decam':
+            self._add_keys_actualDate(T,threshold='15:00:00.0')
+        elif camera == 'mosaic':
+            T.set('actualDateObs',T.date_obs)
+        else:
+            raise ValueError('bass actualDate figured out yet')
+    
+    def _add_keys_actualDate(self,T,threshold='15:00:00.0'):
+        actualDateObs= np.array(['0000-00-00']*len(T))
+        sameNight= T.ut < threshold
+        for yyyymmdd in set(T.date_obs):
+            thisNight= (T.date_obs == yyyymmdd) & sameNight
+            nextNight= (T.date_obs == yyyymmdd) & ~sameNight
+            TM= pd.Timestamp(yyyymmdd)
+            actualDateObs[thisNight]= TM.strftime('%Y-%m-%d')
+            actualDateObs[nextNight]= (TM + pd.DateOffset(1)).strftime('%Y-%m-%d') 
+        assert(len(actualDateObs[actualDateObs == '0000-00-00']) == 0)
+        T.set('actualDateObs',actualDateObs)
+    
     def get_num_exp(self):
         num={}
         if self.mosaic:
