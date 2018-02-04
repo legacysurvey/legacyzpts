@@ -106,41 +106,25 @@ class Depth(object):
             pass
         # self.get_depth_legacy_zpts(which='gal')
 
-    def get_depth_legacy_zpts(self,which=None):
+    def get_depth_legacy_zpts(self,which=None,func_neff=None):
+        """if what to correct Neff, pass that function as arg"""
         assert(which in ['gal','psf'])
         self.which= which
-        sigma= self.sigma_legacy_zpts() 
+        sigma= self.sigma_legacy_zpts(func_neff=func_neff) 
         return -2.5*np.log10(5 * sigma) + self.zpt #natural camera units
 
-    def sigma_legacy_zpts(self):
-        return self.skyrms *np.sqrt(self.neff_empirical())
+    def sigma_legacy_zpts(self,func_neff=None):
+        if func_neff:
+            neff= func_neff(self.fwhm/2.35, camera,self.which)
+        else:
+            if self.which == 'psf':
+                rhalf=0
+            else:
+                rhlaf=0.45
+            neff= NeffFormulas().neff_15(self.fwhm/2.35,rhalf=rhalf)
+        return self.skyrms *np.sqrt(neff)
 
-    def neff_empirical(self):
-        #see observing_paper/depth.py plots
-        if self.which == 'psf':
-            rhalf=0
-            if self.camera == 'decam':
-                slope= 1.23 
-                yint= 9.43
-            elif self.camera == 'mosaic':
-                slope= 1.41 
-                yint= 1.58
-        elif self.which == 'gal':
-            rhalf=0.45
-            if self.camera == 'decam':
-                slope= 1.24 
-                yint= 45.86
-            elif self.camera == 'mosaic':
-                slope= 1.48 
-                yint= 35.78
-        return slope * self.neff_15(rhalf=rhalf) + yint
-
-    def neff_15(self,rhalf=0.45,pix=0.262):
-        '''seeing = FWHM/2.35 where FWHM is in units of Pixels'''
-        seeing= self.fwhm / 2.35
-        return 4*np.pi*seeing**2 + 8.91*rhalf**2 + pix**2/12  
-
-
+   
 
 class DepthRequirements(object):
     def __init__(self):
@@ -165,92 +149,6 @@ class DepthRequirements(object):
         mags['psf']['z']= 23.0
         return mags
 
-
-#######
-# Master depth calculator, uses non galdepth columns to get exactly galdepth in annotated-ccds
-#######
-
-class Depth(object):
-    def __init__(self,camera,skyrms,gain,fwhm,zpt):
-        '''
-        See: observing_paper/depth.py
-        Return depth that agrees with galdepth doing equiv with annotated ccd cols
-        skyrms -- e/s
-        gain -- e/ADU
-        fwhm -- pixels so that gaussian std in pixels = fwhm/2.35
-        zpt -- e/s
-        '''
-        assert(camera in ['decam','mosaic'])
-        self.camera = camera
-        self.skyrms= skyrms.copy() #Will modify to get in right units
-        self.gain= gain.copy()
-        self.fwhm= fwhm.copy()
-        self.zpt= zpt.copy()
-        if self.camera == 'decam':
-            # natural camera units ADU/sec
-            self.skyrms /= self.gain # e/sec --> ADU/sec
-            self.zpt -= 2.5*np.log10(self.gain) # e/sec --> ADU/sec
-        elif self.camera == 'mosaic':
-            # e/sec are the natual camera units
-            pass
-        # self.get_depth_legacy_zpts(which='gal')
-
-    def get_depth_legacy_zpts(self,which=None):
-        assert(which in ['gal','psf'])
-        self.which= which
-        sigma= self.sigma_legacy_zpts() 
-        return -2.5*np.log10(5 * sigma) + self.zpt #natural camera units
-
-    def sigma_legacy_zpts(self):
-        return self.skyrms *np.sqrt(self.neff_empirical())
-
-    def neff_empirical(self):
-        #see observing_paper/depth.py plots
-        if self.which == 'psf':
-            rhalf=0
-            if self.camera == 'decam':
-                slope= 1.23 
-                yint= 9.43
-            elif self.camera == 'mosaic':
-                slope= 1.41 
-                yint= 1.58
-        elif self.which == 'gal':
-            rhalf=0.45
-            if self.camera == 'decam':
-                slope= 1.24 
-                yint= 45.86
-            elif self.camera == 'mosaic':
-                slope= 1.48 
-                yint= 35.78
-        return slope * self.neff_15(rhalf=rhalf) + yint
-
-    def neff_15(self,rhalf=0.45,pix=0.262):
-        '''seeing = FWHM/2.35 where FWHM is in units of Pixels'''
-        seeing= self.fwhm / 2.35
-        return 4*np.pi*seeing**2 + 8.91*rhalf**2 + pix**2/12  
-
-class DepthRequirements(object):
-    def __init__(self):
-        self.desi= self.depth_requirement_dict()
-    
-    def get_single_pass_depth(self,band,which,camera):
-        assert(which in ['gal','psf'])
-        assert(camera in ['decam','mosaic'])
-        # After 1 pass
-        if camera == 'decam':
-            return self.desi[which][band] - 2.5*np.log10(2)
-        elif camera == 'mosaic':
-            return self.desi[which][band] - 2.5*np.log10(3)
-
-    def depth_requirement_dict(self):
-        mags= defaultdict(lambda: defaultdict(dict))
-        mags['gal']['g']= 24.0
-        mags['gal']['r']= 23.4
-        mags['gal']['z']= 22.5
-        mags['psf']['g']= 24.7
-        mags['psf']['r']= 23.9
-        mags['psf']['z']= 23.0
-        return mags
 
 
 #######
@@ -975,19 +873,274 @@ class ZptsTneed(object):
         self.data.cut(keep)
 
 
+class MatchedAnnotZpt(object):
+    def __init__(self,args):
+        self.T= defaultdict(dict)
+        self.cameras=[]
+        if args.decam:
+            self.cameras.append('decam')
+            if os.path.exists(self.savefn(args.decam)):
+                self.T['decam']['z']= fits_table(self.savefn(args.decam))
+                self.T['decam']['a']= fits_table(self.savefn(args.decam_ann))
+            else:
+                self.T['decam']['z']= fits_table(args.decam)
+                self.T['decam']['a']= fits_table(args.decam_ann)
+                self.match('decam')
+                self.T['decam']['z'].writeto(self.savefn(args.decam))
+                self.T['decam']['a'].writeto(self.savefn(args.decam_ann))
+        if args.mosaic:
+            self.cameras.append('mosaic')
+            if os.path.exists(self.savefn(args.mosaic)):
+                self.T['mosaic']['z']= fits_table(self.savefn(args.mosaic))
+                self.T['mosaic']['a']= fits_table(self.savefn(args.mosaic_ann))
+            else:
+                self.T['mosaic']['z']= fits_table(args.mosaic)
+                self.T['mosaic']['a']= fits_table(args.mosaic_ann)
+                self.match('mosaic')
+                self.T['mosaic']['z'].writeto(self.savefn(args.mosaic))
+                self.T['mosaic']['a'].writeto(self.savefn(args.mosaic_ann))
+        if args.bass:
+            self.cameras.append('bass')
+            if os.path.exists(self.savefn(args.bass)):
+                self.T['bass']['z']= fits_table(self.savefn(args.bass))
+                self.T['bass']['a']= fits_table(self.savefn(args.bass_ann))
+            else:
+                self.T['bass']['z']= fits_table(args.bass)
+                self.T['bass']['a']= fits_table(args.bass_ann)
+                self.match('bass')
+                self.T['bass']['z'].writeto(self.savefn(args.bass))
+                self.T['bass']['a'].writeto(self.savefn(args.bass_ann))
+
+    def __getitem__(self,tup):
+        """z_or_a is zpt or annotated"""
+        camera,z_or_a= tup
+        return self.T[camera][z_or_a]
+
+    def match(self,camera):
+        self.clean(camera)
+        self.rename_cols(camera)
+        print(camera,'before expid',len(self[camera,'a']))
+        self.same_expid(camera)
+        print(camera,'after expid',len(self[camera,'a']))
+        self.drop_duplicates(camera)
+        self.row_matched(camera)
+
+    def same_expid(self,camera):
+        ind_a= (pd.Series(np.char.strip(self[camera,'a'].expid))
+                .isin(np.char.strip(self[camera,'z'].expid))
+                .values)
+        self[camera,'a'].cut(ind_a)
+        print('After same_expid cuts %s,annot: remaining %d/%d' % (camera,len(self[camera,'a']),len(ind_a)))
+        ind_z= (pd.Series(np.char.strip(self[camera,'z'].expid))
+                .isin(np.char.strip(self[camera,'a'].expid))
+                .values)
+        self[camera,'z'].cut(ind_z)
+        print('After same_expid cuts %s,zpt: remaining %d/%d' % (camera,len(self[camera,'z']),len(ind_z)))
+
+    def drop_duplicates(self,camera):
+        for a_or_z in 'az':
+            if len(set(self[camera,a_or_z].expid)) != len(self[camera,a_or_z]):
+                df= pd.DataFrame(dict(expid=self[camera,a_or_z].expid))
+                df.drop_duplicates("expid",inplace=True)
+                n_dup=len(self[camera,a_or_z]) - len(df['expid'])
+                print('%s,%s dropping %d duplicates' % (camera,a_or_z,n_dup)) 
+                self.T[camera][a_or_z]= self[camera,a_or_z][df.index.values]
+
+    def row_matched(self,camera):
+        """The a and z tables have the same size and expids but not row matched"""
+        for a_or_z in 'az':
+            i= np.argsort(self[camera,a_or_z].expid)
+            self.T[camera][a_or_z]= self[camera,a_or_z][i]
+        assert(np.all(self.T[camera,'a'] == self.T[camera,'z']))
+        
+
+    def clean(self,camera):
+        # Annot
+        keep= ((self[camera,'a'].psfnorm_mean > 0) &
+               (self[camera,'a'].photometric) &
+               (self[camera,'a'].galnorm_mean > 0) &
+               (np.isfinite(self[camera,'a'].psfnorm_mean)) &
+               (np.isfinite(self[camera,'a'].galnorm_mean)))
+        if camera in ['mosaic','bass']:
+            keep= (keep)&(self[camera,'a'].bitmask == 0) 
+        self[camera,'a'].cut(keep)
+        print('After cuts for %s,annot: remaining %d/%d' % (camera,len(self[camera,'a']),len(keep)))
+        # Zpt
+        keep= np.isfinite(self[camera,'z'].fwhm)
+        self[camera,'z'].cut(keep)
+        print('After cuts for %s,zpt: remaining %d/%d' % (camera,len(self[camera,'z']),len(keep)))
+
+    def rename_cols(self,camera):
+        for key in ['ra','dec']:
+            # annotated ra,dec center is "ra,dec_center" NOT ra,dec
+            self[camera,'a'].set(key,self[camera,'a'].get('%s_center' % key))
+        if camera == 'mosaic':
+            self[camera,'a'].set('expid',np.char.upper(self[camera,'a'].expid))
+            
+
+    def savefn(self,fits_fn):
+        return (fits_fn
+                .replace(".gz","")
+                .replace(".fits","_matched.fits"))
+
+    def add_corrected_depth(self,camera):
+        D= Depth(camera,
+                 self[camera,'z'].skyrms,self[camera,'z'].gain,
+                 self[camera,'z'].fwhm,self[camera,'z'].zpt)
+        self[camera,'z'].set('psfdepth', D.get_depth_legacy_zpts('psf',func_neff=NeffFormulas().neff_empirical))
+        self[camera,'z'].set('galdepth', D.get_depth_legacy_zpts('gal',func_neff=NeffFormulas().neff_empirical))
+
+
+class NeffFormulas(object):
+    def neff_15(self,seeing,rhalf=0.45,pix=0.262):
+	    return 4*np.pi*seeing**2 + 8.91*rhalf**2 + pix**2/12
+
+    def neff_empirical(self,seeing,camera,psf_or_gal):
+        """Correction for Neff estimator"""
+        if psf_or_gal == 'psf':
+            rhalf=0
+            if camera == 'decam':
+                slope= 1.23
+                yint= 9.43
+            elif camera == 'mosaic':
+                slope= 1.41
+                yint= 1.58
+        elif psf_or_gal == 'gal':
+            rhalf=0.45
+            if camera == 'decam':
+                slope= 1.24
+                yint= 45.86
+            elif camera == 'mosaic':
+                slope= 1.48
+                yint= 35.78
+        return slope * self.neff_15(seeing,rhalf=rhalf) + yint
+
+class LeastSquares(object):
+    # Least Squares: Bevington & Robinson
+    def Delta(self,xi,sig):
+        return sum(1/sig**2)*sum(xi**2/sig**2) - sum(xi/sig**2)**2
+
+    def get_yint(self,xi,yi,sig):
+        a= sum(xi**2/sig**2)*sum(yi/sig**2) - sum(xi/sig**2)*sum(xi*yi/sig**2)
+        return a/self.Delta(xi,sig)
+
+    def get_slope(self,xi,yi,sig):
+        b= sum(1./sig**2)*sum(xi*yi/sig**2) - sum(xi/sig**2)*sum(yi/sig**2)
+        return b/self.Delta(xi,sig)
+
+def getrms(x):
+    return np.sqrt( np.mean( np.power(x,2) ) )
+
+
+class NeffPlots(object):
+    def __init__(self):
+        self.cam2color=dict(decam='g',mosaic='m',bass='r')
+        self.which2shape=dict(psf='o',gal='s')
+        self.rhalf=dict(psf=0., gal=0.45)
+        self.pix=dict(decam=0.262,mosaic=0.26,bass=0.455)
+
+    def neff(self,M):
+        """M:  MatchedAnnotZpt() object"""
+        # PSF Neff vs. 1/norm^2
+        offsets=[0,100,200,300,400,500]
+        i=-1
+        for camera in M.cameras:
+            for which in ['psf','gal']:
+                i+=1
+                color= self.cam2color[camera]
+                offset= offsets[i]
+                seeing= M[camera,'z'].fwhm/2.35
+                x=NeffFormulas().neff_15(seeing,rhalf=self.rhalf[which],pix=self.pix[camera])
+                y=1./M[camera,'a'].get('%snorm_mean' % which)**2
+                keep=abs(x-y) < 100
+                print('%s,%s: removing percent of outliers=%f' % (camera,which,np.where(keep == False)[0].size / float(len(x))))
+                plt.scatter(x[keep]+offset,y[keep], c=color,edgecolors='none',marker=self.which2shape[which],s=10,rasterized=True,alpha=0.75)
+                slope= LeastSquares().get_slope(x[keep],y[keep],np.ones(len(y[keep])))
+                yint= LeastSquares().get_yint(x[keep],y[keep],np.ones(len(y[keep])))
+                # rms,q7525
+                diff= y[keep] - yint-slope*x[keep]
+                rms= getrms(diff)
+                x2=np.linspace(0,700) 
+                lab= '%s,%s: y=%.2fx+%.1f; RMS=%.1f' % (camera,which,slope,yint,rms)
+                plt.plot(x2+offset,slope*x2+yint,color,ls='dashed',lw=2,label=lab)
+        # Label
+        leg=plt.legend(loc=(0.,1.02),ncol=2,fontsize=10)
+        plt.xlim(0,900);plt.ylim(0,700)
+        xlab=plt.xlabel('Neff (Estimator) + offset')
+        ylab=plt.ylabel('Neff (Truth)') #'1/{psf,gal}norm_mean^2')
+        savefn= 'neff_plot.png'
+        plt.savefig(savefn,bbox_extra_artists=[leg,xlab,ylab], bbox_inches='tight',dpi=150)
+        print('Wrote %s' % savefn)
+        plt.close()
+
+    def depth(self,M):
+        # All keys and any ylims to use
+        xlim= (20,28)
+        ylim= (20,25)
+        # Plot
+        FS=14
+        eFS=FS+5
+        tickFS=FS
+        fig,ax= plt.subplots(figsize=(7,5))
+        offsets=[0,1,2,3,4,5]
+        i=-1
+        for camera in M.cameras:
+            for which in ['psf','gal']:
+                i+=1
+                color= self.cam2color[camera]
+                offset= offsets[i]
+                col= which+'depth'
+                x= M[camera,'a'].get(col)
+                y= M[camera,'z'].get(col)
+                rms= getrms(x-y)
+                myscatter(ax,x + offset,y,
+                          color=color,m=self.which2shape[which],s=10.,alpha=0.75,
+                          label='%s,%s: RMS=%.2f' % (camera,which,rms))
+                ax.plot(np.array(xlim)+ offset,xlim,c=color,ls='--',lw=2)
+        # Legend
+        leg=ax.legend(loc=(0.,1.02),ncol=2,markerscale=3,fontsize=FS-2)
+        # Label
+        xlab=ax.set_xlabel('Depth (Annotated CCDs) + Offset',fontsize=FS)
+        ylab=ax.set_ylabel('Depth (Legacy Zeropoints)',fontsize=FS)
+        ax.tick_params(axis='both', labelsize=tickFS)
+        if ylim:
+            ax.set_ylim(ylim)
+        if xlim:
+            ax.set_xlim(xlim)
+        savefn='depth_plot.png'
+        plt.savefig(savefn, bbox_extra_artists=[leg,xlab,ylab], bbox_inches='tight')
+        plt.close()
+        print("wrote %s" % savefn)
+
+
+
+
+
 if __name__ == '__main__':
     import argparse
     parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter,\
                             description='Generate a legacypipe-compatible CCDs file \
                                         from a set of reduced imaging.')
-    parser.add_argument('--decam',action='store',default=None,help='path to decam zpt table',required=False)
-    parser.add_argument('--mosaic',action='store',default=None,help='path to mosaic zpt table',required=False)
-    parser.add_argument('--bass',action='store',default=None,help='path to 90prime zpt table',required=False)
+    parser.add_argument('--figs',type=str,choices=["1-8,11","9-10"],help='legacyzpts "zpt" ccd file',required=False)
+    parser.add_argument('--decam',type=str,default=None,help='legacyzpts "zpt" ccd file',required=False)
+    parser.add_argument('--decam_ann',type=str,default=None,help='annotated ccd file',required=False)
+    parser.add_argument('--mosaic',type=str,default=None,required=False)
+    parser.add_argument('--mosaic_ann',type=str,default=None,required=False)
+    parser.add_argument('--bass',type=str,default=None,required=False)
+    parser.add_argument('--bass_ann',type=str,default=None,required=False)
     args = parser.parse_args()
 
-    #fns['decam_l']= '/global/cscratch1/sd/kaylanb/test/legacypipe/py/survey-ccds-decam44k.fits.gz'
-    #fns['mosaic_l']= '/global/cscratch1/sd/kaylanb/test/legacypipe/py/survey-ccds-mosaic42k.fits.gz'
-    a= ZeropointHistograms(decam=args.decam,
-                           mosaic=args.mosaic,
-                           bass=args.bass)
-    a.plot()
+    if args.figs == "1-8,11":
+        Z= ZeropointHistograms(decam=args.decam,
+                               mosaic=args.mosaic,
+                               bass=args.bass)
+        Z.plot()
+    if args.figs == "9-10": 
+        M= MatchedAnnotZpt(args)
+
+        NeffPlots().neff(M)
+
+        for camera in M.cameras:
+            M.add_corrected_depth(camera)
+        NeffPlots().depth(M)
+
