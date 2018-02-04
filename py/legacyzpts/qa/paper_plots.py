@@ -874,42 +874,41 @@ class ZptsTneed(object):
 
 
 class MatchedAnnotZpt(object):
-    def __init__(self,args):
+    def __init__(self,decam=None,decam_ann=None,
+                      mosaic=None,mosaic_ann=None,
+                      bass=None,bass_ann=None):
+        """"decam,decam_ann,...: file name of fits tables"""
+        self.decam= decam
+        self.decam_ann= decam_ann
+        self.mosaic= mosaic
+        self.mosaic_ann= mosaic_ann
+        self.bass= bass
+        self.bass_ann= bass_ann
         self.T= defaultdict(dict)
-        self.cameras=[]
-        if args.decam:
-            self.cameras.append('decam')
-            if os.path.exists(self.savefn(args.decam)):
-                self.T['decam']['z']= fits_table(self.savefn(args.decam))
-                self.T['decam']['a']= fits_table(self.savefn(args.decam_ann))
-            else:
-                self.T['decam']['z']= fits_table(args.decam)
-                self.T['decam']['a']= fits_table(args.decam_ann)
-                self.match('decam')
-                self.T['decam']['z'].writeto(self.savefn(args.decam))
-                self.T['decam']['a'].writeto(self.savefn(args.decam_ann))
-        if args.mosaic:
-            self.cameras.append('mosaic')
-            if os.path.exists(self.savefn(args.mosaic)):
-                self.T['mosaic']['z']= fits_table(self.savefn(args.mosaic))
-                self.T['mosaic']['a']= fits_table(self.savefn(args.mosaic_ann))
-            else:
-                self.T['mosaic']['z']= fits_table(args.mosaic)
-                self.T['mosaic']['a']= fits_table(args.mosaic_ann)
-                self.match('mosaic')
-                self.T['mosaic']['z'].writeto(self.savefn(args.mosaic))
-                self.T['mosaic']['a'].writeto(self.savefn(args.mosaic_ann))
-        if args.bass:
-            self.cameras.append('bass')
-            if os.path.exists(self.savefn(args.bass)):
-                self.T['bass']['z']= fits_table(self.savefn(args.bass))
-                self.T['bass']['a']= fits_table(self.savefn(args.bass_ann))
-            else:
-                self.T['bass']['z']= fits_table(args.bass)
-                self.T['bass']['a']= fits_table(args.bass_ann)
-                self.match('bass')
-                self.T['bass']['z'].writeto(self.savefn(args.bass))
-                self.T['bass']['a'].writeto(self.savefn(args.bass_ann))
+        self.cameras= []
+        for camera in CAMERAS:
+            if getattr(self,camera):
+                self.cameras.append(camera)
+                if os.path.exists(self.savefn(getattr(self,camera))):
+                    self.T[camera]['z']= fits_table(self.savefn(getattr(self,camera)))
+                    self.T[camera]['a']= fits_table(self.savefn(getattr(self,camera+"_ann")))
+                else:
+                    self.T[camera]['z']= fits_table(getattr(self,camera))
+                    self.T[camera]['a']= fits_table(getattr(self,camera+"_ann"))
+                    self.match(camera)
+                    self.T[camera]['z'].writeto(self.savefn(getattr(self,camera)))
+                    self.T[camera]['a'].writeto(self.savefn(getattr(self,camera+"_ann")))
+#        if args.mosaic:
+#            self.cameras.append('mosaic')
+#            if os.path.exists(self.savefn(args.mosaic)):
+#                self.T['mosaic']['z']= fits_table(self.savefn(args.mosaic))
+#                self.T['mosaic']['a']= fits_table(self.savefn(args.mosaic_ann))
+#            else:
+#                self.T['mosaic']['z']= fits_table(args.mosaic)
+#                self.T['mosaic']['a']= fits_table(args.mosaic_ann)
+#                self.match('mosaic')
+#                self.T['mosaic']['z'].writeto(self.savefn(args.mosaic))
+#                self.T['mosaic']['a'].writeto(self.savefn(args.mosaic_ann))
 
     def __getitem__(self,tup):
         """z_or_a is zpt or annotated"""
@@ -1016,17 +1015,33 @@ class NeffFormulas(object):
         return slope * self.neff_15(seeing,rhalf=rhalf) + yint
 
 class LeastSquares(object):
-    # Least Squares: Bevington & Robinson
-    def Delta(self,xi,sig):
-        return sum(1/sig**2)*sum(xi**2/sig**2) - sum(xi/sig**2)**2
-
-    def get_yint(self,xi,yi,sig):
-        a= sum(xi**2/sig**2)*sum(yi/sig**2) - sum(xi/sig**2)*sum(xi*yi/sig**2)
-        return a/self.Delta(xi,sig)
-
-    def get_slope(self,xi,yi,sig):
-        b= sum(1./sig**2)*sum(xi*yi/sig**2) - sum(xi/sig**2)*sum(yi/sig**2)
-        return b/self.Delta(xi,sig)
+    def __init__(self,x,y,yerr):
+        self.sum_inv_yerr2= np.sum(1/yerr**2)
+        self.sum_y_inv_yerr2= np.sum(y/yerr**2)
+        self.sum_x_inv_yerr2= np.sum(x/yerr**2)
+        self.sum_xy_inv_yerr2= np.sum(x*y/yerr**2)
+        self.sum_x2_inv_yerr2= np.sum(x**2/yerr**2)
+        self.delta= self.sum_inv_yerr2 * self.sum_x2_inv_yerr2 - self.sum_x_inv_yerr2**2
+        
+    def estim(self):
+        return dict(slope=self.slope(),
+                    inter=self.inter(),
+                    s_err=self.err_slope(),
+                    i_err=self.err_inter())
+    
+    def slope(self):
+        return 1/self.delta * (self.sum_inv_yerr2*self.sum_xy_inv_yerr2 - \
+                               self.sum_x_inv_yerr2 * self.sum_y_inv_yerr2)
+    
+    def inter(self):
+        return 1/self.delta * (self.sum_x2_inv_yerr2*self.sum_y_inv_yerr2 - \
+                               self.sum_x_inv_yerr2 * self.sum_xy_inv_yerr2)
+    
+    def err_slope(self):
+        return 1/self.delta * self.sum_inv_yerr2
+    
+    def err_inter(self):
+        return 1/self.delta * self.sum_x2_inv_yerr2
 
 def getrms(x):
     return np.sqrt( np.mean( np.power(x,2) ) )
@@ -1038,9 +1053,50 @@ class NeffPlots(object):
         self.which2shape=dict(psf='o',gal='s')
         self.rhalf=dict(psf=0., gal=0.45)
         self.pix=dict(decam=0.262,mosaic=0.26,bass=0.455)
+        self.params= defaultdict(dict)
 
-    def neff(self,M):
+    def neff(self,M,which='residual'):
         """M:  MatchedAnnotZpt() object"""
+        assert(which in ['residual_v_truth','truth_v_model']) 
+        if which == 'residual_v_truth':
+            self.neff_residual_v_truth(M)
+        elif which == 'truth_v_model':
+            self.neff_fit_and_plot(M)  
+
+    def neff_residual_v_truth(self,M):
+        # best fit computed elsewhere
+        if not self.params:
+            self.neff_fit_and_plot(M)
+        # PSF Neff vs. 1/norm^2
+        offsets=np.arange(0,500,100)
+        i=-1
+        for camera in M.cameras:
+            for which in ['psf','gal']:
+                i+=1
+                color= self.cam2color[camera]
+                offset= offsets[i]
+                seeing= M[camera,'z'].fwhm/2.35
+                y=1./M[camera,'a'].get('%snorm_mean' % which)**2
+                model=NeffFormulas().neff_15(seeing,rhalf=self.rhalf[which],pix=self.pix[camera])
+                model=self.params[camera][which]['slope']*model + self.params[camera][which]['inter']
+                plt.scatter(y,y-model+offset, c=color,edgecolors='none',marker=self.which2shape[which],s=10,rasterized=True,alpha=0.75,label='%s (%s)' % (camera,which))
+                # rms,q7525
+                rms= getrms(y-model)
+                #x2=np.linspace(0,700) 
+                lab= '%s,%s: y=%.2fx+%.1f; RMS=%.1f' % (camera,which,self.params[camera][which]['slope'],self.params[camera][which]['inter'],rms)
+                plt.axhline(offset,c='k',ls='dashed',lw=2)
+        # Label
+        plt.legend(loc='upper right',ncol=1,fontsize=10,markerscale=3)
+        #plt.xlim(0,900);plt.ylim(0,700)
+        xlab=plt.xlabel('Neff (Truth)')
+        ylab=plt.ylabel('Residual (truth-model)') #'1/{psf,gal}norm_mean^2')
+        savefn= 'neff_residual.png'
+        plt.savefig(savefn,bbox_extra_artists=[xlab,ylab], bbox_inches='tight',dpi=150)
+        print('Wrote %s' % savefn)
+        plt.close()
+
+
+    def neff_fit_and_plot(self,M):
         # PSF Neff vs. 1/norm^2
         offsets=[0,100,200,300,400,500]
         i=-1
@@ -1052,17 +1108,18 @@ class NeffPlots(object):
                 seeing= M[camera,'z'].fwhm/2.35
                 x=NeffFormulas().neff_15(seeing,rhalf=self.rhalf[which],pix=self.pix[camera])
                 y=1./M[camera,'a'].get('%snorm_mean' % which)**2
-                keep=abs(x-y) < 100
+                #keep=abs(x-y) < 100
+                keep= np.ones(len(x),dtype=bool)
                 print('%s,%s: removing percent of outliers=%f' % (camera,which,np.where(keep == False)[0].size / float(len(x))))
                 plt.scatter(x[keep]+offset,y[keep], c=color,edgecolors='none',marker=self.which2shape[which],s=10,rasterized=True,alpha=0.75)
-                slope= LeastSquares().get_slope(x[keep],y[keep],np.ones(len(y[keep])))
-                yint= LeastSquares().get_yint(x[keep],y[keep],np.ones(len(y[keep])))
+                self.params[camera][which]= LeastSquares(x[keep],y[keep],
+                                                         np.ones(len(y[keep]))).estim()
                 # rms,q7525
-                diff= y[keep] - yint-slope*x[keep]
+                diff= y[keep] - self.params[camera][which]['inter']-self.params[camera][which]['slope']*x[keep]
                 rms= getrms(diff)
                 x2=np.linspace(0,700) 
-                lab= '%s,%s: y=%.2fx+%.1f; RMS=%.1f' % (camera,which,slope,yint,rms)
-                plt.plot(x2+offset,slope*x2+yint,color,ls='dashed',lw=2,label=lab)
+                lab= '%s,%s: y=%.2fx+%.1f; RMS=%.1f' % (camera,which,self.params[camera][which]['slope'],self.params[camera][which]['inter'],rms)
+                plt.plot(x2+offset,self.params[camera][which]['slope']*x2+self.params[camera][which]['inter'],color,ls='dashed',lw=2,label=lab)
         # Label
         leg=plt.legend(loc=(0.,1.02),ncol=2,fontsize=10)
         plt.xlim(0,900);plt.ylim(0,700)
@@ -1073,16 +1130,15 @@ class NeffPlots(object):
         print('Wrote %s' % savefn)
         plt.close()
 
-    def depth(self,M):
+    def depth_residual(self,M):
         # All keys and any ylims to use
-        xlim= (20,28)
-        ylim= (20,25)
+        xlim,ylim= (20,25),None
+        offsets=np.arange(0,5,1)
         # Plot
         FS=14
         eFS=FS+5
         tickFS=FS
         fig,ax= plt.subplots(figsize=(7,5))
-        offsets=[0,1,2,3,4,5]
         i=-1
         for camera in M.cameras:
             for which in ['psf','gal']:
@@ -1090,25 +1146,25 @@ class NeffPlots(object):
                 color= self.cam2color[camera]
                 offset= offsets[i]
                 col= which+'depth'
-                x= M[camera,'a'].get(col)
-                y= M[camera,'z'].get(col)
-                rms= getrms(x-y)
-                myscatter(ax,x + offset,y,
+                y= M[camera,'a'].get(col)
+                model= M[camera,'z'].get(col)
+                rms= getrms(y-model)
+                myscatter(ax,y,y-model+offset,
                           color=color,m=self.which2shape[which],s=10.,alpha=0.75,
-                          label='%s,%s: RMS=%.2f' % (camera,which,rms))
-                ax.plot(np.array(xlim)+ offset,xlim,c=color,ls='--',lw=2)
+                          label='%s (%s)' % (camera,which))
+                ax.axhline(offset,c='k',ls='--',lw=2)
         # Legend
-        leg=ax.legend(loc=(0.,1.02),ncol=2,markerscale=3,fontsize=FS-2)
+        ax.legend(loc='upper right',ncol=1,markerscale=3,fontsize=FS-2)
         # Label
-        xlab=ax.set_xlabel('Depth (Annotated CCDs) + Offset',fontsize=FS)
-        ylab=ax.set_ylabel('Depth (Legacy Zeropoints)',fontsize=FS)
+        xlab=ax.set_xlabel('Depth (truth)',fontsize=FS)
+        ylab=ax.set_ylabel('Residual (truth - model)',fontsize=FS)
         ax.tick_params(axis='both', labelsize=tickFS)
         if ylim:
             ax.set_ylim(ylim)
         if xlim:
             ax.set_xlim(xlim)
-        savefn='depth_plot.png'
-        plt.savefig(savefn, bbox_extra_artists=[leg,xlab,ylab], bbox_inches='tight')
+        savefn='depth_residual.png'
+        plt.savefig(savefn, bbox_extra_artists=[xlab,ylab], bbox_inches='tight')
         plt.close()
         print("wrote %s" % savefn)
 
@@ -1135,12 +1191,15 @@ if __name__ == '__main__':
                                mosaic=args.mosaic,
                                bass=args.bass)
         Z.plot()
-    if args.figs == "9-10": 
-        M= MatchedAnnotZpt(args)
+    if args.figs == "9-10":
+        kwargs= vars(args)
+        del kwargs['figs'] 
+        M= MatchedAnnotZpt(**kwargs)
 
-        NeffPlots().neff(M)
+        NeffPlots().neff(M,'truth_v_model')
+        NeffPlots().neff(M,'residual_v_truth')
 
         for camera in M.cameras:
             M.add_corrected_depth(camera)
-        NeffPlots().depth(M)
+        NeffPlots().depth_residual(M)
 
