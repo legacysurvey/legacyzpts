@@ -62,10 +62,10 @@ def myannot(ax,xarr,yarr,sarr, ha='left',va='bottom',fontsize=20):
         ax.annotate(s,xy=(x,y),xytext=(x,y),
                     horizontalalignment=ha,verticalalignment=va,fontsize=fontsize)
 
-def mytext(ax,x,y,text, ha='left',va='center',fontsize=20):
+def mytext(ax,x,y,text, ha='left',va='center',fontsize=20,rotation=0):
     '''adds text in x,y units of fraction axis'''
     ax.text(x,y,text, horizontalalignment=ha,verticalalignment=va,
-            transform=ax.transAxes,fontsize=fontsize)
+            transform=ax.transAxes,fontsize=fontsize,rotation=rotation)
 
 
 def myerrorbar(ax,x,y, yerr=None,xerr=None,color='b',ls='none',m='o',s=10.,mew=1,alpha=0.75,label=None):
@@ -115,16 +115,15 @@ class Depth(object):
 
     def sigma_legacy_zpts(self,func_neff=None):
         if func_neff:
-            neff= func_neff(self.fwhm/2.35, camera,self.which)
+            neff= func_neff(self.fwhm/2.35, self.camera,self.which)
         else:
             if self.which == 'psf':
                 rhalf=0
             else:
-                rhlaf=0.45
+                rhalf=0.45
             neff= NeffFormulas().neff_15(self.fwhm/2.35,rhalf=rhalf)
         return self.skyrms *np.sqrt(neff)
 
-   
 
 class DepthRequirements(object):
     def __init__(self):
@@ -898,17 +897,6 @@ class MatchedAnnotZpt(object):
                     self.match(camera)
                     self.T[camera]['z'].writeto(self.savefn(getattr(self,camera)))
                     self.T[camera]['a'].writeto(self.savefn(getattr(self,camera+"_ann")))
-#        if args.mosaic:
-#            self.cameras.append('mosaic')
-#            if os.path.exists(self.savefn(args.mosaic)):
-#                self.T['mosaic']['z']= fits_table(self.savefn(args.mosaic))
-#                self.T['mosaic']['a']= fits_table(self.savefn(args.mosaic_ann))
-#            else:
-#                self.T['mosaic']['z']= fits_table(args.mosaic)
-#                self.T['mosaic']['a']= fits_table(args.mosaic_ann)
-#                self.match('mosaic')
-#                self.T['mosaic']['z'].writeto(self.savefn(args.mosaic))
-#                self.T['mosaic']['a'].writeto(self.savefn(args.mosaic_ann))
 
     def __getitem__(self,tup):
         """z_or_a is zpt or annotated"""
@@ -918,9 +906,8 @@ class MatchedAnnotZpt(object):
     def match(self,camera):
         self.clean(camera)
         self.rename_cols(camera)
-        print(camera,'before expid',len(self[camera,'a']))
+        self.add_corrected_depth(camera)
         self.same_expid(camera)
-        print(camera,'after expid',len(self[camera,'a']))
         self.drop_duplicates(camera)
         self.row_matched(camera)
 
@@ -986,8 +973,20 @@ class MatchedAnnotZpt(object):
         D= Depth(camera,
                  self[camera,'z'].skyrms,self[camera,'z'].gain,
                  self[camera,'z'].fwhm,self[camera,'z'].zpt)
+        # Neff corrected
         self[camera,'z'].set('psfdepth', D.get_depth_legacy_zpts('psf',func_neff=NeffFormulas().neff_empirical))
         self[camera,'z'].set('galdepth', D.get_depth_legacy_zpts('gal',func_neff=NeffFormulas().neff_empirical))
+        # Neff default formula
+        self[camera,'z'].set('psfdepth_uncorr', D.get_depth_legacy_zpts('psf',func_neff=None))
+        self[camera,'z'].set('galdepth_uncorr', D.get_depth_legacy_zpts('gal',func_neff=None))
+        for name in ['psf','gal']:
+            self[camera,'a'].set('%sdepth_uncorr' % name, self[camera,'a'].get('%sdepth' % name))
+        # Can induce Nans
+        keep= ((np.isfinite(self[camera,'z'].galdepth)) &
+               (np.isfinite(self[camera,'z'].psfdepth)))
+        self[camera,'z'].cut(keep)
+        print('After add depth, %s non-Nan remaining %d/%d' % (camera,len(self[camera,'z']),len(keep)))
+
 
 
 class NeffFormulas(object):
@@ -999,19 +998,19 @@ class NeffFormulas(object):
         if psf_or_gal == 'psf':
             rhalf=0
             if camera == 'decam':
-                slope= 1.23
-                yint= 9.43
+                slope= 1.29
+                yint= 6.8
             elif camera == 'mosaic':
-                slope= 1.41
-                yint= 1.58
+                slope= 1.33
+                yint= 2.6
         elif psf_or_gal == 'gal':
             rhalf=0.45
             if camera == 'decam':
-                slope= 1.24
-                yint= 45.86
+                slope= 1.31
+                yint= 42.6
             elif camera == 'mosaic':
-                slope= 1.48
-                yint= 35.78
+                slope= 1.36
+                yint= 37.6
         return slope * self.neff_15(seeing,rhalf=rhalf) + yint
 
 class LeastSquares(object):
@@ -1046,6 +1045,17 @@ class LeastSquares(object):
 def getrms(x):
     return np.sqrt( np.mean( np.power(x,2) ) )
 
+def firstcap(text):
+    return "%s%s" % (text[0].upper(),text[1:].lower())
+
+def get_q25(x):
+    return np.percentile(x,q=25)
+
+def get_q50(x):
+    return np.percentile(x,q=50)
+
+def get_q75(x):
+    return np.percentile(x,q=75)
 
 class NeffPlots(object):
     def __init__(self):
@@ -1130,40 +1140,54 @@ class NeffPlots(object):
         print('Wrote %s' % savefn)
         plt.close()
 
-    def depth_residual(self,M):
-        # All keys and any ylims to use
-        xlim,ylim= (20,25),None
-        offsets=np.arange(0,5,1)
-        # Plot
+    def depth_residual(self,M,which='gal'):
+        gridsize=dict(g=(20,20),r=(25,8),z=30)
+        
         FS=14
         eFS=FS+5
         tickFS=FS
-        fig,ax= plt.subplots(figsize=(7,5))
+
+        fig,axes= plt.subplots(2,2,figsize=(8,4))
+        ax= axes.flatten()
+        plt.subplots_adjust(hspace=0.25,wspace=0.05)
+        
+        hb= defaultdict(dict)
         i=-1
-        for camera in M.cameras:
-            for which in ['psf','gal']:
-                i+=1
-                color= self.cam2color[camera]
-                offset= offsets[i]
-                col= which+'depth'
-                y= M[camera,'a'].get(col)
-                model= M[camera,'z'].get(col)
-                rms= getrms(y-model)
-                myscatter(ax,y,y-model+offset,
-                          color=color,m=self.which2shape[which],s=10.,alpha=0.75,
-                          label='%s (%s)' % (camera,which))
-                ax.axhline(offset,c='k',ls='--',lw=2)
-        # Legend
-        ax.legend(loc='upper right',ncol=1,markerscale=3,fontsize=FS-2)
+        for camera,band in [('decam','g'),('decam','r'),('decam','z'),
+                            ('mosaic','z')]:
+            i+=1
+            color= self.cam2color[camera]
+            key= which+'depth'
+            keep= M[camera,'a'].filter == band
+            if len(M[camera,'a'][keep]) > 0:
+                y= M[camera,'a'].get(key)[keep]
+                model= M[camera,'z'].get(key)[keep]
+                hb[i] = ax[i].hexbin(y,y-model, gridsize=gridsize[band],
+                                     cmap='gray_r',bins='log') #vmin=0,vmax=vmax[camera],
+                ax[i].axhline(0,c='r',ls='--')
+                mytext(ax[i],0.65,0.1,"%s (%s)" % (camera,band), 
+                       ha='left',va='center',fontsize=FS)
+
+                # percentile lines
+                new= pd.DataFrame(dict(y=y,model=model))
+                new['diff']= new['y'] - new['model']
+                new['bins']= pd.cut(new['y'],bins=15)
+                a= new.groupby('bins').agg([get_q25,get_q50,get_q75])
+                binc= a.index.categories.mid
+                ax[i].plot(binc,a['diff']['get_q25'],'b-')
+                ax[i].plot(binc,a['diff']['get_q50'],'b-')
+                ax[i].plot(binc,a['diff']['get_q75'],'b-')
+                ax[i].set_ylim(-0.15,0.15)
+            
         # Label
-        xlab=ax.set_xlabel('Depth (truth)',fontsize=FS)
-        ylab=ax.set_ylabel('Residual (truth - model)',fontsize=FS)
-        ax.tick_params(axis='both', labelsize=tickFS)
-        if ylim:
-            ax.set_ylim(ylim)
-        if xlim:
-            ax.set_xlim(xlim)
-        savefn='depth_residual.png'
+        for i in [2,3]:
+            xlab=ax[i].set_xlabel('%s (truth)' % firstcap(which+'depth'),fontsize=FS)
+        ylab=ax[2].set_ylabel('h')        
+        mytext(ax[2],-0.21,1.1,'%s Residual\n(truth - model)' % firstcap(which+'depth'),
+               ha='center',va='center',fontsize=FS,rotation=90)
+        for i in [1,3]:
+            ax[i].yaxis.set_ticklabels([])
+        savefn='%sdepth_residual.png' % which
         plt.savefig(savefn, bbox_extra_artists=[xlab,ylab], bbox_inches='tight')
         plt.close()
         print("wrote %s" % savefn)
@@ -1199,7 +1223,6 @@ if __name__ == '__main__':
         NeffPlots().neff(M,'truth_v_model')
         NeffPlots().neff(M,'residual_v_truth')
 
-        for camera in M.cameras:
-            M.add_corrected_depth(camera)
-        NeffPlots().depth_residual(M)
+        for which in ['gal','psf']:
+            NeffPlots().depth_residual(M,which)
 
