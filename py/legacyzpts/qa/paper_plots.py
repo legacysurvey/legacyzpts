@@ -24,6 +24,23 @@ from legacyzpts.qa.params import band2color,col2plotname
 CAMERAS=['decam','mosaic','bass']
 mygray='0.6'
 
+def myhist2D(ax,x,y,xlim=(),ylim=(),nbins=()):
+    #http://www.astroml.org/book_figures/chapter1/fig_S82_hess.html
+    H, xbins, ybins = np.histogram2d(x,y,
+                                     bins=(np.linspace(xlim[0],xlim[1],nbins[0]),
+                                           np.linspace(ylim[0],ylim[1],nbins[1])))
+    # Create a black and white color map where bad data (NaNs) are white
+    cmap = plt.cm.binary
+    cmap.set_bad('w', 1.)
+    
+    H[H == 0] = 1  # prevent warnings in log10
+    ax.imshow(np.log10(H).T, origin='lower',
+              extent=[xbins[0], xbins[-1], ybins[0], ybins[-1]],
+              cmap=cmap, interpolation='nearest',
+              aspect='auto')
+    ax.set_xlim(xlim)
+    ax.set_ylim(ylim)
+
 def myhist(ax,data,bins=20,color='b',normed=False,ls='-',label=None):
     if label:
         _=ax.hist(data,bins=bins,facecolor=color,normed=normed,
@@ -42,7 +59,6 @@ def myhist_step(ax,data,bins=20,color='b',normed=False,lw=2,ls='solid',label=Non
                   histtype='step',lw=lw,ls=ls)
     if return_vals:
         return h,bins
-
 
 def myscatter(ax,x,y, color='b',m='o',s=10.,alpha=0.75,label=None):
     if label is None or label == 'None':
@@ -523,8 +539,10 @@ class ZeropointHistograms(object):
         return d.get(col,None)
 
     def seaborn_contours(self,x_key='raoff',y_key='decoff'):
-        import seaborn as sns
-        fig,ax= plt.subplots(2,3,figsize=(8,6))
+        #import seaborn as sns
+        nbins=dict(decam=(40,40),mosaic=(40,40))
+
+        fig,ax= plt.subplots(2,2,figsize=(8,6))
         plt.subplots_adjust(hspace=0.1,wspace=0)
         # decam
         if self.decam:
@@ -532,51 +550,51 @@ class ZeropointHistograms(object):
             for band,cmap,col in zip('grz',['Greens_d','Reds_d','Blues_d'],
                                      [0,1,2]): #set(z.decam.filter):
                 keep= self.decam.filter == band
-                sns.kdeplot(x[keep], y[keep], ax=ax[0,col],
-                            cmap=cmap, shade=False, shade_lowest=False)
+                #sns.kdeplot(x[keep], y[keep], ax=ax[0,col],
+                #            cmap=cmap, shade=False, shade_lowest=False)
+                if self.get_lim(x_key):
+                    xlim= self.get_lim(x_key)
+                    if xlim.__class__() == {}:
+                        xlim= xlim['mosaic']
+                if self.get_lim(y_key):
+                    ylim= self.get_lim(y_key)
+                    if ylim.__class__() == {}:
+                        ylim= ylim['mosaic']
+                myhist2D(ax[0,col],x[keep],y[keep],
+                         xlim=xlim,ylim=ylim,nbins=nbins['decam'])
                 ax[0,col].text(-0.2,0.05,'%s (decam)' % band, 
                                horizontalalignment='left',verticalalignment='center')
                 ax[0,col].text(0.15,0.05,'%d' % self.num_exp['decam_'+band], 
                                horizontalalignment='left',verticalalignment='center')
                                #transform=ax[1,row].transAxes)
-                if self.get_lim(x_key):
-                    xlim= self.get_lim(x_key)
-                    if xlim.__class__() == {}:
-                        xlim= xlim['decam']
-                    ax[0,col].set_xlim(xlim)
-                if self.get_lim(y_key):
-                    ylim= self.get_lim(y_key)
-                    if ylim.__class__() == {}:
-                        ylim= ylim['decam']
-                    ax[0,col].set_ylim(ylim)
         if self.mosaic:
             x,y= self.mosaic.get(x_key), self.mosaic.get(y_key)
             for band,cmap,col in zip('z',['Blues_d'],
                                      [2]): 
                 keep= self.mosaic.filter == band
-                sns.kdeplot(x[keep], y[keep], ax=ax[1,col],
-                            cmap=cmap, shade=False)
+                #sns.kdeplot(x[keep], y[keep], ax=ax[1,col],
+                #            cmap=cmap, shade=False)
+                if self.get_lim(x_key):
+                    xlim= self.get_lim(x_key)
+                    if xlim.__class__() == {}:
+                        xlim= xlim['mosaic']
+                if self.get_lim(y_key):
+                    ylim= self.get_lim(y_key)
+                    if ylim.__class__() == {}:
+                        ylim= ylim['mosaic']
+                myhist2D(ax[0,col],x[keep],y[keep],
+                         xlim=xlim,ylim=ylim,nbins=nbins['mosaic'])
                 ax[1,col].text(0.1,0.8,'%s (mosaic)' % band, 
                                horizontalalignment='left',verticalalignment='center',
                                transform=ax[1,col].transAxes)
                 ax[1,col].text(0.75,0.8,'%d' % self.num_exp['mosaic_'+band], 
                                horizontalalignment='left',verticalalignment='center',
                                transform=ax[1,col].transAxes)
-                if self.get_lim(x_key):
-                    xlim= self.get_lim(x_key)
-                    if xlim.__class__() == {}:
-                        xlim= xlim['mosaic']
-                    ax[1,col].set_xlim(xlim)
-                if self.get_lim(y_key):
-                    ylim= self.get_lim(y_key)
-                    if ylim.__class__() == {}:
-                        ylim= ylim['mosaic']
-                    ax[1,col].set_ylim(ylim)
         # Crosshairs
         for row in range(2):
             for col in range(3):
-                ax[row,col].axhline(0,c='k',ls='dashed',lw=1)
-                ax[row,col].axvline(0,c='k',ls='dashed',lw=1)
+                ax[row,col].axhline(0,c='r',ls='--',lw=1)
+                ax[row,col].axvline(0,c='r',ls='--',lw=1)
         # Label
         for col in range(3):
             xlab=ax[1,col].set_xlabel(col2plotname(x_key)) #0.45'' galaxy
@@ -589,7 +607,7 @@ class ZeropointHistograms(object):
             for col in [1,2]:
                 ax[row,col].yaxis.set_ticklabels([])
 
-        savefn='seaborn_contours_%s_%s.png' % (x_key,y_key)
+        savefn='densitymap_%s_%s.png' % (x_key,y_key)
         plt.savefig(savefn, bbox_extra_artists=[xlab,ylab], bbox_inches='tight',dpi=150)
         print("wrote %s" % savefn)
 
@@ -1065,42 +1083,59 @@ class NeffPlots(object):
         self.pix=dict(decam=0.262,mosaic=0.26,bass=0.455)
         self.params= defaultdict(dict)
 
-    def neff(self,M,which='residual'):
+    def neff(self,M,which='residual',factor=1,alpha=0.5):
         """M:  MatchedAnnotZpt() object"""
         assert(which in ['residual_v_truth','truth_v_model']) 
         if which == 'residual_v_truth':
-            self.neff_residual_v_truth(M)
+            self.neff_residual_v_truth(M,factor=factor,alpha=alpha)
         elif which == 'truth_v_model':
             self.neff_fit_and_plot(M)  
 
-    def neff_residual_v_truth(self,M):
+    def neff_residual_v_truth(self,M,factor=1,alpha=0.5):
         # best fit computed elsewhere
         if not self.params:
             self.neff_fit_and_plot(M)
         # PSF Neff vs. 1/norm^2
-        offsets=np.arange(0,500,100)
+        #offsets=np.arange(0,500*factor/2,100*factor/2)
+        xlim=dict(decam=dict(psf=(20,150),gal=(50,200)),
+                  mosaic=dict(psf=(20,150),gal=(50,200)))
+        ylim=dict(decam=dict(psf=(-20,20),gal=(-20,20)),
+                  mosaic=dict(psf=(-20,20),gal=(-20,20)))
+        nbins= (40,40)
+        fig, ax = plt.subplots(2,2,figsize=(8, 6))
+        plt.subplots_adjust(hspace=0,wspace=0.1)
         i=-1
-        for camera in M.cameras:
-            for which in ['psf','gal']:
+        for row,camera in enumerate(M.cameras):
+            for col,which in enumerate(['psf','gal']):
                 i+=1
                 color= self.cam2color[camera]
-                offset= offsets[i]
+                #offset= offsets[i]
                 seeing= M[camera,'z'].fwhm/2.35
                 y=1./M[camera,'a'].get('%snorm_mean' % which)**2
                 model=NeffFormulas().neff_15(seeing,rhalf=self.rhalf[which],pix=self.pix[camera])
                 model=self.params[camera][which]['slope']*model + self.params[camera][which]['inter']
-                plt.scatter(y,y-model+offset, c=color,edgecolors='none',marker=self.which2shape[which],s=10,rasterized=True,alpha=0.75,label='%s (%s)' % (camera,which))
+                myhist2D(ax[row,col],y,y-model,
+                         xlim=xlim[camera][which],ylim=ylim[camera][which],nbins=nbins)
+                #plt.scatter(y,(y-model)*factor+offset, c=color,edgecolors='none',marker=self.which2shape[which],s=10,rasterized=True,alpha=alpha,label='%s (%s)' % (camera,which))
                 # rms,q7525
-                rms= getrms(y-model)
+                #rms= getrms(y-model)
                 #x2=np.linspace(0,700) 
-                lab= '%s,%s: y=%.2fx+%.1f; RMS=%.1f' % (camera,which,self.params[camera][which]['slope'],self.params[camera][which]['inter'],rms)
-                plt.axhline(offset,c='k',ls='dashed',lw=2)
+                ax[row,col].axhline(0,c='r',ls='dashed',lw=1)
+                mytext(ax[row,col],0.05,0.95,"%s, %s" % (camera,which), 
+                       ha='left',va='center',fontsize=12)
+                mytext(ax[row,col],0.05,0.88,r"($N_{eff} \approx %.2f \hat{N}_{eff} + %.1f$)" % \
+                        (self.params[camera][which]['slope'],self.params[camera][which]['inter']), 
+                       ha='left',va='center',fontsize=8)
         # Label
-        plt.legend(loc='upper right',ncol=1,fontsize=10,markerscale=3)
+        #plt.legend(loc='upper right',ncol=1,fontsize=10,markerscale=3)
         #plt.xlim(0,900);plt.ylim(0,700)
-        xlab=plt.xlabel('Neff (Truth)')
-        ylab=plt.ylabel('Residual (truth-model)') #'1/{psf,gal}norm_mean^2')
-        savefn= 'neff_residual.png'
+        for col in range(2):
+            xlab=ax[1,col].set_xlabel('Neff (Truth)')
+            ax[0,col].xaxis.set_ticklabels([])
+        for row in range(2):
+            ylab=ax[row,0].set_ylabel('Residual (truth-model)') #'1/{psf,gal}norm_mean^2')
+            ax[row,1].yaxis.set_ticklabels([])
+        savefn= 'neff_residual_factor%d.png' % factor
         plt.savefig(savefn,bbox_extra_artists=[xlab,ylab], bbox_inches='tight',dpi=150)
         print('Wrote %s' % savefn)
         plt.close()
@@ -1118,14 +1153,11 @@ class NeffPlots(object):
                 seeing= M[camera,'z'].fwhm/2.35
                 x=NeffFormulas().neff_15(seeing,rhalf=self.rhalf[which],pix=self.pix[camera])
                 y=1./M[camera,'a'].get('%snorm_mean' % which)**2
-                #keep=abs(x-y) < 100
-                keep= np.ones(len(x),dtype=bool)
-                print('%s,%s: removing percent of outliers=%f' % (camera,which,np.where(keep == False)[0].size / float(len(x))))
-                plt.scatter(x[keep]+offset,y[keep], c=color,edgecolors='none',marker=self.which2shape[which],s=10,rasterized=True,alpha=0.75)
-                self.params[camera][which]= LeastSquares(x[keep],y[keep],
-                                                         np.ones(len(y[keep]))).estim()
+                plt.scatter(x+offset,y, c=color,edgecolors='none',marker=self.which2shape[which],s=10,rasterized=True,alpha=0.75)
+                self.params[camera][which]= LeastSquares(x,y,
+                                                         np.ones(len(y))).estim()
                 # rms,q7525
-                diff= y[keep] - self.params[camera][which]['inter']-self.params[camera][which]['slope']*x[keep]
+                diff= y - self.params[camera][which]['inter']-self.params[camera][which]['slope']*x
                 rms= getrms(diff)
                 x2=np.linspace(0,700) 
                 lab= '%s,%s: y=%.2fx+%.1f; RMS=%.1f' % (camera,which,self.params[camera][which]['slope'],self.params[camera][which]['inter'],rms)
@@ -1141,50 +1173,64 @@ class NeffPlots(object):
         plt.close()
 
     def depth_residual(self,M,which='gal'):
-        gridsize=dict(g=(20,20),r=(25,8),z=30)
-        
         FS=14
         eFS=FS+5
         tickFS=FS
 
         fig,axes= plt.subplots(2,2,figsize=(8,4))
         ax= axes.flatten()
-        plt.subplots_adjust(hspace=0.25,wspace=0.05)
-        
-        hb= defaultdict(dict)
-        i=-1
-        for camera,band in [('decam','g'),('decam','r'),('decam','z'),
-                            ('mosaic','z')]:
-            i+=1
+        plt.subplots_adjust(hspace=0.2,wspace=0.1)
+       
+        if which == 'gal': 
+            xlim=dict(decam=dict(g=(23.,24.25),r=(22.5,23.75),z=(21.,22.75)),
+                      mosaic=dict(z=(21.,22.75)))
+            nbins=dict(decam=dict(g=(20,15),r=(20,15),z=(20,15)),
+                       mosaic=dict(z=(40,30)))
+            ylim=(-0.15,0.15)
+        else:
+            xlim=dict(decam=dict(g=(23.,24.5),r=(22.75,24.1),z=(21,23.25)),
+                      mosaic=dict(z=(21,23.25)))
+            nbins=dict(decam=dict(g=(20,15),r=(20,15),z=(20,15)),
+                       mosaic=dict(z=(40,30)))
+            ylim=(-0.15,0.15)
+        #gridsize=dict(g=(20,20),r=(25,8),z=30)
+        #hb= defaultdict(dict)
+
+        dreq= DepthRequirements() 
+
+        for i,camera,band in [(0,'decam','g'),(1,'decam','r'),
+                              (2,'decam','z'),(3,'mosaic','z')]:
             color= self.cam2color[camera]
             key= which+'depth'
             keep= M[camera,'a'].filter == band
             if len(M[camera,'a'][keep]) > 0:
                 y= M[camera,'a'].get(key)[keep]
                 model= M[camera,'z'].get(key)[keep]
-                hb[i] = ax[i].hexbin(y,y-model, gridsize=gridsize[band],
-                                     cmap='gray_r',bins='log') #vmin=0,vmax=vmax[camera],
+                myhist2D(ax[i],y,y-model,
+                         xlim=xlim[camera][band],ylim=ylim,nbins=nbins[camera][band])
+                #hb[i] = ax[i].hexbin(y,y-model, gridsize=gridsize[band],
+                #                     cmap='gray_r',bins='log') #vmin=0,vmax=vmax[camera],
                 ax[i].axhline(0,c='r',ls='--')
-                mytext(ax[i],0.65,0.1,"%s (%s)" % (camera,band), 
+                one_pass= dreq.get_single_pass_depth(band,which,camera)
+                ax[i].axvline(one_pass,c='b',ls='--')
+                mytext(ax[i],0.4,0.1,"%s, %s (%.2f)" % (camera,band,one_pass), 
                        ha='left',va='center',fontsize=FS)
 
                 # percentile lines
-                new= pd.DataFrame(dict(y=y,model=model))
-                new['diff']= new['y'] - new['model']
-                new['bins']= pd.cut(new['y'],bins=15)
-                a= new.groupby('bins').agg([get_q25,get_q50,get_q75])
-                binc= a.index.categories.mid
-                ax[i].plot(binc,a['diff']['get_q25'],'b-')
-                ax[i].plot(binc,a['diff']['get_q50'],'b-')
-                ax[i].plot(binc,a['diff']['get_q75'],'b-')
-                ax[i].set_ylim(-0.15,0.15)
+                #new= pd.DataFrame(dict(y=y,model=model))
+                #new['diff']= new['y'] - new['model']
+                #new['bins']= pd.cut(new['y'],bins=15)
+                #a= new.groupby('bins').agg([get_q25,get_q50,get_q75])
+                #binc= a.index.categories.mid
+                #ax[row,col].plot(binc,a['diff']['get_q25'],'b-')
+                #ax[row,col].plot(binc,a['diff']['get_q50'],'b-')
+                #ax[row,col].plot(binc,a['diff']['get_q75'],'b-')
             
         # Label
         for i in [2,3]:
             xlab=ax[i].set_xlabel('%s (truth)' % firstcap(which+'depth'),fontsize=FS)
-        ylab=ax[2].set_ylabel('h')        
-        mytext(ax[2],-0.21,1.1,'%s Residual\n(truth - model)' % firstcap(which+'depth'),
-               ha='center',va='center',fontsize=FS,rotation=90)
+        for i in [0,2]:
+            ylab=ax[i].set_ylabel('Residual\n(truth - model)',fontsize=FS)
         for i in [1,3]:
             ax[i].yaxis.set_ticklabels([])
         savefn='%sdepth_residual.png' % which
@@ -1221,7 +1267,7 @@ if __name__ == '__main__':
         M= MatchedAnnotZpt(**kwargs)
 
         NeffPlots().neff(M,'truth_v_model')
-        NeffPlots().neff(M,'residual_v_truth')
+        NeffPlots().neff(M,'residual_v_truth',factor=5,alpha=0.2)
 
         for which in ['gal','psf']:
             NeffPlots().depth_residual(M,which)
