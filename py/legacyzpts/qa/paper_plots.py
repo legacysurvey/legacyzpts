@@ -180,6 +180,9 @@ def err_on_radecoff(rarms,decrms,nmatch):
     return np.sqrt(err_raoff**2 + err_decoff**2)
 
 
+def fitfunc_raoff_v_mjd(p,x):
+    return p[0]*np.cos(2*np.pi/p[1]*x+p[2]) + p[3] 
+
 class ZeropointHistograms(object):
     '''Histograms for papers'''
     def __init__(self,decam=None,mosaic=None,bass=None):
@@ -221,8 +224,12 @@ class ZeropointHistograms(object):
         if not hasattr(self,camera+'_avg'):
             self.group_by_actualDateObs(camera)
         self.plot_zpt_v_mjd(camera)
+        self.plot_raoff_v_mjd_scaled(camera)
         self.plot_radecoff_v_mjd(camera)
-   
+
+    def plot_zpt_bimodality(self,camera):
+        self.Z.plot_v_mjd('decam')
+    
     def group_by_actualDateObs(self,camera):
         cols= ["actualDateObs","mjd_obs",'seeing','zpt','transp','skymag','airmass',
                "decoff","raoff","filter",
@@ -413,66 +420,81 @@ class ZeropointHistograms(object):
         savefn='zpt_errorbars_%s.png' % camera
         g.savefig(savefn, bbox_inches='tight',dpi=150)
         print("wrote %s" % savefn)
-        
+
+    def fit_raoff_v_mjd_scaled(self,camera):
+        # Scale
+        scalers= dict(min_mjd= np.min(getattr(self,camera+'_avg')['mjd_obs']),
+                      scale_mjd=3.5,scale_raoff=5)
+        x= getattr(self,camera+'_avg')['mjd_obs'] - scalers['min_mjd']
+        scalers.update(max_mjd= np.max(x))
+        x= x/scalers['max_mjd'] * scalers['scale_mjd']
+        y= getattr(self,camera+'_avg')['raoff'] * scalers['scale_raoff']
+        keep= x <= 2.4
+        x= x[keep]
+        y= y[keep]
+        # Fit
+        from scipy.optimize import leastsq
+        #fitfunc = lambda p, x: p[0]*np.cos(2*np.pi/p[1]*x+p[2]) + p[3] 
+        errfunc = lambda p, x, y: fitfunc_raoff_v_mjd(p, x) - y 
+        p0 = [1., 1., 0., 0.] # Initial guess
+        p1, success = leastsq(errfunc, p0[:], args=(x, y))
+        assert(success != 0)
+        return p1,scalers,x,y
+ 
+    def plot_raoff_v_mjd_scaled(self,camera):
+        p1,_,x,y= self.fit_raoff_v_mjd_scaled(camera)
+
+        import seaborn as sns
+        g= sns.jointplot(x,y)
+        new_x= np.linspace(x.min(),x.max(),num=100)
+        g.ax_joint.plot(new_x,fitfunc_raoff_v_mjd(p1,new_x),'k--',lw=2)
+        #g.ax_joint.plot(new_x,fitfunc(p0,new_x),'g--',lw=2)
+        xlab=plt.xlabel('MJD (scaled)')
+        ylab=plt.ylabel('raoff (scaled)')
+        savefn='radecoff_v_mjd_%s_scaled.png' % camera
+        plt.savefig(savefn, bbox_extra_artists=[xlab,ylab], bbox_inches='tight',dpi=150)
+        print("wrote %s" % savefn)
+
     def plot_radecoff_v_mjd(self,camera):
-        p1= self.plot_raoff_v_mjd_scaled_coords(camera)
+        p1,scalers,x,y= self.fit_raoff_v_mjd_scaled(camera)
         # Convert from scaled to actual coords
-        period= p1[1]
-        period2= period*max_x/3.5
-        mjd_period= period2
-
-        offset= p1[3]/5
-        amp= p1[0]/5
-
+        amp= p1[0]/scalers['scale_raoff']
+        mjd_period= p1[1] * scalers['max_mjd'] / scalers['scale_mjd']
         phase_shift= -p1[2]/mjd_period
+        offset= p1[3]/scalers['scale_raoff']
 
         p_new= [amp,mjd_period,phase_shift,offset]
         # Plot
+        import seaborn as sns
         fig,ax=plt.subplots(2,1,figsize=(6,10))
         plt.subplots_adjust(hspace=0)
 
         kwargs= dict(ls='none',alpha=0.2,marker='o',ms=5,
                      mfc='b',mec='b',ecolor='g',mew=1,capsize=3)
         for row,Y in zip(range(2),["raoff","decoff"]):
-            ax[row].errorbar(decam_avg["mjd_obs"],decam_avg[Y], 
-                             yerr=decam_err[Y], **kwargs)
+            ax[row].errorbar(getattr(self,camera+'_avg')["mjd_obs"],
+                             getattr(self,camera+'_avg')[Y], 
+                             yerr=getattr(self,camera+'_stderr')[Y], **kwargs)
             if Y == 'raoff':
-                new_x= np.linspace(decam_avg['mjd_obs'].min(),decam_avg['mjd_obs'].max(),num=100)
-                ax[row].plot(new_x,fitfunc(p_new,new_x),'r-',lw=2,
-                             label=r'$Y=%.2f \cos\left(2\pi X / %.0f + %.2f\right) + %.2f$' % \
+                new_x= np.linspace(getattr(self,camera+'_avg')['mjd_obs'].min(),
+                                   getattr(self,camera+'_avg')['mjd_obs'].max(),num=100)
+                ax[row].plot(new_x,fitfunc_raoff_v_mjd(p_new,new_x),'r-',lw=2,
+                             label=r'$%.2f \, \cos\left(2\pi \, \rm{MJD} \, / \, %.1f + %.2f\right) + %.2f$' % \
                                    (p_new[0],p_new[1],p_new[2],p_new[3]))
             if Y == "raoff":
                 ax[row].set_ylim(-0.2,0.3)
                 handles, labels = ax[row].get_legend_handles_labels()
-                ax[row].legend([handles[0]],[labels[0]],loc=(0.18,0.90),fontsize=12)
+                ax[row].legend([handles[0]],[labels[0]],loc=(0.12,0.90),fontsize=12)
             else:
                 ax[row].set_ylim(-0.25,0.05)
             ylab= ax[row].set_ylabel(Y)
         xlab= ax[1].set_xlabel('MJD')
 
-        savefn='raoff_decoff_errorbars.png'
+        savefn='radecoff_v_mjd_%s.png' % camera
         plt.savefig(savefn, bbox_extra_artists=[xlab,ylab], bbox_inches='tight',dpi=150)
         print("wrote %s" % savefn)
 
-    def plot_raoff_v_mjd_scaled_coords(self,camera):
-        # Fit
-        from scipy.optimize import leastsq
-        fitfunc = lambda p, x: p[0]*np.cos(2*np.pi/p[1]*x+p[2]) + p[3] # Target function
-        errfunc = lambda p, x, y: fitfunc(p, x) - y # Distance to the target function
-        p0 = [1., 1., 0., 0.] # Initial guess for the parameters
-        p1, success = leastsq(errfunc, p0[:], args=(x, y))
-        assert(success != 0)
-        # PLot
-        g= sns.jointplot(x,y)
-        new_x= np.linspace(x.min(),x.max(),num=100)
-        g.ax_joint.plot(new_x,fitfunc(p1,new_x),'k--',lw=2)
-        #g.ax_joint.plot(new_x,fitfunc(p0,new_x),'g--',lw=2)
-        xlab=plt.xlabel('MJD (scaled)')
-        ylab=plt.ylabel('raoff (scaled)')
-        savefn='radecoff_v_mjd_scaled_coords_%s.png' % camera
-        plt.savefig(savefn, bbox_extra_artists=[xlab,ylab], bbox_inches='tight',dpi=150)
-        print("wrote %s" % savefn)
-        return p1
+
 
     def plot_hist_1d(self):
         # All keys and any ylims to use
@@ -1327,6 +1349,66 @@ class NeffPlots(object):
         plt.close()
         print("wrote %s" % savefn)
 
+class histsAtDiffMJDs(object):
+    def plot_hist_at_diff_mjd(self,M,camera,key):
+        """
+        Args:
+            dr: dr3 or dr4 survey-ccds fit table
+            M: MatchedAnnotZpt() object
+        """
+        assert(key in ['zpt','transp'])
+        self.convert_idl2legacy(M,camera,key)
+        
+        mjdBoundary= dict(mosaic=57600,
+                          decam=57500)
+        xlim=dict(mosaic=dict(transp=(0.4,1.),
+                              zpt=(25.8,26.6)),
+                  decam=dict(transp=(0.5,1.5),
+                             zpt=(25.8,27.8)))
+        label=dict(mosaic='DR4',decam='DR3')
+
+        fig,ax=plt.subplots(1,2,figsize=(10,4))
+
+        kwargs= dict(kde=True,hist=False,
+                     hist_kws={"histtype": "step",'lw':2})
+
+        if key == 'transp':
+            keep= M[camera,'a'].get('ccd'+key+'_legunits') < 2
+        elif key == 'zpt':
+            keep= ((M[camera,'a'].get('ccd'+key+'_legunits') < 29) & 
+                   (M[camera,'a'].get('ccd'+key+'_legunits') > 20))
+
+        sns.distplot(M[camera,'a'].get('ccd'+key+'_legunits')[keep],
+                     ax=ax[0],label=label[camera],**kwargs) 
+        isNew= M[camera,'z'].mjd_obs > 57600
+        sns.distplot(M[camera,'z'].get(key)[isNew],ax=ax[0],label='LegacyZpts New',**kwargs)
+        sns.distplot(M[camera,'z'].get(key)[~isNew],ax=ax[0],label='LegacyZpts',**kwargs)
+        ax[0].legend()
+        ax[0].set_xlim(xlim[camera][key])
+        ax[0].set_xlabel(key)
+        ylab=ax[0].set_ylabel('PDF')
+
+        sns.distplot(M[camera,'a'].mjd_obs[keep],ax=ax[1],label=label[camera],**kwargs) 
+        sns.distplot(M[camera,'z'].mjd_obs[isNew],ax=ax[1],label='LegacyZpts New',**kwargs)
+        sns.distplot(M[camera,'z'].mjd_obs[~isNew],ax=ax[1],label='LegacyZpts',**kwargs)
+        ax[1].legend()
+        xlab=ax[1].set_xlabel('MJD')
+        savefn='hist_atdiffmjd_%s_%s.png' % (camera,key)
+        plt.savefig(savefn, bbox_extra_artists=[xlab,ylab],bbox_inches='tight',dpi=150)
+        print("wrote %s" % savefn)
+
+    
+    def convert_idl2legacy(self,M,camera,key):
+        """dr is dr3 or dr4 survey-ccds fit table"""
+        assert(key in ['zpt','transp'])
+        if camera == 'mosaic':
+            val= M[camera,'a'].get('ccd'+key)
+        elif camera == 'decam':
+            if key == 'zpt':
+                val= M[camera,'a'].get('ccd'+key) + 2.5*np.log10(M[camera,'a'].arawgain)
+            elif key == 'transp':
+                val= M[camera,'a'].get('ccd'+key) * 1# dr.arawgain
+        M[camera]['a'].set('ccd'+key+'_legunits',val)
 
 
 
@@ -1336,7 +1418,7 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter,\
                             description='Generate a legacypipe-compatible CCDs file \
                                         from a set of reduced imaging.')
-    parser.add_argument('--figs',type=str,choices=["1-8,11","1a-8a","9-10"],help='legacyzpts "zpt" ccd file',required=False)
+    parser.add_argument('--figs',type=str,choices=["1-8,11","1a-8a","5a","9-10"],help='legacyzpts "zpt" ccd file',required=False)
     parser.add_argument('--decam',type=str,default=None,help='legacyzpts "zpt" ccd file',required=False)
     parser.add_argument('--decam_ann',type=str,default=None,help='annotated ccd file',required=False)
     parser.add_argument('--mosaic',type=str,default=None,required=False)
@@ -1350,17 +1432,27 @@ if __name__ == '__main__':
                                mosaic=args.mosaic,
                                bass=args.bass)
         if args.figs == "1-8,11":
+            # histograms of ccd stats
             Z.plot()
         elif args.figs == "1a-8a":
+            # how zpt and raoff signif. change with time
             Z.plot_v_mjd('decam')
-    if args.figs == "9-10":
+    if args.figs in ["9-10",'5a']:
+        # Neff fits and Galdepth predictions vs truth
         kwargs= vars(args)
+        figs= kwargs['figs'] 
         del kwargs['figs'] 
         M= MatchedAnnotZpt(**kwargs)
 
-        NeffPlots().neff(M,'truth_v_model')
-        NeffPlots().neff(M,'residual_v_truth',factor=5,alpha=0.2)
+        if figs == "9-10":
+            NeffPlots().neff(M,'truth_v_model')
+            NeffPlots().neff(M,'residual_v_truth',factor=5,alpha=0.2)
+            for which in ['gal','psf']:
+                NeffPlots().depth_residual(M,which)
+        elif figs == "5a":
+            # Bimodality in zpt due to newer obs sys diff from zp0
+            for camera in M.cameras:
+                for key in ['zpt','transp']:
+                    histsAtDiffMJDs().plot_hist_at_diff_mjd(M,camera,key)
 
-        for which in ['gal','psf']:
-            NeffPlots().depth_residual(M,which)
 
