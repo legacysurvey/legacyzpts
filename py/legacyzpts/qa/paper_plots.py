@@ -365,6 +365,7 @@ class ZeropointHistograms(object):
             if self.decam:
                 for band in set(self.decam.filter):
                     keep= self.decam.filter == band
+                    print(key,set(self.decam.filter),band,len(self.decam[keep]))
                     myhist_step(ax,self.decam.get(key)[keep], bins=bins,normed=True,
                                 color=band2color(band),ls='solid',
                                 label='%s (DECam, %d)' % (band,self.num_exp['decam_'+band]))
@@ -952,9 +953,16 @@ class MatchedAnnotZpt(object):
         self[camera,'a'].cut(keep)
         print('After cuts for %s,annot: remaining %d/%d' % (camera,len(self[camera,'a']),len(keep)))
         # Zpt
-        keep= np.isfinite(self[camera,'z'].fwhm)
-        self[camera,'z'].cut(keep)
-        print('After cuts for %s,zpt: remaining %d/%d' % (camera,len(self[camera,'z']),len(keep)))
+        #['fwhm','zpt','skymag']:
+        for key in self[camera,'z'].get_columns():
+            keep= np.isfinite(self[camera,'z'].get(key))
+            if not np.all(keep):
+                self[camera,'z'].cut(keep)
+                print('%s zpt, %s has NANs, remaining %d/%d' % (camera,key,len(self[camera,'z']),len(keep)))
+        #for key in self[camera,'z'].get_columns():
+        #    if not np.all(np.isfinite(self[camera,'z'].get(key))):
+        #        print('%s zpt, %s has nans')
+            
 
     def rename_cols(self,camera):
         for key in ['ra','dec']:
