@@ -78,10 +78,15 @@ def myannot(ax,xarr,yarr,sarr, ha='left',va='bottom',fontsize=20):
         ax.annotate(s,xy=(x,y),xytext=(x,y),
                     horizontalalignment=ha,verticalalignment=va,fontsize=fontsize)
 
-def mytext(ax,x,y,text, ha='left',va='center',fontsize=20,rotation=0):
+def mytext(ax,x,y,text, ha='left',va='center',fontsize=20,rotation=0,
+           dataCoords=False):
     '''adds text in x,y units of fraction axis'''
-    ax.text(x,y,text, horizontalalignment=ha,verticalalignment=va,
-            transform=ax.transAxes,fontsize=fontsize,rotation=rotation)
+    if dataCoords:
+        ax.text(x,y,text, horizontalalignment=ha,verticalalignment=va,
+                fontsize=fontsize,rotation=rotation)
+    else:
+        ax.text(x,y,text, horizontalalignment=ha,verticalalignment=va,
+                transform=ax.transAxes,fontsize=fontsize,rotation=rotation)
 
 
 def myerrorbar(ax,x,y, yerr=None,xerr=None,color='b',ls='none',m='o',s=10.,mew=1,alpha=0.75,label=None):
@@ -1350,21 +1355,28 @@ class NeffPlots(object):
         print("wrote %s" % savefn)
 
 class histsAtDiffMJDs(object):
-    def plot_hist_at_diff_mjd(self,M,camera,key):
+    def plot_hist_at_diff_mjd(self,Z,M,camera,key):
         """
         Args:
-            dr: dr3 or dr4 survey-ccds fit table
+            Z: ZeropointHistogram() object
             M: MatchedAnnotZpt() object
         """
         assert(key in ['zpt','transp'])
-        self.convert_idl2legacy(M,camera,key)
-        
-        mjdBoundary= dict(mosaic=57600,
-                          decam=57500)
+        #self.convert_idl2legacy(M,camera,key)
+       
+        import seaborn as sns
+        #mjdBoundary= dict(mosaic=M['decam','a'].mjd_obs.max(),
+        #                  decam=M['mosaic','a'].mjd_obs.max())
+        #isNew= getattr(Z,camera).mjd_obs > mjdBoundary[camera]
+        #isNew= dict(M= M[camera,'z'].mjd_obs > mjdBoundary[camera],
+        #            Z= getattr(Z,camera).mjd_obs > mjdBoundary[camera])
         xlim=dict(mosaic=dict(transp=(0.4,1.),
                               zpt=(25.8,26.6)),
                   decam=dict(transp=(0.5,1.5),
-                             zpt=(25.8,27.8)))
+                             zpt=(26.1,27.2)))
+        mjdBinSize=dict(decam=300,mosaic=100)
+        #jitter=dict(decam=dict(zpt=0.,transp=0.),
+        #            mosaic=dict(zpt=0.01,transp=0.008))
         label=dict(mosaic='DR4',decam='DR3')
 
         fig,ax=plt.subplots(1,2,figsize=(10,4))
@@ -1372,30 +1384,112 @@ class histsAtDiffMJDs(object):
         kwargs= dict(kde=True,hist=False,
                      hist_kws={"histtype": "step",'lw':2})
 
-        if key == 'transp':
-            keep= M[camera,'a'].get('ccd'+key+'_legunits') < 2
-        elif key == 'zpt':
-            keep= ((M[camera,'a'].get('ccd'+key+'_legunits') < 29) & 
-                   (M[camera,'a'].get('ccd'+key+'_legunits') > 20))
+        #if key == 'transp':
+        #    keep= M[camera,'a'].get('ccd'+key+'_legunits') < 2
+        #elif key == 'zpt':
+        #    keep= ((M[camera,'a'].get('ccd'+key+'_legunits') < 29) & 
+        #           (M[camera,'a'].get('ccd'+key+'_legunits') > 20))
 
-        sns.distplot(M[camera,'a'].get('ccd'+key+'_legunits')[keep],
-                     ax=ax[0],label=label[camera],**kwargs) 
-        isNew= M[camera,'z'].mjd_obs > 57600
-        sns.distplot(M[camera,'z'].get(key)[isNew],ax=ax[0],label='LegacyZpts New',**kwargs)
-        sns.distplot(M[camera,'z'].get(key)[~isNew],ax=ax[0],label='LegacyZpts',**kwargs)
+        #sns.distplot(M[camera,'a'].get('ccd'+key+'_legunits')[keep],
+        #             ax=ax[0],label=label[camera]+' Zpts',**kwargs) 
+        #sns.distplot(M[camera,'z'].get(key)[keep]+jitter[camera][key],ax=ax[0],label='LegacyZpts + %.1g (epoch < %s)' % (jitter[camera][key],label[camera]),**kwargs)
+        mjdBins= np.arange(getattr(Z,camera).mjd_obs.min(),
+                           getattr(Z,camera).mjd_obs.max(),mjdBinSize[camera])
+        mjdPrev= mjdBins[0]
+        for mjdBoundary in mjdBins[1:]:
+            keep= ((getattr(Z,camera).mjd_obs >= mjdPrev) &
+                   (getattr(Z,camera).mjd_obs < mjdBoundary))
+            sns.distplot(getattr(Z,camera).get(key)[keep],ax=ax[0],**kwargs)
+            sns.distplot(getattr(Z,camera).mjd_obs[keep],ax=ax[1],**kwargs)
+            mjdPrev=mjdBoundary
+        #sns.distplot(M[camera,'z'].get(key)[~isNew],ax=ax[0],label='LegacyZpts',**kwargs)
         ax[0].legend()
         ax[0].set_xlim(xlim[camera][key])
         ax[0].set_xlabel(key)
         ylab=ax[0].set_ylabel('PDF')
 
-        sns.distplot(M[camera,'a'].mjd_obs[keep],ax=ax[1],label=label[camera],**kwargs) 
-        sns.distplot(M[camera,'z'].mjd_obs[isNew],ax=ax[1],label='LegacyZpts New',**kwargs)
-        sns.distplot(M[camera,'z'].mjd_obs[~isNew],ax=ax[1],label='LegacyZpts',**kwargs)
-        ax[1].legend()
+        #sns.distplot(M[camera,'a'].mjd_obs[keep],ax=ax[1],label=label[camera]+' Zpts',**kwargs) 
+        #sns.distplot(M[camera,'z'].mjd_obs[keep]+jitter[camera][key],ax=ax[1],label='LegacyZpts + %.1g (epoch < %s)' % (jitter[camera][key],label[camera]),**kwargs)
+        #sns.distplot(getattr(Z,camera).mjd_obs[isNew],ax=ax[1],label='LegacyZpts (epoch > %s)' % label[camera],**kwargs)
+        #ax[1].legend()
         xlab=ax[1].set_xlabel('MJD')
+        for i in range(2):
+            mytext(ax[i],0.7,0.95,camera, 
+                   ha='left',va='center',fontsize=12)
+
         savefn='hist_atdiffmjd_%s_%s.png' % (camera,key)
         plt.savefig(savefn, bbox_extra_artists=[xlab,ylab],bbox_inches='tight',dpi=150)
         print("wrote %s" % savefn)
+
+    def plot_hist_at_zpt_boundary(self,Z):
+        """
+        Args:
+            Z: ZeropointHistogram() object
+        """
+        camera='decam'
+        key='zpt'
+        #self.convert_idl2legacy(M,camera,key)
+       
+        import seaborn as sns
+        #mjdBoundary= dict(mosaic=M['decam','a'].mjd_obs.max(),
+        #                  decam=M['mosaic','a'].mjd_obs.max())
+        #isNew= getattr(Z,camera).mjd_obs > mjdBoundary[camera]
+        #isNew= dict(M= M[camera,'z'].mjd_obs > mjdBoundary[camera],
+        #            Z= getattr(Z,camera).mjd_obs > mjdBoundary[camera])
+        xlim=dict(g=(25.8,27.2),r=(25.8,27.2),z=(25.8,27.2))
+        zptThresh=dict(g=26.7,r=26.85,z=26.5)
+        #mjdBinSize=dict(decam=300,mosaic=100)
+        #jitter=dict(decam=dict(zpt=0.,transp=0.),
+        #            mosaic=dict(zpt=0.01,transp=0.008))
+        label=dict(mosaic='DR4',decam='DR3')
+
+        fig,axes=plt.subplots(3,2,figsize=(6,8))
+        plt.subplots_adjust(wspace=0.4,hspace=0.2)
+        ax=axes.flatten()
+
+        kwargs= dict(kde=True,hist=False,
+                     hist_kws={"histtype": "step",'lw':2})
+
+        #if key == 'transp':
+        #    keep= M[camera,'a'].get('ccd'+key+'_legunits') < 2
+        #elif key == 'zpt':
+        #    keep= ((M[camera,'a'].get('ccd'+key+'_legunits') < 29) & 
+        #           (M[camera,'a'].get('ccd'+key+'_legunits') > 20))
+
+        #sns.distplot(M[camera,'a'].get('ccd'+key+'_legunits')[keep],
+        #             ax=ax[0],label=label[camera]+' Zpts',**kwargs) 
+        #sns.distplot(M[camera,'z'].get(key)[keep]+jitter[camera][key],ax=ax[0],label='LegacyZpts + %.1g (epoch < %s)' % (jitter[camera][key],label[camera]),**kwargs)
+        for i,band in [(0,'g'),(2,'r'),(4,'z')]:
+            sns.distplot(getattr(Z,camera).get(key),ax=ax[i],**kwargs)
+            ax[i].axvline(zptThresh[band],c='k',ls='--')
+            mytext(ax[i],zptThresh[band],ax[i].get_ylim()[1]*0.95,'%.2f' % zptThresh[band], 
+                   ha='left',va='center',fontsize=12,dataCoords=True) 
+            isBefore= getattr(Z,camera).zpt < zptThresh[band]
+            sns.distplot(getattr(Z,camera).mjd_obs[isBefore],ax=ax[i+1],
+                         label='zpt < %.2f' % zptThresh[band],**kwargs)
+            sns.distplot(getattr(Z,camera).mjd_obs[~isBefore],ax=ax[i+1],
+                         label='otherwise',**kwargs)
+            ax[i+1].legend(loc='upper right',fontsize=8)
+            mytext(ax[i],0.05,0.92,band, 
+                   ha='left',va='center',fontsize=12)
+            mytext(ax[i+1],0.05,0.92,band, 
+                   ha='left',va='center',fontsize=12)
+            ax[i].set_xlim(xlim[band])
+        #sns.distplot(M[camera,'z'].get(key)[~isNew],ax=ax[0],label='LegacyZpts',**kwargs)
+        ax[4].set_xlabel(key)
+       
+        for i in [0,2,4]:
+            ylab=ax[i].set_ylabel('PDF')
+        xlab=ax[4].set_xlabel('Zeropoint')
+        xlab=ax[5].set_xlabel('MJD')
+        #sns.distplot(M[camera,'a'].mjd_obs[keep],ax=ax[1],label=label[camera]+' Zpts',**kwargs) 
+        #sns.distplot(M[camera,'z'].mjd_obs[keep]+jitter[camera][key],ax=ax[1],label='LegacyZpts + %.1g (epoch < %s)' % (jitter[camera][key],label[camera]),**kwargs)
+        #sns.distplot(getattr(Z,camera).mjd_obs[isNew],ax=ax[1],label='LegacyZpts (epoch > %s)' % label[camera],**kwargs)
+        #ax[1].legend()
+        savefn='hist_at_zpt_boundary_%s_%s.png' % (camera,key)
+        plt.savefig(savefn, bbox_extra_artists=[xlab,ylab],bbox_inches='tight',dpi=150)
+        print("wrote %s" % savefn)
+
 
     
     def convert_idl2legacy(self,M,camera,key):
@@ -1404,11 +1498,12 @@ class histsAtDiffMJDs(object):
         if camera == 'mosaic':
             val= M[camera,'a'].get('ccd'+key)
         elif camera == 'decam':
+            val= M[camera,'a'].get('ccd'+key)
             if key == 'zpt':
                 val= M[camera,'a'].get('ccd'+key) + 2.5*np.log10(M[camera,'a'].arawgain)
-            elif key == 'transp':
-                val= M[camera,'a'].get('ccd'+key) * 1# dr.arawgain
-        M[camera]['a'].set('ccd'+key+'_legunits',val)
+            #elif key == 'transp':
+            #    val= M[camera,'a'].get('ccd'+key) / (2.5*np.log10(M[camera,'a'].arawgain))
+        M.T[camera]['a'].set('ccd'+key+'_legunits',val)
 
 
 
@@ -1419,6 +1514,7 @@ if __name__ == '__main__':
                             description='Generate a legacypipe-compatible CCDs file \
                                         from a set of reduced imaging.')
     parser.add_argument('--figs',type=str,choices=["1-8,11","1a-8a","5a","9-10"],help='legacyzpts "zpt" ccd file',required=False)
+    parser.add_argument('--plot_all',action="store_true",default=False,help='legacyzpts "zpt" ccd file',required=False)
     parser.add_argument('--decam',type=str,default=None,help='legacyzpts "zpt" ccd file',required=False)
     parser.add_argument('--decam_ann',type=str,default=None,help='annotated ccd file',required=False)
     parser.add_argument('--mosaic',type=str,default=None,required=False)
@@ -1427,32 +1523,43 @@ if __name__ == '__main__':
     parser.add_argument('--bass_ann',type=str,default=None,required=False)
     args = parser.parse_args()
 
-    if args.figs in ["1-8,11","1a-8a"]:
-        Z= ZeropointHistograms(decam=args.decam,
-                               mosaic=args.mosaic,
-                               bass=args.bass)
-        if args.figs == "1-8,11":
+    kwargs= vars(args)
+    figs= kwargs['figs'] 
+    plot_all= kwargs['plot_all'] 
+    for key in ['figs','plot_all']:
+        del kwargs[key]
+   
+    data= {}
+    if figs in ["1-8,11","1a-8a"] or plot_all:
+        data['Z']= ZeropointHistograms(decam=args.decam,
+                                       mosaic=args.mosaic,
+                                       bass=args.bass)
+        if figs == "1-8,11" or plot_all:
             # histograms of ccd stats
-            Z.plot()
-        elif args.figs == "1a-8a":
+            data['Z'].plot()
+        elif figs == "1a-8a" or plot_all:
             # how zpt and raoff signif. change with time
-            Z.plot_v_mjd('decam')
-    if args.figs in ["9-10",'5a']:
+            data['Z'].plot_v_mjd('decam')
+    if figs in ["9-10"] or plot_all:
         # Neff fits and Galdepth predictions vs truth
-        kwargs= vars(args)
-        figs= kwargs['figs'] 
-        del kwargs['figs'] 
-        M= MatchedAnnotZpt(**kwargs)
+        data['M']= MatchedAnnotZpt(**kwargs)
 
-        if figs == "9-10":
-            NeffPlots().neff(M,'truth_v_model')
-            NeffPlots().neff(M,'residual_v_truth',factor=5,alpha=0.2)
+        if figs == "9-10" or plot_all:
+            NeffPlots().neff(data['M'],'truth_v_model')
+            NeffPlots().neff(data['M'],'residual_v_truth',factor=5,alpha=0.2)
             for which in ['gal','psf']:
-                NeffPlots().depth_residual(M,which)
-        elif figs == "5a":
-            # Bimodality in zpt due to newer obs sys diff from zp0
-            for camera in M.cameras:
-                for key in ['zpt','transp']:
-                    histsAtDiffMJDs().plot_hist_at_diff_mjd(M,camera,key)
-
+                NeffPlots().depth_residual(data['M'],which)
+    if figs == "5a" or plot_all:
+        # Bimodality in zpt due to newer obs sys diff from zp0
+        if not ('Z' in data.keys()):
+            data['Z']= ZeropointHistograms(decam=args.decam,
+                                           mosaic=args.mosaic,
+                                           bass=args.bass)
+        if not ('M' in data.keys()):
+            data['M']= MatchedAnnotZpt(**kwargs)
+        
+        histsAtDiffMJDs().plot_hist_at_zpt_boundary(data['Z'])
+        for key in ['zpt','transp']:
+            for camera in ['decam']: #M.cameras:
+                histsAtDiffMJDs().plot_hist_at_diff_mjd(data['Z'],data['M'],camera,key)
 
