@@ -683,10 +683,10 @@ class ZeropointHistograms(object):
         #import seaborn as sns
         nbins=dict(decam=(40,40),mosaic=(40,40))
         if x_key == 'raoff' and y_key == 'decoff':
-            xlim=dict(decam=(-0.25,0.25),
-                      mosaic=(-0.05,0.05))
-            ylim=dict(decam=(-0.25,0.1),
-                      mosaic=(-0.05,0.05))
+            xlim=dict(decam=(-0.5,0.5),
+                      mosaic=(-0.1,0.1))
+            ylim=dict(decam=(-0.5,0.25),
+                      mosaic=(-0.1,0.1))
         cmaps=dict(g='Greens_d',r='Reds_d',z='Blues_d')
 
         fig,axes= plt.subplots(2,2,figsize=(8,6))
@@ -1088,11 +1088,13 @@ class MatchedAnnotZpt(object):
         print('After cuts for %s,annot: remaining %d/%d' % (camera,len(self[camera,'a']),len(keep)))
         # Zpt
         #['fwhm','zpt','skymag']:
-        for key in self[camera,'z'].get_columns():
-            keep= np.isfinite(self[camera,'z'].get(key))
+        for key in ['fwhm','zpt','skymag']:
+            #keep= np.isfinite(self[camera,'z'].get(key))
+            keep= self[camera,'z'].get(key) > 0.
             if not np.all(keep):
                 self[camera,'z'].cut(keep)
-                print('%s zpt, %s has NANs, remaining %d/%d' % (camera,key,len(self[camera,'z']),len(keep)))
+                #print('%s zpt, %s has NANs, remaining %d/%d' % (camera,key,len(self[camera,'z']),len(keep)))
+                print('%s %s has < 0 values, cutting to %d/%d' % (camera,key,len(self[camera,'z']),len(keep)))
         #for key in self[camera,'z'].get_columns():
         #    if not np.all(np.isfinite(self[camera,'z'].get(key))):
         #        print('%s zpt, %s has nans')
@@ -1207,24 +1209,24 @@ class NeffPlots(object):
         self.pix=dict(decam=0.262,mosaic=0.26,bass=0.455)
         self.params= defaultdict(dict)
 
-    def neff(self,M,which='residual',factor=1,alpha=0.5):
+    def neff(self,M,which='residual'):
         """M:  MatchedAnnotZpt() object"""
         assert(which in ['residual_v_truth','truth_v_model']) 
         if which == 'residual_v_truth':
-            self.neff_residual_v_truth(M,factor=factor,alpha=alpha)
+            self.neff_residual_v_truth(M)
         elif which == 'truth_v_model':
             self.neff_fit_and_plot(M)  
 
-    def neff_residual_v_truth(self,M,factor=1,alpha=0.5):
+    def neff_residual_v_truth(self,M):
         # best fit computed elsewhere
         if not self.params:
             self.neff_fit_and_plot(M)
         # PSF Neff vs. 1/norm^2
         #offsets=np.arange(0,500*factor/2,100*factor/2)
-        xlim=dict(decam=dict(psf=(20,150),gal=(50,200)),
-                  mosaic=dict(psf=(20,150),gal=(50,200)))
-        ylim=dict(decam=dict(psf=(-20,20),gal=(-20,20)),
-                  mosaic=dict(psf=(-20,20),gal=(-20,20)))
+        xlim=dict(decam=dict(psf=(20,250),gal=(50,300)),
+                  mosaic=dict(psf=(20,250),gal=(50,300)))
+        ylim=dict(decam=dict(psf=(-30,30),gal=(-30,30)),
+                  mosaic=dict(psf=(-30,30),gal=(-30,30)))
         nbins= (40,40)
         fig, ax = plt.subplots(2,2,figsize=(8, 6))
         plt.subplots_adjust(hspace=0,wspace=0.1)
@@ -1259,7 +1261,7 @@ class NeffPlots(object):
         for row in range(2):
             ylab=ax[row,0].set_ylabel('Residual (truth-model)') #'1/{psf,gal}norm_mean^2')
             ax[row,1].yaxis.set_ticklabels([])
-        savefn= 'neff_residual_factor%d.png' % factor
+        savefn= 'neff_residual.png'
         plt.savefig(savefn,bbox_extra_artists=[xlab,ylab], bbox_inches='tight',dpi=150)
         print('Wrote %s' % savefn)
         plt.close()
@@ -1306,17 +1308,17 @@ class NeffPlots(object):
         plt.subplots_adjust(hspace=0.2,wspace=0.1)
        
         if which == 'gal': 
-            xlim=dict(decam=dict(g=(23.,24.25),r=(22.5,23.75),z=(21.,22.75)),
-                      mosaic=dict(z=(21.,22.75)))
+            xlim=dict(decam=dict(g=(22.,24.5),r=(22.,24.),z=(20.,23.5)),
+                      mosaic=dict(z=(20.,23.5)))
             nbins=dict(decam=dict(g=(20,15),r=(20,15),z=(20,15)),
                        mosaic=dict(z=(40,30)))
-            ylim=(-0.15,0.15)
+            ylim=(-0.2,0.2)
         else:
-            xlim=dict(decam=dict(g=(23.,24.5),r=(22.75,24.1),z=(21,23.25)),
-                      mosaic=dict(z=(21,23.25)))
+            xlim=dict(decam=dict(g=(23.,25.),r=(22.,24.5),z=(20,24)),
+                      mosaic=dict(z=(20,24)))
             nbins=dict(decam=dict(g=(20,15),r=(20,15),z=(20,15)),
                        mosaic=dict(z=(40,30)))
-            ylim=(-0.15,0.15)
+            ylim=(-0.25,0.25)
         #gridsize=dict(g=(20,20),r=(25,8),z=30)
         #hb= defaultdict(dict)
 
@@ -1445,7 +1447,7 @@ class histsAtDiffMJDs(object):
         #isNew= dict(M= M[camera,'z'].mjd_obs > mjdBoundary[camera],
         #            Z= getattr(Z,camera).mjd_obs > mjdBoundary[camera])
         xlim=dict(g=(25.8,27.2),r=(25.8,27.2),z=(25.8,27.2))
-        zptThresh=dict(g=26.7,r=26.85,z=26.5)
+        zptThresh=dict(g=26.65,r=26.85,z=26.5)
         #mjdBinSize=dict(decam=300,mosaic=100)
         #jitter=dict(decam=dict(zpt=0.,transp=0.),
         #            mosaic=dict(zpt=0.01,transp=0.008))
@@ -1554,7 +1556,7 @@ if __name__ == '__main__':
 
         if figs == "9-10" or plot_all:
             NeffPlots().neff(data['M'],'truth_v_model')
-            NeffPlots().neff(data['M'],'residual_v_truth',factor=5,alpha=0.2)
+            NeffPlots().neff(data['M'],'residual_v_truth')
             for which in ['gal','psf']:
                 NeffPlots().depth_residual(data['M'],which)
     if figs == "5a" or plot_all:
@@ -1565,9 +1567,10 @@ if __name__ == '__main__':
                                            bass=args.bass)
         if not ('M' in data.keys()):
             data['M']= MatchedAnnotZpt(**kwargs)
-        
+
         histsAtDiffMJDs().plot_hist_at_zpt_boundary(data['Z'])
         for key in ['zpt','transp']:
             for camera in ['decam']: #M.cameras:
+                data['Z'].plot_v_mjd(camera)
                 histsAtDiffMJDs().plot_hist_at_diff_mjd(data['Z'],data['M'],camera,key)
 
