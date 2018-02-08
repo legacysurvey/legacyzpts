@@ -420,7 +420,7 @@ class ZeropointHistograms(object):
 
         g = g.plot_marginals(sns.distplot, kde=False, color=kwargs['mfc'])
 
-        g.ax_joint.set_ylim(26,27)
+        g.ax_joint.set_ylim(25.8,27.1)
 
         savefn='zpt_errorbars_%s.png' % camera
         g.savefig(savefn, bbox_inches='tight',dpi=150)
@@ -463,7 +463,7 @@ class ZeropointHistograms(object):
     def plot_radecoff_v_mjd(self,camera):
         p1,scalers,x,y= self.fit_raoff_v_mjd_scaled(camera)
         # Convert from scaled to actual coords
-        amp= p1[0]/scalers['scale_raoff']
+        amp= -p1[0]/scalers['scale_raoff']
         mjd_period= p1[1] * scalers['max_mjd'] / scalers['scale_mjd']
         phase_shift= -p1[2]/mjd_period
         offset= p1[3]/scalers['scale_raoff']
@@ -683,9 +683,9 @@ class ZeropointHistograms(object):
         #import seaborn as sns
         nbins=dict(decam=(40,40),mosaic=(40,40))
         if x_key == 'raoff' and y_key == 'decoff':
-            xlim=dict(decam=(-0.5,0.5),
+            xlim=dict(decam=(-0.4,0.4),
                       mosaic=(-0.1,0.1))
-            ylim=dict(decam=(-0.5,0.25),
+            ylim=dict(decam=(-0.4,0.2),
                       mosaic=(-0.1,0.1))
         cmaps=dict(g='Greens_d',r='Reds_d',z='Blues_d')
 
@@ -1223,10 +1223,10 @@ class NeffPlots(object):
             self.neff_fit_and_plot(M)
         # PSF Neff vs. 1/norm^2
         #offsets=np.arange(0,500*factor/2,100*factor/2)
-        xlim=dict(decam=dict(psf=(20,250),gal=(50,300)),
-                  mosaic=dict(psf=(20,250),gal=(50,300)))
-        ylim=dict(decam=dict(psf=(-30,30),gal=(-30,30)),
-                  mosaic=dict(psf=(-30,30),gal=(-30,30)))
+        xlim=dict(decam=dict(psf=(0,300),gal=(0,350)),
+                  mosaic=dict(psf=(0,300),gal=(0,350)))
+        ylim=dict(decam=dict(psf=(-40,40),gal=(-40,40)),
+                  mosaic=dict(psf=(-40,40),gal=(-40,40)))
         nbins= (40,40)
         fig, ax = plt.subplots(2,2,figsize=(8, 6))
         plt.subplots_adjust(hspace=0,wspace=0.1)
@@ -1308,17 +1308,17 @@ class NeffPlots(object):
         plt.subplots_adjust(hspace=0.2,wspace=0.1)
        
         if which == 'gal': 
-            xlim=dict(decam=dict(g=(22.,24.5),r=(22.,24.),z=(20.,23.5)),
-                      mosaic=dict(z=(20.,23.5)))
+            xlim=dict(decam=dict(g=(22.25,24.3),r=(22.,24.),z=(20.,23.3)),
+                      mosaic=dict(z=(21.25,23.)))
             nbins=dict(decam=dict(g=(20,15),r=(20,15),z=(20,15)),
                        mosaic=dict(z=(40,30)))
-            ylim=(-0.2,0.2)
+            ylim=(-0.3,0.4)
         else:
-            xlim=dict(decam=dict(g=(23.,25.),r=(22.,24.5),z=(20,24)),
-                      mosaic=dict(z=(20,24)))
+            xlim=dict(decam=dict(g=(22.2,24.7),r=(21.75,24.3),z=(20.2,23.7)),
+                      mosaic=dict(z=(21.25,23.5)))
             nbins=dict(decam=dict(g=(20,15),r=(20,15),z=(20,15)),
                        mosaic=dict(z=(40,30)))
-            ylim=(-0.25,0.25)
+            ylim=(-0.3,0.4)
         #gridsize=dict(g=(20,20),r=(25,8),z=30)
         #hb= defaultdict(dict)
 
@@ -1569,8 +1569,7 @@ if __name__ == '__main__':
             data['M']= MatchedAnnotZpt(**kwargs)
 
         histsAtDiffMJDs().plot_hist_at_zpt_boundary(data['Z'])
-        for key in ['zpt','transp']:
-            for camera in ['decam']: #M.cameras:
-                data['Z'].plot_v_mjd(camera)
-                histsAtDiffMJDs().plot_hist_at_diff_mjd(data['Z'],data['M'],camera,key)
+        data['Z'].plot_v_mjd('decam')
+        histsAtDiffMJDs().plot_hist_at_diff_mjd(data['Z'],data['M'],'decam','zpt')
+        histsAtDiffMJDs().plot_hist_at_diff_mjd(data['Z'],data['M'],'mosaic','transp')
 
