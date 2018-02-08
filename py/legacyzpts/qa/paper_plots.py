@@ -24,6 +24,23 @@ from legacyzpts.qa.params import band2color,col2plotname
 CAMERAS=['decam','mosaic','bass']
 mygray='0.6'
 
+def myhist2D(ax,x,y,xlim=(),ylim=(),nbins=()):
+    #http://www.astroml.org/book_figures/chapter1/fig_S82_hess.html
+    H, xbins, ybins = np.histogram2d(x,y,
+                                     bins=(np.linspace(xlim[0],xlim[1],nbins[0]),
+                                           np.linspace(ylim[0],ylim[1],nbins[1])))
+    # Create a black and white color map where bad data (NaNs) are white
+    cmap = plt.cm.binary
+    cmap.set_bad('w', 1.)
+    
+    H[H == 0] = 1  # prevent warnings in log10
+    ax.imshow(np.log10(H).T, origin='lower',
+              extent=[xbins[0], xbins[-1], ybins[0], ybins[-1]],
+              cmap=cmap, interpolation='nearest',
+              aspect='auto')
+    ax.set_xlim(xlim)
+    ax.set_ylim(ylim)
+
 def myhist(ax,data,bins=20,color='b',normed=False,ls='-',label=None):
     if label:
         _=ax.hist(data,bins=bins,facecolor=color,normed=normed,
@@ -43,7 +60,6 @@ def myhist_step(ax,data,bins=20,color='b',normed=False,lw=2,ls='solid',label=Non
     if return_vals:
         return h,bins
 
-
 def myscatter(ax,x,y, color='b',m='o',s=10.,alpha=0.75,label=None):
     if label is None or label == 'None':
         ax.scatter(x,y, c=color,edgecolors='none',marker=m,s=s,rasterized=True,alpha=alpha)
@@ -62,10 +78,15 @@ def myannot(ax,xarr,yarr,sarr, ha='left',va='bottom',fontsize=20):
         ax.annotate(s,xy=(x,y),xytext=(x,y),
                     horizontalalignment=ha,verticalalignment=va,fontsize=fontsize)
 
-def mytext(ax,x,y,text, ha='left',va='center',fontsize=20,rotation=0):
+def mytext(ax,x,y,text, ha='left',va='center',fontsize=20,rotation=0,
+           dataCoords=False):
     '''adds text in x,y units of fraction axis'''
-    ax.text(x,y,text, horizontalalignment=ha,verticalalignment=va,
-            transform=ax.transAxes,fontsize=fontsize,rotation=rotation)
+    if dataCoords:
+        ax.text(x,y,text, horizontalalignment=ha,verticalalignment=va,
+                fontsize=fontsize,rotation=rotation)
+    else:
+        ax.text(x,y,text, horizontalalignment=ha,verticalalignment=va,
+                transform=ax.transAxes,fontsize=fontsize,rotation=rotation)
 
 
 def myerrorbar(ax,x,y, yerr=None,xerr=None,color='b',ls='none',m='o',s=10.,mew=1,alpha=0.75,label=None):
@@ -149,6 +170,8 @@ class DepthRequirements(object):
         return mags
 
 
+def std_err_mean(x):
+    return np.std(x)/np.sqrt(len(x)-1)
 
 #######
 # Histograms of CCD statistics from legacy zeropoints
@@ -161,6 +184,9 @@ def err_on_radecoff(rarms,decrms,nmatch):
     err_decoff= 1.253 * decrms / np.sqrt(nmatch)
     return np.sqrt(err_raoff**2 + err_decoff**2)
 
+
+def fitfunc_raoff_v_mjd(p,x):
+    return p[0]*np.cos(2*np.pi/p[1]*x+p[2]) + p[3] 
 
 class ZeropointHistograms(object):
     '''Histograms for papers'''
@@ -199,6 +225,28 @@ class ZeropointHistograms(object):
         self.print_ccds_table()
         self.print_requirements_table()
     
+    def plot_v_mjd(self,camera):
+        if not hasattr(self,camera+'_avg'):
+            self.group_by_actualDateObs(camera)
+        self.plot_zpt_v_mjd(camera)
+        self.plot_raoff_v_mjd_scaled(camera)
+        self.plot_radecoff_v_mjd(camera)
+
+    def plot_zpt_bimodality(self,camera):
+        self.Z.plot_v_mjd('decam')
+    
+    def group_by_actualDateObs(self,camera):
+        cols= ["actualDateObs","mjd_obs",'seeing','zpt','transp','skymag','airmass',
+               "decoff","raoff","filter",
+               'skycounts','skyrms']
+        df= pd.DataFrame({col:getattr(self,camera).get(col) 
+                          for col in cols})
+        df= df.apply(lambda x: x.values.byteswap().newbyteorder())
+        setattr(self,camera+'_avg',
+                df.groupby(['actualDateObs']).agg(np.mean).reset_index())
+        setattr(self,camera+'_stderr',
+                df.groupby(['actualDateObs']).agg(std_err_mean).reset_index())
+    
     def clean(self):
         if self.decam:
             print('cleaning decam')
@@ -212,20 +260,28 @@ class ZeropointHistograms(object):
 
     def _clean(self,T):
         if 'err_message' in T.get_columns():
-            ind= (pd.Series(T.get('err_message')).str.strip().str.len() == 0).values
-            print('Cutting err_message to %d/%d' % (len(T[ind]),len(T)))
-            T.cut(ind)
-        else:
-            # Older processing and have to explicity check for nans
-            ind=np.ones(len(T),dtype=bool)
-            for key in ['zpt','fwhm']:
-                ind*= np.isfinite(T.get(key))
-            print('Cutting finite to %d/%d' % (len(T[ind]),len(T)))
-            T.cut(ind)
+            keep= (pd.Series(T.get('err_message')).str.strip().str.len() == 0).values
+            if len(T[keep]) < len(T):
+                T.cut(keep)
+                print('Cutting err_message to %d/%d' % (len(T),len(keep)))
+        # Nans
+        keep=np.ones(len(T),dtype=bool)
+        for key in ['zpt','fwhm']:
+            keep*= np.isfinite(T.get(key))
+        if len(T[keep]) < len(T):
+            T.cut(keep)
+            print('Cutting finite to %d/%d' % (len(T),len(keep)))
+        # Negatives
+        for key in ['zpt','airmass']:
+            keep= T.get(key) > 0 
+            if len(T[keep]) < len(T):
+                T.cut(keep)
+                print('Cutting %s > 0 to %d/%d' % (key,len(T),len(keep)))
+        # grz only
         isGrz= pd.Series(T.get('filter')).str.strip().isin(['g','r','z']).values
-        if len(T[~isGrz]) > 0:
-            print('Cutting is not Grz to %d/%d' % (len(T[isGrz]),len(T)))
-            T.cut(ind)
+        if len(T[isGrz]) < len(T):
+            T.cut(isGrz)
+            print('Cutting to grz only %d/%d' % (len(T),len(isGrz)))
             
 
     def add_keys(self):
@@ -344,6 +400,106 @@ class ZeropointHistograms(object):
             d['airmass']= dict(z=X0) #arcsec
             d['seeing']= dict(z=see0) #arcsec
         return d[key][band]
+
+    def plot_zpt_v_mjd(self,camera):
+        import seaborn as sns
+        g = sns.JointGrid(x='mjd_obs',y="zpt", data=getattr(self,camera+'_avg'))
+
+        kwargs= dict(ls='none',alpha=0.5,marker='o',ms=5,
+                     mfc='b',mec='b',ecolor='g',mew=1,capsize=3)
+        g = g.plot_joint(plt.errorbar, yerr=getattr(self,camera+'_stderr')['zpt'], **kwargs)
+
+        params= LeastSquares(getattr(self,camera+'_avg')['mjd_obs'],
+                             getattr(self,camera+'_avg')['zpt'],
+                             getattr(self,camera+'_stderr')['zpt']).estim()
+        x= np.linspace(getattr(self,camera+'_avg')['mjd_obs'].min(),
+                       getattr(self,camera+'_avg')['mjd_obs'].max())
+        g.ax_joint.plot(x,params['slope']*x+params['inter'],'r--',lw=2,
+                        label=r'$%.2g \, \rm{MJD} + %.2g$' % (params['slope'],params['inter']))
+        g.ax_joint.legend(loc='upper right')
+
+        g = g.plot_marginals(sns.distplot, kde=False, color=kwargs['mfc'])
+
+        g.ax_joint.set_ylim(26,27)
+
+        savefn='zpt_errorbars_%s.png' % camera
+        g.savefig(savefn, bbox_inches='tight',dpi=150)
+        print("wrote %s" % savefn)
+
+    def fit_raoff_v_mjd_scaled(self,camera):
+        # Scale
+        scalers= dict(min_mjd= np.min(getattr(self,camera+'_avg')['mjd_obs']),
+                      scale_mjd=3.5,scale_raoff=5)
+        x= getattr(self,camera+'_avg')['mjd_obs'] - scalers['min_mjd']
+        scalers.update(max_mjd= np.max(x))
+        x= x/scalers['max_mjd'] * scalers['scale_mjd']
+        y= getattr(self,camera+'_avg')['raoff'] * scalers['scale_raoff']
+        keep= x <= 2.4
+        x= x[keep]
+        y= y[keep]
+        # Fit
+        from scipy.optimize import leastsq
+        #fitfunc = lambda p, x: p[0]*np.cos(2*np.pi/p[1]*x+p[2]) + p[3] 
+        errfunc = lambda p, x, y: fitfunc_raoff_v_mjd(p, x) - y 
+        p0 = [1., 1., 0., 0.] # Initial guess
+        p1, success = leastsq(errfunc, p0[:], args=(x, y))
+        assert(success != 0)
+        return p1,scalers,x,y
+ 
+    def plot_raoff_v_mjd_scaled(self,camera):
+        p1,_,x,y= self.fit_raoff_v_mjd_scaled(camera)
+
+        import seaborn as sns
+        g= sns.jointplot(x,y)
+        new_x= np.linspace(x.min(),x.max(),num=100)
+        g.ax_joint.plot(new_x,fitfunc_raoff_v_mjd(p1,new_x),'k--',lw=2)
+        #g.ax_joint.plot(new_x,fitfunc(p0,new_x),'g--',lw=2)
+        xlab=plt.xlabel('MJD (scaled)')
+        ylab=plt.ylabel('raoff (scaled)')
+        savefn='radecoff_v_mjd_%s_scaled.png' % camera
+        plt.savefig(savefn, bbox_extra_artists=[xlab,ylab], bbox_inches='tight',dpi=150)
+        print("wrote %s" % savefn)
+
+    def plot_radecoff_v_mjd(self,camera):
+        p1,scalers,x,y= self.fit_raoff_v_mjd_scaled(camera)
+        # Convert from scaled to actual coords
+        amp= p1[0]/scalers['scale_raoff']
+        mjd_period= p1[1] * scalers['max_mjd'] / scalers['scale_mjd']
+        phase_shift= -p1[2]/mjd_period
+        offset= p1[3]/scalers['scale_raoff']
+
+        p_new= [amp,mjd_period,phase_shift,offset]
+        # Plot
+        import seaborn as sns
+        fig,ax=plt.subplots(2,1,figsize=(6,10))
+        plt.subplots_adjust(hspace=0)
+
+        kwargs= dict(ls='none',alpha=0.2,marker='o',ms=5,
+                     mfc='b',mec='b',ecolor='g',mew=1,capsize=3)
+        for row,Y in zip(range(2),["raoff","decoff"]):
+            ax[row].errorbar(getattr(self,camera+'_avg')["mjd_obs"],
+                             getattr(self,camera+'_avg')[Y], 
+                             yerr=getattr(self,camera+'_stderr')[Y], **kwargs)
+            if Y == 'raoff':
+                new_x= np.linspace(getattr(self,camera+'_avg')['mjd_obs'].min(),
+                                   getattr(self,camera+'_avg')['mjd_obs'].max(),num=100)
+                ax[row].plot(new_x,fitfunc_raoff_v_mjd(p_new,new_x),'r-',lw=2,
+                             label=r'$%.2f \, \cos\left(2\pi \, \rm{MJD} \, / \, %.1f + %.2f\right) + %.2f$' % \
+                                   (p_new[0],p_new[1],p_new[2],p_new[3]))
+            if Y == "raoff":
+                ax[row].set_ylim(-0.2,0.3)
+                handles, labels = ax[row].get_legend_handles_labels()
+                ax[row].legend([handles[0]],[labels[0]],loc=(0.12,0.90),fontsize=12)
+            else:
+                ax[row].set_ylim(-0.25,0.05)
+            ylab= ax[row].set_ylabel(Y)
+        xlab= ax[1].set_xlabel('MJD')
+
+        savefn='radecoff_v_mjd_%s.png' % camera
+        plt.savefig(savefn, bbox_extra_artists=[xlab,ylab], bbox_inches='tight',dpi=150)
+        print("wrote %s" % savefn)
+
+
 
     def plot_hist_1d(self):
         # All keys and any ylims to use
@@ -524,73 +680,51 @@ class ZeropointHistograms(object):
         return d.get(col,None)
 
     def seaborn_contours(self,x_key='raoff',y_key='decoff'):
-        import seaborn as sns
-        fig,ax= plt.subplots(2,3,figsize=(8,6))
-        plt.subplots_adjust(hspace=0.1,wspace=0)
-        # decam
-        if self.decam:
-            x,y= self.decam.get(x_key), self.decam.get(y_key)
-            for band,cmap,col in zip('grz',['Greens_d','Reds_d','Blues_d'],
-                                     [0,1,2]): #set(z.decam.filter):
+        #import seaborn as sns
+        nbins=dict(decam=(40,40),mosaic=(40,40))
+        if x_key == 'raoff' and y_key == 'decoff':
+            xlim=dict(decam=(-0.25,0.25),
+                      mosaic=(-0.05,0.05))
+            ylim=dict(decam=(-0.25,0.1),
+                      mosaic=(-0.05,0.05))
+        cmaps=dict(g='Greens_d',r='Reds_d',z='Blues_d')
+
+        fig,axes= plt.subplots(2,2,figsize=(8,6))
+        ax= axes.flatten()
+        plt.subplots_adjust(hspace=0.15,wspace=0.2)
+        for i,camera,band in [(0,'decam','g'),(1,'decam','r'),
+                              (2,'decam','z'),(3,'mosaic','z')]:
+            if camera == 'decam':
+                x,y= self.decam.get(x_key), self.decam.get(y_key)
                 keep= self.decam.filter == band
-                sns.kdeplot(x[keep], y[keep], ax=ax[0,col],
-                            cmap=cmap, shade=False, shade_lowest=False)
-                ax[0,col].text(-0.2,0.05,'%s (decam)' % band, 
-                               horizontalalignment='left',verticalalignment='center')
-                ax[0,col].text(0.15,0.05,'%d' % self.num_exp['decam_'+band], 
-                               horizontalalignment='left',verticalalignment='center')
-                               #transform=ax[1,row].transAxes)
-                if self.get_lim(x_key):
-                    xlim= self.get_lim(x_key)
-                    if xlim.__class__() == {}:
-                        xlim= xlim['decam']
-                    ax[0,col].set_xlim(xlim)
-                if self.get_lim(y_key):
-                    ylim= self.get_lim(y_key)
-                    if ylim.__class__() == {}:
-                        ylim= ylim['decam']
-                    ax[0,col].set_ylim(ylim)
-        if self.mosaic:
-            x,y= self.mosaic.get(x_key), self.mosaic.get(y_key)
-            for band,cmap,col in zip('z',['Blues_d'],
-                                     [2]): 
+            if camera == 'mosaic':
+                x,y= self.mosaic.get(x_key), self.mosaic.get(y_key)
                 keep= self.mosaic.filter == band
-                sns.kdeplot(x[keep], y[keep], ax=ax[1,col],
-                            cmap=cmap, shade=False)
-                ax[1,col].text(0.1,0.8,'%s (mosaic)' % band, 
-                               horizontalalignment='left',verticalalignment='center',
-                               transform=ax[1,col].transAxes)
-                ax[1,col].text(0.75,0.8,'%d' % self.num_exp['mosaic_'+band], 
-                               horizontalalignment='left',verticalalignment='center',
-                               transform=ax[1,col].transAxes)
-                if self.get_lim(x_key):
-                    xlim= self.get_lim(x_key)
-                    if xlim.__class__() == {}:
-                        xlim= xlim['mosaic']
-                    ax[1,col].set_xlim(xlim)
-                if self.get_lim(y_key):
-                    ylim= self.get_lim(y_key)
-                    if ylim.__class__() == {}:
-                        ylim= ylim['mosaic']
-                    ax[1,col].set_ylim(ylim)
+            #sns.kdeplot(x[keep], y[keep], ax=ax[0,col],
+            #            cmap=cmap[camera], shade=False, shade_lowest=False)
+            myhist2D(ax[i],x[keep],y[keep],
+                     xlim=xlim[camera],ylim=ylim[camera],nbins=nbins[camera])
+            ax[i].text(0.05,0.95,'%s, %s' % (camera,band), 
+                       horizontalalignment='left',verticalalignment='center',
+                       transform=ax[i].transAxes)
+            ax[i].text(0.05,0.88,'(%d)' % self.num_exp[camera+'_'+band], 
+                       horizontalalignment='left',verticalalignment='center',
+                       transform=ax[i].transAxes)
         # Crosshairs
-        for row in range(2):
-            for col in range(3):
-                ax[row,col].axhline(0,c='k',ls='dashed',lw=1)
-                ax[row,col].axvline(0,c='k',ls='dashed',lw=1)
+        for i in range(4):
+            ax[i].axhline(0,c='r',ls='--',lw=1)
+            ax[i].axvline(0,c='r',ls='--',lw=1)
         # Label
-        for col in range(3):
-            xlab=ax[1,col].set_xlabel(col2plotname(x_key)) #0.45'' galaxy
+        for i in [2,3]:
+            xlab=ax[i].set_xlabel(col2plotname(x_key)) #0.45'' galaxy
             #ax[1,col].tick_params(axis='both')
-        for row in range(2):
-            ylab=ax[row,0].set_ylabel(col2plotname(y_key))
+        for i in [0,2]:
+            ylab=ax[i].set_ylabel(col2plotname(y_key))
             #ax[row,0].tick_params(axis='both')
+        for i in [1]:
+            ax[i].yaxis.set_ticklabels([])
 
-        for row in range(2):
-            for col in [1,2]:
-                ax[row,col].yaxis.set_ticklabels([])
-
-        savefn='seaborn_contours_%s_%s.png' % (x_key,y_key)
+        savefn='densitymap_%s_%s.png' % (x_key,y_key)
         plt.savefig(savefn, bbox_extra_artists=[xlab,ylab], bbox_inches='tight',dpi=150)
         print("wrote %s" % savefn)
 
@@ -1073,42 +1207,59 @@ class NeffPlots(object):
         self.pix=dict(decam=0.262,mosaic=0.26,bass=0.455)
         self.params= defaultdict(dict)
 
-    def neff(self,M,which='residual'):
+    def neff(self,M,which='residual',factor=1,alpha=0.5):
         """M:  MatchedAnnotZpt() object"""
         assert(which in ['residual_v_truth','truth_v_model']) 
         if which == 'residual_v_truth':
-            self.neff_residual_v_truth(M)
+            self.neff_residual_v_truth(M,factor=factor,alpha=alpha)
         elif which == 'truth_v_model':
             self.neff_fit_and_plot(M)  
 
-    def neff_residual_v_truth(self,M):
+    def neff_residual_v_truth(self,M,factor=1,alpha=0.5):
         # best fit computed elsewhere
         if not self.params:
             self.neff_fit_and_plot(M)
         # PSF Neff vs. 1/norm^2
-        offsets=np.arange(0,500,100)
+        #offsets=np.arange(0,500*factor/2,100*factor/2)
+        xlim=dict(decam=dict(psf=(20,150),gal=(50,200)),
+                  mosaic=dict(psf=(20,150),gal=(50,200)))
+        ylim=dict(decam=dict(psf=(-20,20),gal=(-20,20)),
+                  mosaic=dict(psf=(-20,20),gal=(-20,20)))
+        nbins= (40,40)
+        fig, ax = plt.subplots(2,2,figsize=(8, 6))
+        plt.subplots_adjust(hspace=0,wspace=0.1)
         i=-1
-        for camera in M.cameras:
-            for which in ['psf','gal']:
+        for row,camera in enumerate(M.cameras):
+            for col,which in enumerate(['psf','gal']):
                 i+=1
                 color= self.cam2color[camera]
-                offset= offsets[i]
+                #offset= offsets[i]
                 seeing= M[camera,'z'].fwhm/2.35
                 y=1./M[camera,'a'].get('%snorm_mean' % which)**2
                 model=NeffFormulas().neff_15(seeing,rhalf=self.rhalf[which],pix=self.pix[camera])
                 model=self.params[camera][which]['slope']*model + self.params[camera][which]['inter']
-                plt.scatter(y,y-model+offset, c=color,edgecolors='none',marker=self.which2shape[which],s=10,rasterized=True,alpha=0.75,label='%s (%s)' % (camera,which))
+                myhist2D(ax[row,col],y,y-model,
+                         xlim=xlim[camera][which],ylim=ylim[camera][which],nbins=nbins)
+                #plt.scatter(y,(y-model)*factor+offset, c=color,edgecolors='none',marker=self.which2shape[which],s=10,rasterized=True,alpha=alpha,label='%s (%s)' % (camera,which))
                 # rms,q7525
-                rms= getrms(y-model)
+                #rms= getrms(y-model)
                 #x2=np.linspace(0,700) 
-                lab= '%s,%s: y=%.2fx+%.1f; RMS=%.1f' % (camera,which,self.params[camera][which]['slope'],self.params[camera][which]['inter'],rms)
-                plt.axhline(offset,c='k',ls='dashed',lw=2)
+                ax[row,col].axhline(0,c='r',ls='dashed',lw=1)
+                mytext(ax[row,col],0.05,0.95,"%s, %s" % (camera,which), 
+                       ha='left',va='center',fontsize=12)
+                mytext(ax[row,col],0.05,0.88,r"($N_{eff} \approx %.2f \hat{N}_{eff} + %.1f$)" % \
+                        (self.params[camera][which]['slope'],self.params[camera][which]['inter']), 
+                       ha='left',va='center',fontsize=8)
         # Label
-        plt.legend(loc='upper right',ncol=1,fontsize=10,markerscale=3)
+        #plt.legend(loc='upper right',ncol=1,fontsize=10,markerscale=3)
         #plt.xlim(0,900);plt.ylim(0,700)
-        xlab=plt.xlabel('Neff (Truth)')
-        ylab=plt.ylabel('Residual (truth-model)') #'1/{psf,gal}norm_mean^2')
-        savefn= 'neff_residual.png'
+        for col in range(2):
+            xlab=ax[1,col].set_xlabel('Neff (Truth)')
+            ax[0,col].xaxis.set_ticklabels([])
+        for row in range(2):
+            ylab=ax[row,0].set_ylabel('Residual (truth-model)') #'1/{psf,gal}norm_mean^2')
+            ax[row,1].yaxis.set_ticklabels([])
+        savefn= 'neff_residual_factor%d.png' % factor
         plt.savefig(savefn,bbox_extra_artists=[xlab,ylab], bbox_inches='tight',dpi=150)
         print('Wrote %s' % savefn)
         plt.close()
@@ -1126,14 +1277,11 @@ class NeffPlots(object):
                 seeing= M[camera,'z'].fwhm/2.35
                 x=NeffFormulas().neff_15(seeing,rhalf=self.rhalf[which],pix=self.pix[camera])
                 y=1./M[camera,'a'].get('%snorm_mean' % which)**2
-                #keep=abs(x-y) < 100
-                keep= np.ones(len(x),dtype=bool)
-                print('%s,%s: removing percent of outliers=%f' % (camera,which,np.where(keep == False)[0].size / float(len(x))))
-                plt.scatter(x[keep]+offset,y[keep], c=color,edgecolors='none',marker=self.which2shape[which],s=10,rasterized=True,alpha=0.75)
-                self.params[camera][which]= LeastSquares(x[keep],y[keep],
-                                                         np.ones(len(y[keep]))).estim()
+                plt.scatter(x+offset,y, c=color,edgecolors='none',marker=self.which2shape[which],s=10,rasterized=True,alpha=0.75)
+                self.params[camera][which]= LeastSquares(x,y,
+                                                         np.ones(len(y))).estim()
                 # rms,q7525
-                diff= y[keep] - self.params[camera][which]['inter']-self.params[camera][which]['slope']*x[keep]
+                diff= y - self.params[camera][which]['inter']-self.params[camera][which]['slope']*x
                 rms= getrms(diff)
                 x2=np.linspace(0,700) 
                 lab= '%s,%s: y=%.2fx+%.1f; RMS=%.1f' % (camera,which,self.params[camera][which]['slope'],self.params[camera][which]['inter'],rms)
@@ -1149,50 +1297,64 @@ class NeffPlots(object):
         plt.close()
 
     def depth_residual(self,M,which='gal'):
-        gridsize=dict(g=(20,20),r=(25,8),z=30)
-        
         FS=14
         eFS=FS+5
         tickFS=FS
 
         fig,axes= plt.subplots(2,2,figsize=(8,4))
         ax= axes.flatten()
-        plt.subplots_adjust(hspace=0.25,wspace=0.05)
-        
-        hb= defaultdict(dict)
-        i=-1
-        for camera,band in [('decam','g'),('decam','r'),('decam','z'),
-                            ('mosaic','z')]:
-            i+=1
+        plt.subplots_adjust(hspace=0.2,wspace=0.1)
+       
+        if which == 'gal': 
+            xlim=dict(decam=dict(g=(23.,24.25),r=(22.5,23.75),z=(21.,22.75)),
+                      mosaic=dict(z=(21.,22.75)))
+            nbins=dict(decam=dict(g=(20,15),r=(20,15),z=(20,15)),
+                       mosaic=dict(z=(40,30)))
+            ylim=(-0.15,0.15)
+        else:
+            xlim=dict(decam=dict(g=(23.,24.5),r=(22.75,24.1),z=(21,23.25)),
+                      mosaic=dict(z=(21,23.25)))
+            nbins=dict(decam=dict(g=(20,15),r=(20,15),z=(20,15)),
+                       mosaic=dict(z=(40,30)))
+            ylim=(-0.15,0.15)
+        #gridsize=dict(g=(20,20),r=(25,8),z=30)
+        #hb= defaultdict(dict)
+
+        dreq= DepthRequirements() 
+
+        for i,camera,band in [(0,'decam','g'),(1,'decam','r'),
+                              (2,'decam','z'),(3,'mosaic','z')]:
             color= self.cam2color[camera]
             key= which+'depth'
             keep= M[camera,'a'].filter == band
             if len(M[camera,'a'][keep]) > 0:
                 y= M[camera,'a'].get(key)[keep]
                 model= M[camera,'z'].get(key)[keep]
-                hb[i] = ax[i].hexbin(y,y-model, gridsize=gridsize[band],
-                                     cmap='gray_r',bins='log') #vmin=0,vmax=vmax[camera],
+                myhist2D(ax[i],y,y-model,
+                         xlim=xlim[camera][band],ylim=ylim,nbins=nbins[camera][band])
+                #hb[i] = ax[i].hexbin(y,y-model, gridsize=gridsize[band],
+                #                     cmap='gray_r',bins='log') #vmin=0,vmax=vmax[camera],
                 ax[i].axhline(0,c='r',ls='--')
-                mytext(ax[i],0.65,0.1,"%s (%s)" % (camera,band), 
+                one_pass= dreq.get_single_pass_depth(band,which,camera)
+                ax[i].axvline(one_pass,c='b',ls='--')
+                mytext(ax[i],0.4,0.1,"%s, %s (%.2f)" % (camera,band,one_pass), 
                        ha='left',va='center',fontsize=FS)
 
                 # percentile lines
-                new= pd.DataFrame(dict(y=y,model=model))
-                new['diff']= new['y'] - new['model']
-                new['bins']= pd.cut(new['y'],bins=15)
-                a= new.groupby('bins').agg([get_q25,get_q50,get_q75])
-                binc= a.index.categories.mid
-                ax[i].plot(binc,a['diff']['get_q25'],'b-')
-                ax[i].plot(binc,a['diff']['get_q50'],'b-')
-                ax[i].plot(binc,a['diff']['get_q75'],'b-')
-                ax[i].set_ylim(-0.15,0.15)
+                #new= pd.DataFrame(dict(y=y,model=model))
+                #new['diff']= new['y'] - new['model']
+                #new['bins']= pd.cut(new['y'],bins=15)
+                #a= new.groupby('bins').agg([get_q25,get_q50,get_q75])
+                #binc= a.index.categories.mid
+                #ax[row,col].plot(binc,a['diff']['get_q25'],'b-')
+                #ax[row,col].plot(binc,a['diff']['get_q50'],'b-')
+                #ax[row,col].plot(binc,a['diff']['get_q75'],'b-')
             
         # Label
         for i in [2,3]:
             xlab=ax[i].set_xlabel('%s (truth)' % firstcap(which+'depth'),fontsize=FS)
-        ylab=ax[2].set_ylabel('h')        
-        mytext(ax[2],-0.21,1.1,'%s Residual\n(truth - model)' % firstcap(which+'depth'),
-               ha='center',va='center',fontsize=FS,rotation=90)
+        for i in [0,2]:
+            ylab=ax[i].set_ylabel('Residual\n(truth - model)',fontsize=FS)
         for i in [1,3]:
             ax[i].yaxis.set_ticklabels([])
         savefn='%sdepth_residual.png' % which
@@ -1200,6 +1362,156 @@ class NeffPlots(object):
         plt.close()
         print("wrote %s" % savefn)
 
+class histsAtDiffMJDs(object):
+    def plot_hist_at_diff_mjd(self,Z,M,camera,key):
+        """
+        Args:
+            Z: ZeropointHistogram() object
+            M: MatchedAnnotZpt() object
+        """
+        assert(key in ['zpt','transp'])
+        #self.convert_idl2legacy(M,camera,key)
+       
+        import seaborn as sns
+        #mjdBoundary= dict(mosaic=M['decam','a'].mjd_obs.max(),
+        #                  decam=M['mosaic','a'].mjd_obs.max())
+        #isNew= getattr(Z,camera).mjd_obs > mjdBoundary[camera]
+        #isNew= dict(M= M[camera,'z'].mjd_obs > mjdBoundary[camera],
+        #            Z= getattr(Z,camera).mjd_obs > mjdBoundary[camera])
+        xlim=dict(mosaic=dict(transp=(0.4,1.),
+                              zpt=(25.8,26.6)),
+                  decam=dict(transp=(0.5,1.5),
+                             zpt=(26.1,27.2)))
+        mjdBinSize=dict(decam=300,mosaic=100)
+        #jitter=dict(decam=dict(zpt=0.,transp=0.),
+        #            mosaic=dict(zpt=0.01,transp=0.008))
+        label=dict(mosaic='DR4',decam='DR3')
+
+        fig,ax=plt.subplots(1,2,figsize=(10,4))
+
+        kwargs= dict(kde=True,hist=False,
+                     hist_kws={"histtype": "step",'lw':2})
+
+        #if key == 'transp':
+        #    keep= M[camera,'a'].get('ccd'+key+'_legunits') < 2
+        #elif key == 'zpt':
+        #    keep= ((M[camera,'a'].get('ccd'+key+'_legunits') < 29) & 
+        #           (M[camera,'a'].get('ccd'+key+'_legunits') > 20))
+
+        #sns.distplot(M[camera,'a'].get('ccd'+key+'_legunits')[keep],
+        #             ax=ax[0],label=label[camera]+' Zpts',**kwargs) 
+        #sns.distplot(M[camera,'z'].get(key)[keep]+jitter[camera][key],ax=ax[0],label='LegacyZpts + %.1g (epoch < %s)' % (jitter[camera][key],label[camera]),**kwargs)
+        mjdBins= np.arange(getattr(Z,camera).mjd_obs.min(),
+                           getattr(Z,camera).mjd_obs.max(),mjdBinSize[camera])
+        mjdPrev= mjdBins[0]
+        for mjdBoundary in mjdBins[1:]:
+            keep= ((getattr(Z,camera).mjd_obs >= mjdPrev) &
+                   (getattr(Z,camera).mjd_obs < mjdBoundary))
+            sns.distplot(getattr(Z,camera).get(key)[keep],ax=ax[0],**kwargs)
+            sns.distplot(getattr(Z,camera).mjd_obs[keep],ax=ax[1],**kwargs)
+            mjdPrev=mjdBoundary
+        #sns.distplot(M[camera,'z'].get(key)[~isNew],ax=ax[0],label='LegacyZpts',**kwargs)
+        ax[0].legend()
+        ax[0].set_xlim(xlim[camera][key])
+        ax[0].set_xlabel(key)
+        ylab=ax[0].set_ylabel('PDF')
+
+        #sns.distplot(M[camera,'a'].mjd_obs[keep],ax=ax[1],label=label[camera]+' Zpts',**kwargs) 
+        #sns.distplot(M[camera,'z'].mjd_obs[keep]+jitter[camera][key],ax=ax[1],label='LegacyZpts + %.1g (epoch < %s)' % (jitter[camera][key],label[camera]),**kwargs)
+        #sns.distplot(getattr(Z,camera).mjd_obs[isNew],ax=ax[1],label='LegacyZpts (epoch > %s)' % label[camera],**kwargs)
+        #ax[1].legend()
+        xlab=ax[1].set_xlabel('MJD')
+        for i in range(2):
+            mytext(ax[i],0.7,0.95,camera, 
+                   ha='left',va='center',fontsize=12)
+
+        savefn='hist_atdiffmjd_%s_%s.png' % (camera,key)
+        plt.savefig(savefn, bbox_extra_artists=[xlab,ylab],bbox_inches='tight',dpi=150)
+        print("wrote %s" % savefn)
+
+    def plot_hist_at_zpt_boundary(self,Z):
+        """
+        Args:
+            Z: ZeropointHistogram() object
+        """
+        camera='decam'
+        key='zpt'
+        #self.convert_idl2legacy(M,camera,key)
+       
+        import seaborn as sns
+        #mjdBoundary= dict(mosaic=M['decam','a'].mjd_obs.max(),
+        #                  decam=M['mosaic','a'].mjd_obs.max())
+        #isNew= getattr(Z,camera).mjd_obs > mjdBoundary[camera]
+        #isNew= dict(M= M[camera,'z'].mjd_obs > mjdBoundary[camera],
+        #            Z= getattr(Z,camera).mjd_obs > mjdBoundary[camera])
+        xlim=dict(g=(25.8,27.2),r=(25.8,27.2),z=(25.8,27.2))
+        zptThresh=dict(g=26.7,r=26.85,z=26.5)
+        #mjdBinSize=dict(decam=300,mosaic=100)
+        #jitter=dict(decam=dict(zpt=0.,transp=0.),
+        #            mosaic=dict(zpt=0.01,transp=0.008))
+        label=dict(mosaic='DR4',decam='DR3')
+
+        fig,axes=plt.subplots(3,2,figsize=(6,8))
+        plt.subplots_adjust(wspace=0.4,hspace=0.2)
+        ax=axes.flatten()
+
+        kwargs= dict(kde=True,hist=False,
+                     hist_kws={"histtype": "step",'lw':2})
+
+        #if key == 'transp':
+        #    keep= M[camera,'a'].get('ccd'+key+'_legunits') < 2
+        #elif key == 'zpt':
+        #    keep= ((M[camera,'a'].get('ccd'+key+'_legunits') < 29) & 
+        #           (M[camera,'a'].get('ccd'+key+'_legunits') > 20))
+
+        #sns.distplot(M[camera,'a'].get('ccd'+key+'_legunits')[keep],
+        #             ax=ax[0],label=label[camera]+' Zpts',**kwargs) 
+        #sns.distplot(M[camera,'z'].get(key)[keep]+jitter[camera][key],ax=ax[0],label='LegacyZpts + %.1g (epoch < %s)' % (jitter[camera][key],label[camera]),**kwargs)
+        for i,band in [(0,'g'),(2,'r'),(4,'z')]:
+            sns.distplot(getattr(Z,camera).get(key),ax=ax[i],**kwargs)
+            ax[i].axvline(zptThresh[band],c='k',ls='--')
+            mytext(ax[i],zptThresh[band],ax[i].get_ylim()[1]*0.95,'%.2f' % zptThresh[band], 
+                   ha='left',va='center',fontsize=12,dataCoords=True) 
+            isBefore= getattr(Z,camera).zpt < zptThresh[band]
+            sns.distplot(getattr(Z,camera).mjd_obs[isBefore],ax=ax[i+1],
+                         label='zpt < %.2f' % zptThresh[band],**kwargs)
+            sns.distplot(getattr(Z,camera).mjd_obs[~isBefore],ax=ax[i+1],
+                         label='otherwise',**kwargs)
+            ax[i+1].legend(loc='upper right',fontsize=8)
+            mytext(ax[i],0.05,0.92,band, 
+                   ha='left',va='center',fontsize=12)
+            mytext(ax[i+1],0.05,0.92,band, 
+                   ha='left',va='center',fontsize=12)
+            ax[i].set_xlim(xlim[band])
+        #sns.distplot(M[camera,'z'].get(key)[~isNew],ax=ax[0],label='LegacyZpts',**kwargs)
+        ax[4].set_xlabel(key)
+       
+        for i in [0,2,4]:
+            ylab=ax[i].set_ylabel('PDF')
+        xlab=ax[4].set_xlabel('Zeropoint')
+        xlab=ax[5].set_xlabel('MJD')
+        #sns.distplot(M[camera,'a'].mjd_obs[keep],ax=ax[1],label=label[camera]+' Zpts',**kwargs) 
+        #sns.distplot(M[camera,'z'].mjd_obs[keep]+jitter[camera][key],ax=ax[1],label='LegacyZpts + %.1g (epoch < %s)' % (jitter[camera][key],label[camera]),**kwargs)
+        #sns.distplot(getattr(Z,camera).mjd_obs[isNew],ax=ax[1],label='LegacyZpts (epoch > %s)' % label[camera],**kwargs)
+        #ax[1].legend()
+        savefn='hist_at_zpt_boundary_%s_%s.png' % (camera,key)
+        plt.savefig(savefn, bbox_extra_artists=[xlab,ylab],bbox_inches='tight',dpi=150)
+        print("wrote %s" % savefn)
+
+
+    
+    def convert_idl2legacy(self,M,camera,key):
+        """dr is dr3 or dr4 survey-ccds fit table"""
+        assert(key in ['zpt','transp'])
+        if camera == 'mosaic':
+            val= M[camera,'a'].get('ccd'+key)
+        elif camera == 'decam':
+            val= M[camera,'a'].get('ccd'+key)
+            if key == 'zpt':
+                val= M[camera,'a'].get('ccd'+key) + 2.5*np.log10(M[camera,'a'].arawgain)
+            #elif key == 'transp':
+            #    val= M[camera,'a'].get('ccd'+key) / (2.5*np.log10(M[camera,'a'].arawgain))
+        M.T[camera]['a'].set('ccd'+key+'_legunits',val)
 
 
 
@@ -1209,7 +1521,8 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter,\
                             description='Generate a legacypipe-compatible CCDs file \
                                         from a set of reduced imaging.')
-    parser.add_argument('--figs',type=str,choices=["1-8,11","9-10"],help='legacyzpts "zpt" ccd file',required=False)
+    parser.add_argument('--figs',type=str,choices=["1-8,11","1a-8a","5a","9-10"],help='legacyzpts "zpt" ccd file',required=False)
+    parser.add_argument('--plot_all',action="store_true",default=False,help='legacyzpts "zpt" ccd file',required=False)
     parser.add_argument('--decam',type=str,default=None,help='legacyzpts "zpt" ccd file',required=False)
     parser.add_argument('--decam_ann',type=str,default=None,help='annotated ccd file',required=False)
     parser.add_argument('--mosaic',type=str,default=None,required=False)
@@ -1218,19 +1531,43 @@ if __name__ == '__main__':
     parser.add_argument('--bass_ann',type=str,default=None,required=False)
     args = parser.parse_args()
 
-    if args.figs == "1-8,11":
-        Z= ZeropointHistograms(decam=args.decam,
-                               mosaic=args.mosaic,
-                               bass=args.bass)
-        Z.plot()
-    if args.figs == "9-10":
-        kwargs= vars(args)
-        del kwargs['figs'] 
-        M= MatchedAnnotZpt(**kwargs)
+    kwargs= vars(args)
+    figs= kwargs['figs'] 
+    plot_all= kwargs['plot_all'] 
+    for key in ['figs','plot_all']:
+        del kwargs[key]
+   
+    data= {}
+    if figs in ["1-8,11","1a-8a"] or plot_all:
+        data['Z']= ZeropointHistograms(decam=args.decam,
+                                       mosaic=args.mosaic,
+                                       bass=args.bass)
+        if figs == "1-8,11" or plot_all:
+            # histograms of ccd stats
+            data['Z'].plot()
+        elif figs == "1a-8a" or plot_all:
+            # how zpt and raoff signif. change with time
+            data['Z'].plot_v_mjd('decam')
+    if figs in ["9-10"] or plot_all:
+        # Neff fits and Galdepth predictions vs truth
+        data['M']= MatchedAnnotZpt(**kwargs)
 
-        NeffPlots().neff(M,'truth_v_model')
-        NeffPlots().neff(M,'residual_v_truth')
-
-        for which in ['gal','psf']:
-            NeffPlots().depth_residual(M,which)
+        if figs == "9-10" or plot_all:
+            NeffPlots().neff(data['M'],'truth_v_model')
+            NeffPlots().neff(data['M'],'residual_v_truth',factor=5,alpha=0.2)
+            for which in ['gal','psf']:
+                NeffPlots().depth_residual(data['M'],which)
+    if figs == "5a" or plot_all:
+        # Bimodality in zpt due to newer obs sys diff from zp0
+        if not ('Z' in data.keys()):
+            data['Z']= ZeropointHistograms(decam=args.decam,
+                                           mosaic=args.mosaic,
+                                           bass=args.bass)
+        if not ('M' in data.keys()):
+            data['M']= MatchedAnnotZpt(**kwargs)
+        
+        histsAtDiffMJDs().plot_hist_at_zpt_boundary(data['Z'])
+        for key in ['zpt','transp']:
+            for camera in ['decam']: #M.cameras:
+                histsAtDiffMJDs().plot_hist_at_diff_mjd(data['Z'],data['M'],camera,key)
 
