@@ -77,6 +77,7 @@ if __name__ == "__main__":
     parser.add_argument('--nproc',type=int,action='store',default=1,help='number mpi tasks',required=True)
     parser.add_argument('--outname', type=str, default='combined_legacy_zpt.fits', help='Output directory.')
     parser.add_argument('--fix_hdu', action='store_true',default=False, help='',required=False)
+    parser.add_argument('--cut', action='store_true',default=False, help='Cut to ccd_cuts==0',required=False)
     opt = parser.parse_args()
     
     fns= read_lines(opt.file_list) 
@@ -120,5 +121,9 @@ if __name__ == "__main__":
         if opt.fix_hdu:
             print('fixing hdu')
             cats= fix_hdu(cats)
+        if opt.cut:
+            print(len(cats), 'CCDs')
+            cats.cut(cats.ccd_cuts == 0)
+            print(len(cats), 'CCDs pass ccd_cuts == 0')
         write_cat(cats, outname=opt.outname)
         print("Done")

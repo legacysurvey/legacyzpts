@@ -53,6 +53,7 @@ def psf_zeropoint_cuts(P, pixscale,
         ('seeing_bad', np.logical_or(seeing < 0, seeing > 3.0)),
         ('badexp_file', np.array([expnum in bad_expid for expnum in P.expnum])),
     ]
+
     if camera == 'mosaic':
         cuts.append(('not_third_pix', (np.logical_not(P.yshift) * (P.mjd_obs < 57674.))))
 

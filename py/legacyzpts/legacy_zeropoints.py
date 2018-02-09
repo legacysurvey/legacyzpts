@@ -342,10 +342,12 @@ def create_legacypipe_table(ccds_fn, camera=None, psf=False, bad_expid=None):
     T.writeto(outfn) #, columns=cols, header=hdr, primheader=primhdr, units=units)
     print('Wrote %s' % outfn)
 
-def create_annotated_table(leg_fn, camera, psf=False):
+def create_annotated_table(leg_fn, camera, survey, psf=False):
     T = fits_table(leg_fn)
-    from legacypipe.annotate_ccds import annotate
-    annotate(T, mzls=(camera == 'mosaic'), normalizePsf=psf)
+    T = survey.cleanup_ccds_table(T)
+    from legacypipe.annotate_ccds import annotate, init_annotations
+    init_annotations(T)
+    annotate(T, survey, mzls=(camera == 'mosaic'), normalizePsf=psf)
     outfn=leg_fn.replace('-legacypipe.fits', '-annotated.fits')
     T.writeto(outfn)
     print('Wrote %s' % outfn)
@@ -2702,37 +2704,34 @@ class outputFns(object):
 
 
 def runit(imgfn,zptfn,starfn_photom,starfn_astrom,
-          psf=False, bad_expid=None, **measureargs):
+          psf=False, bad_expid=None, survey=None, **measureargs):
     '''Generate a legacypipe-compatible CCDs file for a given image.
     '''
-    t0 = Time()
-    ccds, stars_photom, stars_astrom, extra_info= measure_image(imgfn, psf=psf, **measureargs)
-    t0= ptime('measure_image',t0)
 
-    # Only write if all CCDs are done
-    #if success(ccds,imgfn, 
-    #           debug=measureargs['debug'],
-    #           choose_ccd=measureargs['choose_ccd']):
-    # Write out.
-    ccds.write(zptfn, overwrite=True)
-    # Header <-- fiducial zp,sky,ext, also exptime, pixscale
-    hdulist = fits_astropy.open(zptfn, mode='update')
-    prihdr = hdulist[0].header
-    for key,val in extra_info.items():
-        prihdr[key] = val
-    hdulist.close() # Save changes
-    print('Wrote {}'.format(zptfn))
+    t0 = Time()
+    if True:
+        ccds, stars_photom, stars_astrom, extra_info= measure_image(imgfn, psf=psf, **measureargs)
+        t0= ptime('measure_image',t0)
+        # Write out.
+        ccds.write(zptfn, overwrite=True)
+        # Header <-- fiducial zp,sky,ext, also exptime, pixscale
+        hdulist = fits_astropy.open(zptfn, mode='update')
+        prihdr = hdulist[0].header
+        for key,val in extra_info.items():
+            prihdr[key] = val
+        hdulist.close() # Save changes
+        print('Wrote {}'.format(zptfn))
+        # Two stars tables
+        stars_photom.write(starfn_photom, overwrite=True)
+        stars_astrom.write(starfn_astrom, overwrite=True)
+        print('Wrote 2 stars tables\n%s\n%s' %  (starfn_photom,starfn_astrom))
     # zpt --> Legacypipe table
     create_legacypipe_table(zptfn, camera=measureargs['camera'],
                             psf=psf, bad_expid=bad_expid)
     # legacypipe --> annotated
     create_annotated_table(zptfn.replace('-zpt.fits', '-legacypipe.fits'),
-                           camera=measureargs['camera'], psf=psf)
+                           measureargs['camera'], survey, psf=psf)
 
-    # Two stars tables
-    stars_photom.write(starfn_photom, overwrite=True)
-    stars_astrom.write(starfn_astrom, overwrite=True)
-    print('Wrote 2 stars tables\n%s\n%s' %  (starfn_photom,starfn_astrom))
     # Clean up
     t0= ptime('write-results-to-fits',t0)
     if measureargs['copy_from_proj'] & os.path.exists(imgfn): 
@@ -2818,6 +2817,9 @@ def main(image_list=None,args=None):
     if psf and camera == 'mosaic':
         from legacyzpts.psfzpt_cuts import read_bad_expid
         measureargs.update(bad_expid = read_bad_expid())
+
+        from legacypipe.survey import LegacySurveyData
+        measureargs['survey'] = LegacySurveyData()
 
     outdir = measureargs.pop('outdir')
     try_mkdir(outdir)
