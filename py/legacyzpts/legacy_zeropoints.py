@@ -40,7 +40,8 @@ try:
 
     from legacyanalysis.ps1cat import ps1cat
 except ImportError:
-    pass
+    #pass
+    raise
 
 CAMERAS=['decam','mosaic','90prime']
 STAGING_CAMERAS={'decam':'decam',
@@ -306,9 +307,9 @@ def create_legacypipe_table(ccds_fn, camera=None, psf=False, bad_expid=None):
         #if key in units.keys():
         #    _= units.pop(key)
     # legacypipe/merge-zeropoints.py
-    if camera == 'decam':
-        T.set('width', np.zeros(len(T), np.int16) + 2046)
-        T.set('height', np.zeros(len(T), np.int16) + 4094)
+    # if camera == 'decam':
+    #     T.set('width', np.zeros(len(T), np.int16) + 2046)
+    #     T.set('height', np.zeros(len(T), np.int16) + 4094)
     # precision
     T.width  = T.width.astype(np.int16)
     T.height = T.height.astype(np.int16)
@@ -338,14 +339,32 @@ def create_legacypipe_table(ccds_fn, camera=None, psf=False, bad_expid=None):
         zpt_hi = dict(z=z0+dz[1])
         psf_zeropoint_cuts(T, 0.262, zpt_lo, zpt_hi, bad_expid, camera)
 
+    elif camera == 'decam' and psf:
+        from legacyzpts.psfzpt_cuts import psf_zeropoint_cuts
+
+        # These are from DR5; eg
+        # https://github.com/legacysurvey/legacypipe/blob/dr5.0/py/legacypipe/decam.py#L50
+        g0 = 25.08
+        r0 = 25.29
+        z0 = 24.92
+        dg = (-0.5, 0.25)
+        dr = (-0.5, 0.25)
+        dz = (-0.5, 0.25)
+
+        zpt_lo = dict(g=g0+dg[0], r=r0+dr[0], z=z0+dz[0])
+        zpt_hi = dict(g=g0+dg[1], r=r0+dr[1], z=z0+dz[1])
+
+        psf_zeropoint_cuts(T, 0.262, zpt_lo, zpt_hi, bad_expid, camera)
+
+
     outfn=ccds_fn.replace('-zpt.fits','-legacypipe.fits')
     T.writeto(outfn) #, columns=cols, header=hdr, primheader=primhdr, units=units)
     print('Wrote %s' % outfn)
 
 def create_annotated_table(leg_fn, camera, survey, psf=False):
+    from legacypipe.annotate_ccds import annotate, init_annotations
     T = fits_table(leg_fn)
     T = survey.cleanup_ccds_table(T)
-    from legacypipe.annotate_ccds import annotate, init_annotations
     init_annotations(T)
     annotate(T, survey, mzls=(camera == 'mosaic'), normalizePsf=psf)
     outfn=leg_fn.replace('-legacypipe.fits', '-annotated.fits')
@@ -710,6 +729,17 @@ class Measurer(object):
         print('CP Header: EXPNUM = ',self.expnum)
         self.obj = self.primhdr['OBJECT']
 
+    def get_good_image_subregion(self):
+        '''
+        Returns x0,x1,y0,y1 of the good region of this chip,
+        or None if no cut should be applied to that edge; returns
+        (None,None,None,None) if the whole chip is good.
+
+        This cut is applied in addition to any masking in the mask or
+        invvar map.
+        '''
+        return None,None,None,None
+
     def get_expnum(self, primhdr):
         return self.primhdr['EXPNUM']
 
@@ -739,21 +769,68 @@ class Measurer(object):
         # Pixscale is assumed CONSTANT! per camera
         #self.pixscale = self.wcs.pixel_scale()
 
+        # From CP Header
+        hdrVal={}
+        # values we want
+        for ccd_col in ['width','height','fwhm_cp']:
+            # Possible keys in hdr for these values
+            for key in self.cp_header_keys[ccd_col]:
+                if key in self.hdr.keys():
+                    hdrVal[ccd_col]= self.hdr[key]
+                    break
+        for ccd_col in ['width','height','fwhm_cp']:
+            if ccd_col in hdrVal.keys():
+                print('CP Header: %s = ' % ccd_col,hdrVal[ccd_col])
+                setattr(self, ccd_col, hdrVal[ccd_col])
+            else:
+                warning='Could not find %s, keys not in cp header: %s' % \
+                        (ccd_col,self.cp_header_keys[ccd_col])
+                if ccd_col == 'fwhm_cp':
+                    print('WARNING: %s' % warning)
+                    self.fwhm_cp = np.nan
+                else:
+                    raise KeyError(warning)
+
+        x0,x1,y0,y1 = self.get_good_image_subregion()
+        if x0 is None and x1 is None and y0 is None and y1 is None:
+            slc = None
+        else:
+            x0 = x0 or 0
+            x1 = x1 or self.width
+            y0 = y0 or 0
+            y1 = y1 or self.height
+            slc = slice(y0,y1),slice(x0,x1)
+        self.slc = slc
+
     def read_bitmask(self):
         dqfn= get_bitmask_fn(self.fn)
-        mask = fitsio.read(dqfn, ext=self.ext)
+        if self.slc is not None:
+            mask = fitsio.FITS(dqfn)[self.ext][self.slc]
+        else:
+            mask = fitsio.read(dqfn, ext=self.ext)
         return mask
 
     def read_weight(self, scale=True):
         fn= get_weight_fn(self.fn)
-        wt = fitsio.read(fn, ext=self.ext)
+
+        if self.slc is not None:
+            wt = fitsio.FITS(fn)[self.ext][self.slc]
+        else:
+            wt = fitsio.read(fn, ext=self.ext)
+
         if scale:
             wt = self.scale_weight(wt)
         return wt
 
     def read_image(self):
         '''Read the image and header; scale the image.'''
-        img, hdr = fitsio.read(self.fn, ext=self.ext, header=True)
+        f = fitsio.FITS(self.fn)[self.ext]
+        if self.slc is not None:
+            img = f[self.slc]
+        else:
+            img = f.read()
+        hdr = f.read_header()
+        #img, hdr = fitsio.read(self.fn, ext=self.ext, header=True)
         img = self.scale_image(img)
         return img, hdr
 
@@ -1033,29 +1110,13 @@ class Measurer(object):
         ccds['gain'] = self.gain
         ccds['pixscale'] = self.pixscale
         ccds['yshift'] = 'YSHIFT' in self.primhdr
+
+        ccds['width'] = self.width
+        ccds['height'] = self.height
+        ccds['fwhm_cp'] = self.fwhm_cp
+
+        hdr_fwhm = self.fwhm_cp
         
-        # From CP Header
-        hdrVal={}
-        # values we want
-        for ccd_col in ['width','height','fwhm_cp']:
-            # Possible keys in hdr for these values
-            for key in self.cp_header_keys[ccd_col]:
-                if key in self.hdr.keys():
-                    hdrVal[ccd_col]= self.hdr[key]
-                    break
-        for ccd_col in ['width','height','fwhm_cp']:
-            if ccd_col in hdrVal.keys():
-                print('CP Header: %s = ' % ccd_col,hdrVal[ccd_col])
-                ccds[ccd_col]= hdrVal[ccd_col]
-            else:
-                warning='Could not find %s, keys not in cp header: %s' % \
-                        (ccd_col,self.cp_header_keys[ccd_col])
-                if ccd_col == 'fwhm_cp':
-                    print('WARNING: %s' % warning)
-                    ccds[ccd_col]= np.nan
-                else:
-                    raise KeyError(warning)
-        hdr_fwhm= ccds['fwhm_cp'].data[0]
         #hdr_fwhm=-1
         #for fwhm_key in self.cp_fwhm_keys:
         #  if fwhm_key in hdr.keys():
@@ -1116,8 +1177,8 @@ class Measurer(object):
         #        foo.write('x=%d y=%d ra=%.9f dec=%.9f\n' % (i[0],i[1],i[2],i[3]))
         #return ccds, _stars_table()
         
-        if (self.camera == 'decam') & (ext == 'S7'):
-            return self.return_on_error(err_message='S7', ccds=ccds)
+        #if (self.camera == 'decam') & (ext == 'S7'):
+        #    return self.return_on_error(err_message='S7', ccds=ccds)
 
         weight = self.read_weight(scale=False)
 
@@ -1136,6 +1197,7 @@ class Measurer(object):
 
         weight = self.scale_weight(weight)
 
+        print('Weight-map signs:', Counter(np.sign(weight.ravel())))
 
         if psfex:
             # Quick check for PsfEx file
@@ -2218,7 +2280,7 @@ class Measurer(object):
         plt.close()
         print('Wrote %s' % fn)
 
-    def run_calibs(self, ext):
+    def run_calibs(self, survey, ext):
         if not self.goodWcs:
             print('WCS Failed; not trying to run calibs')
             return
@@ -2243,17 +2305,11 @@ class Measurer(object):
             return
 
         import legacypipe
-        from legacypipe.survey import LegacySurveyData, get_git_version
-
-        class FakeLegacySurveyData(LegacySurveyData):
-            def get_calib_dir(self):
-                return self.calibdir
+        from legacypipe.survey import get_git_version
 
         class FakeCCD(object):
             pass
 
-        survey = FakeLegacySurveyData()
-        survey.calibdir = self.calibdir
         ccd = FakeCCD()
         ccd.image_filename = self.fn
         ccd.image_hdu = self.image_hdu
@@ -2272,11 +2328,18 @@ class Measurer(object):
         ccd.cd1_2 = ccd.cd2_1 = 0.
         ccd.pixscale = self.pixscale ## units??
         ccd.mjd_obs = self.mjd_obs
-        ccd.width = 0
-        ccd.height = 0
+        # Read image metadata to get size.
+        info = fitsio.FITS(self.fn)[self.image_hdu].get_info()
+        print('Image metadata:', info)
+        H,W = info['dims']
+        ccd.width = W
+        ccd.height = H
         ccd.arawgain = self.gain
 
         im = survey.get_image_object(ccd)
+
+        print('Created image object', im)
+
         git_version = get_git_version(dir=os.path.dirname(legacypipe.__file__))
         im.run_calibs(psfex=psfex, sky=splinesky, splinesky=True, git_version=git_version)
 
@@ -2329,6 +2392,30 @@ class DecamMeasurer(Measurer):
                               'height':['ZNAXIS2','NAXIS2'],
                               'fwhm_cp':['FWHM']}
 
+    def get_good_image_subregion(self):
+        x0,x1,y0,y1 = None,None,None,None
+
+        # Handle 'glowing' edges in DES r-band images
+        # aww yeah
+        # if self.band == 'r' and (
+        #         ('DES' in self.imgfn) or ('COSMOS' in self.imgfn) or
+        #         (self.mjdobs < DecamImage.glowmjd)):
+        #     # Northern chips: drop 100 pix off the bottom
+        #     if 'N' in self.ccdname:
+        #         print('Clipping bottom part of northern DES r-band chip')
+        #         y0 = 100
+        #     else:
+        #         # Southern chips: drop 100 pix off the top
+        #         print('Clipping top part of southern DES r-band chip')
+        #         y1 = self.height - 100
+
+        # Clip the bad half of chip S7.
+        # The left half is OK.
+        if self.ccdname == 'S7':
+            print('Clipping the right half of chip S7')
+            x1 = 1023
+        return x0,x1,y0,y1
+
     def get_band(self):
         band = self.primhdr['FILTER']
         band = band.split()[0]
@@ -2351,6 +2438,20 @@ class DecamMeasurer(Measurer):
 
     def get_wcs(self):
         return wcs_pv2sip_hdr(self.hdr) # PV distortion
+
+    def read_weight(self, clip=True, clipThresh=0.01, **kwargs):
+        invvar = super(DecamMeasurer, self).read_weight(**kwargs)
+        # from legacypipe/image.py : read_invvar_clipped
+        if clip:
+            # Clamp near-zero (incl negative!) invvars to zero.
+            # These arise due to fpack.
+            if clipThresh > 0.:
+                med = np.median(invvar[invvar > 0])
+                thresh = clipThresh * med
+            else:
+                thresh = 0.
+            invvar[invvar < thresh] = 0
+        return invvar
     
 class Mosaic3Measurer(Measurer):
     '''Class to measure a variety of quantities from a single Mosaic3 CCD.
@@ -2536,7 +2637,7 @@ def _measure_image(args):
     '''Utility function to wrap measure_image function for multiprocessing map.''' 
     return measure_image(*args)
 
-def measure_image(img_fn, run_calibs=False, **measureargs):
+def measure_image(img_fn, run_calibs=False, survey=None, **measureargs):
     '''Wrapper on the camera-specific classes to measure the CCD-level data on all
     the FITS extensions for a given set of images.
     '''
@@ -2598,7 +2699,7 @@ def measure_image(img_fn, run_calibs=False, **measureargs):
     splinesky = measureargs['splinesky']
     for ext in extlist:
         if run_calibs:
-            measure.run_calibs(ext)
+            measure.run_calibs(survey, ext)
 
         ccds, stars_photom, stars_astrom = measure.run(ext, psfex=psfex, splinesky=splinesky, save_xy=measureargs['debug'])
         t0= ptime('measured-ext-%s' % ext,t0)
@@ -2710,7 +2811,7 @@ def runit(imgfn,zptfn,starfn_photom,starfn_astrom,
 
     t0 = Time()
     if True:
-        ccds, stars_photom, stars_astrom, extra_info= measure_image(imgfn, psf=psf, **measureargs)
+        ccds, stars_photom, stars_astrom, extra_info= measure_image(imgfn, psf=psf, survey=survey, **measureargs)
         t0= ptime('measure_image',t0)
         # Write out.
         ccds.write(zptfn, overwrite=True)
@@ -2814,12 +2915,28 @@ def main(image_list=None,args=None):
 
     psf = measureargs['psf']
     camera = measureargs['camera']
-    if psf and camera == 'mosaic':
+
+    if psf and camera in ['mosaic', 'decam']:
         from legacyzpts.psfzpt_cuts import read_bad_expid
-        measureargs.update(bad_expid = read_bad_expid())
+        fn = 'obstatus/%s-bad_expid.txt' % camera
+        print('Reading', fn)
+        measureargs.update(bad_expid = read_bad_expid(fn))
 
         from legacypipe.survey import LegacySurveyData
-        measureargs['survey'] = LegacySurveyData()
+
+        class FakeLegacySurveyData(LegacySurveyData):
+            def get_calib_dir(self):
+                return self.calibdir
+            def get_image_dir(self):
+                return self.imagedir
+
+        survey = FakeLegacySurveyData()
+        cal = measureargs.get('calibdir')
+        if cal is not None:
+            survey.calibdir = cal
+        survey.imagedir = ''
+
+        measureargs['survey'] = survey
 
     outdir = measureargs.pop('outdir')
     try_mkdir(outdir)
@@ -2835,6 +2952,13 @@ def main(image_list=None,args=None):
             os.path.exists(F.starfn_photom) & 
             os.path.exists(F.starfn_astrom) ):
             print('Already finished: %s' % F.zptfn)
+
+            annfn = F.zptfn.replace('-zpt.fits', '-annotated.fits')
+            if not os.path.exists(annfn):
+                create_legacypipe_table(F.zptfn, camera=camera,
+                                        psf=psf, bad_expid=measureargs.get('bad_expid'))
+                create_annotated_table(F.zptfn.replace('-zpt.fits', '-legacypipe.fits'),
+                                       camera, measureargs.get('survey'), psf=psf)
             continue
         # Create the file
         t0=ptime('b4-run',t0)
