@@ -1431,26 +1431,30 @@ class histsAtDiffMJDs(object):
         plt.savefig(savefn, bbox_extra_artists=[xlab,ylab],bbox_inches='tight',dpi=150)
         print("wrote %s" % savefn)
 
-    def plot_hist_at_zpt_boundary(self,Z):
+    def plot_hist_at_zpt_boundary(self,Z,kde=False):
         """
         Args:
             Z: ZeropointHistogram() object
         """
+        if kde:
+            import seaborn as sns
+        else:
+            from matplotlib.colors import ListedColormap,BoundaryNorm
         camera='decam'
         key='zpt'
         #self.convert_idl2legacy(M,camera,key)
        
-        import seaborn as sns
         #mjdBoundary= dict(mosaic=M['decam','a'].mjd_obs.max(),
         #                  decam=M['mosaic','a'].mjd_obs.max())
         #isNew= getattr(Z,camera).mjd_obs > mjdBoundary[camera]
         #isNew= dict(M= M[camera,'z'].mjd_obs > mjdBoundary[camera],
         #            Z= getattr(Z,camera).mjd_obs > mjdBoundary[camera])
-        xlim=dict(g=(25.8,27.2),r=(25.8,27.2),z=(25.8,27.2))
-        zptThresh=dict(g=26.65,r=26.85,z=26.5)
+        xlim=dict(g=(26.2,27.),r=(26.4,27.1),z=(26.,26.7))
+        zptThresh=dict(g=26.7,r=26.875,z=26.475)
         #mjdBinSize=dict(decam=300,mosaic=100)
         #jitter=dict(decam=dict(zpt=0.,transp=0.),
         #            mosaic=dict(zpt=0.01,transp=0.008))
+        
         label=dict(mosaic='DR4',decam='DR3')
 
         fig,axes=plt.subplots(3,2,figsize=(6,8))
@@ -1470,15 +1474,56 @@ class histsAtDiffMJDs(object):
         #             ax=ax[0],label=label[camera]+' Zpts',**kwargs) 
         #sns.distplot(M[camera,'z'].get(key)[keep]+jitter[camera][key],ax=ax[0],label='LegacyZpts + %.1g (epoch < %s)' % (jitter[camera][key],label[camera]),**kwargs)
         for i,band in [(0,'g'),(2,'r'),(4,'z')]:
-            sns.distplot(getattr(Z,camera).get(key),ax=ax[i],**kwargs)
+            isBand= getattr(Z,camera).filter == band
+            isBefore= getattr(Z,camera).zpt < zptThresh[band]
+            if kde:
+                sns.distplot(getattr(Z,camera).get(key)[isBand],ax=ax[i],**kwargs)
+            else:
+                # Create a colormap for red, green and blue and a norm to color
+                # f' < -0.5 red, f' > 0.5 blue, and the rest green
+                bins= np.linspace(xlim[band][0],xlim[band][1],num=40)
+                
+                hist, _ = np.histogram(getattr(Z,camera).get(key)[isBefore & isBand], 
+                                       bins=bins, density=True)
+                hist *= len(getattr(Z,camera)[isBefore & isBand])/len(getattr(Z,camera)[isBand])
+                ax[i].step(bins[:-1], hist, where='post',c='g')
+                hist, _ = np.histogram(getattr(Z,camera).get(key)[~isBefore & isBand], 
+                                       bins=bins, density=True)
+                hist *= len(getattr(Z,camera)[~isBefore & isBand])/len(getattr(Z,camera)[isBand])
+                ax[i].step(bins[:-1], hist, where='post',c='b')
+
+                #myhist_step(ax[i],getattr(Z,camera).get(key)[isBefore & isBand], bins=bins,
+                #            normed=True,ls='solid',color='g') #color=band2color(band),ls='solid',
+                #myhist_step(ax[i],getattr(Z,camera).get(key)[~isBefore & isBand], bins=bins,
+                #            normed=True,ls='solid',color='b') #color=band2color(band),ls='solid',
             ax[i].axvline(zptThresh[band],c='k',ls='--')
             mytext(ax[i],zptThresh[band],ax[i].get_ylim()[1]*0.95,'%.2f' % zptThresh[band], 
                    ha='left',va='center',fontsize=12,dataCoords=True) 
-            isBefore= getattr(Z,camera).zpt < zptThresh[band]
-            sns.distplot(getattr(Z,camera).mjd_obs[isBefore],ax=ax[i+1],
-                         label='zpt < %.2f' % zptThresh[band],**kwargs)
-            sns.distplot(getattr(Z,camera).mjd_obs[~isBefore],ax=ax[i+1],
-                         label='otherwise',**kwargs)
+            if kde:
+                sns.distplot(getattr(Z,camera).mjd_obs[isBefore],ax=ax[i+1],
+                             label='zpt < %.2f' % zptThresh[band],**kwargs)
+                sns.distplot(getattr(Z,camera).mjd_obs[~isBefore],ax=ax[i+1],
+                             label='otherwise',**kwargs)
+            else:
+                bins= np.linspace(getattr(Z,camera).mjd_obs.min(),
+                                  getattr(Z,camera).mjd_obs.max(),40)
+                
+                hist, _ = np.histogram(getattr(Z,camera).mjd_obs[isBefore & isBand], 
+                                       bins=bins, density=True)
+                hist *= len(getattr(Z,camera)[isBefore & isBand])/len(getattr(Z,camera)[isBand])
+                ax[i+1].step(bins[:-1], hist, where='post',c='g',
+                           label='zpt < %.2f' % zptThresh[band])
+                hist, _ = np.histogram(getattr(Z,camera).mjd_obs[~isBefore & isBand], 
+                                       bins=bins, density=True)
+                hist *= len(getattr(Z,camera)[~isBefore & isBand])/len(getattr(Z,camera)[isBand])
+                ax[i+1].step(bins[:-1], hist, where='post',c='b',
+                           label='otherwise')
+                
+                #myhist_step(ax[i+1],getattr(Z,camera).mjd_obs[isBefore & isBand], bins=bins,
+                #            normed=True,ls='solid',color='g',label='zpt < %.2f' % zptThresh[band])
+                #myhist_step(ax[i+1],getattr(Z,camera).mjd_obs[~isBefore & isBand], bins=bins,
+                #            normed=True,ls='solid',color='b',label='otherwise')
+
             ax[i+1].legend(loc='upper right',fontsize=8)
             mytext(ax[i],0.05,0.92,band, 
                    ha='left',va='center',fontsize=12)
@@ -1487,7 +1532,6 @@ class histsAtDiffMJDs(object):
             ax[i].set_xlim(xlim[band])
         #sns.distplot(M[camera,'z'].get(key)[~isNew],ax=ax[0],label='LegacyZpts',**kwargs)
         ax[4].set_xlabel(key)
-       
         for i in [0,2,4]:
             ylab=ax[i].set_ylabel('PDF')
         xlab=ax[4].set_xlabel('Zeropoint')
@@ -1572,4 +1616,3 @@ if __name__ == '__main__':
         data['Z'].plot_v_mjd('decam')
         histsAtDiffMJDs().plot_hist_at_diff_mjd(data['Z'],data['M'],'decam','zpt')
         histsAtDiffMJDs().plot_hist_at_diff_mjd(data['Z'],data['M'],'mosaic','transp')
-
