@@ -155,9 +155,9 @@ class DepthRequirements(object):
         assert(camera in ['decam','mosaic'])
         # After 1 pass
         if camera == 'decam':
-            return self.desi[which][band] - 2.5*np.log10(2)
+            return self.desi[which][band] - 2.5*np.log10(np.sqrt(2))
         elif camera == 'mosaic':
-            return self.desi[which][band] - 2.5*np.log10(3)
+            return self.desi[which][band] - 2.5*np.log10(np.sqrt(3))
 
     def depth_requirement_dict(self):
         mags= defaultdict(lambda: defaultdict(dict))
@@ -217,6 +217,7 @@ class ZeropointHistograms(object):
             self.bass= self.bass[isort]
     
     def plot(self):
+        self.plot_hist_1d_perband()
         self.plot_hist_1d()
         #[('rarms','decrms'),('raoff','decoff'),('phrms','phoff')]
         self.seaborn_contours(x_key='raoff',y_key='decoff')
@@ -555,6 +556,67 @@ class ZeropointHistograms(object):
             plt.savefig(savefn, bbox_extra_artists=[leg,xlab,ylab], bbox_inches='tight')
             plt.close() 
             print("wrote %s" % savefn)
+
+    def plot_hist_1d_perband(self):
+        obs_programs= pd.Series(self.decam.image_filename).str.split('/').str[1]
+        set_programs= set(obs_programs) 
+        print('set_programs=',set_programs)
+        raise ValueError
+        # All keys and any ylims to use
+        cols= self.get_numeric_keys()
+        ylim= self.get_defaultdict_ylim()
+        xlim= self.get_defaultdict_xlim()
+        fiducial_keys= ['seeing','zpt','skymag','airmass']
+        # Plot
+        FS=14
+        eFS=FS+5
+        tickFS=FS
+        for key in cols:
+            fig,ax= plt.subplots(figsize=(7,5))
+            if xlim[key]:
+                bins= np.linspace(xlim[key][0],xlim[key][1],num=40)
+            else:
+                bins=40
+            # decam
+            if self.decam:
+                for band in set(self.decam.filter):
+                    keep= self.decam.filter == band
+                    print(key,set(self.decam.filter),band,len(self.decam[keep]))
+                    myhist_step(ax,self.decam.get(key)[keep], bins=bins,normed=True,
+                                color=band2color(band),ls='solid',
+                                label='%s (DECam, %d)' % (band,self.num_exp['decam_'+band]))
+                    if key in fiducial_keys:
+                        ax.axvline(self.get_fiducial(key,'decam',band),
+                                   c=band2color(band),ls='dotted',lw=1) 
+                    
+            # mosaic
+            if self.mosaic:
+                for band in set(self.mosaic.filter):
+                    keep= self.mosaic.filter == band
+                    myhist_step(ax,self.mosaic.get(key)[keep], bins=bins,normed=True,
+                                color=band2color(band),ls='dashed',
+                                label='%s (Mosaic3, %d)' % (band,self.num_exp['mosaic_'+band]))
+                    if key in fiducial_keys:
+                        ls= 'dotted'
+                        if key == 'zpt':
+                            ls= 'dashed'
+                        ax.axvline(self.get_fiducial(key,'mosaic',band),
+                                   c=band2color(band),ls=ls,lw=1) 
+            # Label
+            ylab=ax.set_ylabel('PDF',fontsize=FS)
+            ax.tick_params(axis='both', labelsize=tickFS)
+            leg=ax.legend(loc=(0,1.02),ncol=2,fontsize=FS-2)
+            if ylim[key]:
+                ax.set_ylim(ylim[key])
+            if xlim[key]:
+                ax.set_xlim(xlim[key])
+            xlab=ax.set_xlabel(col2plotname(key),fontsize=FS) #0.45'' galaxy
+            savefn='hist_1d_%s.png' % key
+            plt.savefig(savefn, bbox_extra_artists=[leg,xlab,ylab], bbox_inches='tight')
+            plt.close() 
+            print("wrote %s" % savefn)
+
+
 
     def plot_hist_depth(self,legend=True):
         # All keys and any ylims to use
