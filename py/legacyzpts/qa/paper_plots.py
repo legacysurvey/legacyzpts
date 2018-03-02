@@ -218,7 +218,6 @@ class ZeropointHistograms(object):
     
     def plot(self):
         self.plot_hist_1d_perprogram()
-        raise ValueError
         self.plot_hist_1d()
         #[('rarms','decrms'),('raoff','decoff'),('phrms','phoff')]
         self.seaborn_contours(x_key='raoff',y_key='decoff')
@@ -411,18 +410,26 @@ class ZeropointHistograms(object):
                      mfc='b',mec='b',ecolor='g',mew=1,capsize=3)
         g = g.plot_joint(plt.errorbar, yerr=getattr(self,camera+'_stderr')['zpt'], **kwargs)
 
-        params= LeastSquares(getattr(self,camera+'_avg')['mjd_obs'],
-                             getattr(self,camera+'_avg')['zpt'],
-                             getattr(self,camera+'_stderr')['zpt']).estim()
-        x= np.linspace(getattr(self,camera+'_avg')['mjd_obs'].min(),
-                       getattr(self,camera+'_avg')['mjd_obs'].max())
-        g.ax_joint.plot(x,params['slope']*x+params['inter'],'r--',lw=2,
-                        label=r'$%.2g \, \rm{MJD} + %.2g$' % (params['slope'],params['inter']))
-        g.ax_joint.legend(loc='upper right')
+        # Least squares fit lines
+        mjd_crit= dict(decam=[np.ones(len(getattr(self,camera+'_avg')),bool)],
+                       mosaic=[getattr(self,camera+'_avg')['mjd_obs'] <= 57600,
+                               getattr(self,camera+'_avg')['mjd_obs'] > 57600])
+        for keep,color in zip(mjd_crit[camera],'kr'):
+            params= LeastSquares(getattr(self,camera+'_avg')['mjd_obs'][keep],
+                                 getattr(self,camera+'_avg')['zpt'][keep],
+                                 getattr(self,camera+'_stderr')['zpt'][keep]).estim()
+            x= np.linspace(getattr(self,camera+'_avg')['mjd_obs'][keep].min()-20,
+                           getattr(self,camera+'_avg')['mjd_obs'][keep].max()+50)
+            g.ax_joint.plot(x,params['slope']*x+params['inter'],c=color,ls='--',lw=2,
+                            label=r'$%.3g \, \rm{MJD} + %.3g$' % (params['slope'],params['inter']))
+        
+        g.ax_joint.legend(loc='lower right',ncol=1,framealpha=1) #len(mjd_crit[camera]))
 
         g = g.plot_marginals(sns.distplot, kde=False, color=kwargs['mfc'])
 
-        g.ax_joint.set_ylim(25.8,27.1)
+        ylims= dict(decam=(25.8,27.1),
+                    mosaic=(25.5,26.5))
+        g.ax_joint.set_ylim(ylims[camera])
 
         savefn='zpt_errorbars_%s.png' % camera
         g.savefig(savefn, bbox_inches='tight',dpi=150)
@@ -1653,7 +1660,8 @@ if __name__ == '__main__':
             data['Z'].plot()
         elif figs == "1a-8a" or plot_all:
             # how zpt and raoff signif. change with time
-            data['Z'].plot_v_mjd('decam')
+            for camera in ['decam','mosaic']:
+                data['Z'].plot_v_mjd(camera)
     if figs in ["9-10"] or plot_all:
         # Neff fits and Galdepth predictions vs truth
         data['M']= MatchedAnnotZpt(**kwargs)
