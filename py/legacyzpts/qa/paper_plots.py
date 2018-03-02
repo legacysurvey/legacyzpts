@@ -537,7 +537,7 @@ class ZeropointHistograms(object):
                                 label='%s (DECam, %d)' % (band,self.num_exp['decam_'+band]))
                     if key in fiducial_keys:
                         ax.axvline(self.get_fiducial(key,'decam',band),
-                                   c=band2color(band),ls='dotted',lw=1) 
+                                   c=band2color(band),ls='--',lw=2) 
                     
             # mosaic
             if self.mosaic:
@@ -547,11 +547,8 @@ class ZeropointHistograms(object):
                                 color=band2color(band),ls='dashed',
                                 label='%s (Mosaic3, %d)' % (band,self.num_exp['mosaic_'+band]))
                     if key in fiducial_keys:
-                        ls= 'dotted'
-                        if key == 'zpt':
-                            ls= 'dashed'
                         ax.axvline(self.get_fiducial(key,'mosaic',band),
-                                   c=band2color(band),ls=ls,lw=1) 
+                                   c=band2color(band),ls='-.',lw=2) 
             # Label
             ylab=ax.set_ylabel('PDF',fontsize=FS)
             ax.tick_params(axis='both', labelsize=tickFS)
@@ -563,7 +560,7 @@ class ZeropointHistograms(object):
             xlab=ax.set_xlabel(col2plotname(key),fontsize=FS) #0.45'' galaxy
             savefn='hist_1d_%s.png' % key
             plt.savefig(savefn, bbox_extra_artists=[leg,xlab,ylab], bbox_inches='tight')
-            plt.close() 
+            #plt.close() 
             print("wrote %s" % savefn)
 
     def plot_hist_1d_perprogram(self):
