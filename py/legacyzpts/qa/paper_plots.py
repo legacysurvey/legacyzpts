@@ -616,10 +616,10 @@ class ZeropointHistograms(object):
                 ax.set_xlim(xlims[band])
             leg=axes[0].legend(loc=(0.,1.02),ncol=2,fontsize=FS-2)
             xlab=axes[2].set_xlabel(col2plotname(key),fontsize=FS) #0.45'' galaxy
-            #savefn='hist_1d_perprogram_%s.png' % key
-            #plt.savefig(savefn, bbox_extra_artists=[leg,xlab,ylab], bbox_inches='tight')
-            #plt.close() 
-            #print("wrote %s" % savefn)
+            savefn='hist_1d_perprogram_%s.png' % key
+            plt.savefig(savefn, bbox_extra_artists=[leg,xlab,ylab], bbox_inches='tight')
+            plt.close() 
+            print("wrote %s" % savefn)
 
 
 
