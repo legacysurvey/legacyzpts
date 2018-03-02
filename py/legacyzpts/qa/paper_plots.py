@@ -572,7 +572,7 @@ class ZeropointHistograms(object):
         eFS=FS+5
         tickFS=FS
         for key in ['zpt']:
-            fig,axes= plt.subplots(3,1,figsize=(7,5))
+            fig,axes= plt.subplots(3,1,figsize=(5,10))
             if xlim[key]:
                 bins= np.linspace(xlim[key][0],xlim[key][1],num=40)
             else:
@@ -580,32 +580,39 @@ class ZeropointHistograms(object):
             # decam
             if self.decam:
                 for ax,band in zip(axes,'grz'): #set(self.decam.filter):
+                    mytext(ax,0.02,0.93,band) #fontsize=12)
                     if key in fiducial_keys:
                         ax.axvline(self.get_fiducial(key,'decam',band),
                                    c=band2color(band),ls='dotted',lw=1) 
                     isBand= self.decam.filter == band
                     for whichProgram,color in zip(set_programs,'bmg'):
-                        keep= ((isBand) & (obs_programs.isin(whichProgram).values))
+                        keep= ((isBand) & (obs_programs.isin([whichProgram]).values))
                         if len(self.decam[keep]) > 0:
                             print(key,set(self.decam.filter),band,len(self.decam[keep]))
                             myhist_step(ax,self.decam.get(key)[keep], bins=bins,normed=True,
                                         color=color,ls='solid',
-                                        label='%s (%s)' % (band,whichProgram))
+                                        label='%s' % whichProgram)
                     
             # Label
-            for ax in axes:
+            xlims= dict(g=(26.15,27),
+                        r=(26.4,27.1),
+                        z=(26.1,26.8))
+            ylims= dict(g=(0,12),
+                        r=(0,12),
+                        z=(0,12))
+            for ax,band in zip(axes,'grz'):
                 ylab=ax.set_ylabel('PDF',fontsize=FS)
                 ax.tick_params(axis='both', labelsize=tickFS)
-                leg=ax.legend(loc=(0,1.02),ncol=2,fontsize=FS-2)
-                if ylim[key]:
-                    ax.set_ylim(ylim[key])
-                if xlim[key]:
-                    ax.set_xlim(xlim[key])
+                #if ylim[key]:
+                ax.set_ylim(ylims[band])
+                #if xlim[key]:
+                ax.set_xlim(xlims[band])
+            leg=axes[0].legend(loc=(0.,1.02),ncol=2,fontsize=FS-2)
             xlab=axes[2].set_xlabel(col2plotname(key),fontsize=FS) #0.45'' galaxy
-            savefn='hist_1d_perprogram_%s.png' % key
-            plt.savefig(savefn, bbox_extra_artists=[leg,xlab,ylab], bbox_inches='tight')
-            plt.close() 
-            print("wrote %s" % savefn)
+            #savefn='hist_1d_perprogram_%s.png' % key
+            #plt.savefig(savefn, bbox_extra_artists=[leg,xlab,ylab], bbox_inches='tight')
+            #plt.close() 
+            #print("wrote %s" % savefn)
 
 
 
