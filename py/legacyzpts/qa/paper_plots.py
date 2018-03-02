@@ -79,14 +79,15 @@ def myannot(ax,xarr,yarr,sarr, ha='left',va='bottom',fontsize=20):
                     horizontalalignment=ha,verticalalignment=va,fontsize=fontsize)
 
 def mytext(ax,x,y,text, ha='left',va='center',fontsize=20,rotation=0,
-           dataCoords=False):
+           color='k',dataCoords=False):
     '''adds text in x,y units of fraction axis'''
     if dataCoords:
         ax.text(x,y,text, horizontalalignment=ha,verticalalignment=va,
-                fontsize=fontsize,rotation=rotation)
+                fontsize=fontsize,rotation=rotation,color=color)
     else:
         ax.text(x,y,text, horizontalalignment=ha,verticalalignment=va,
-                transform=ax.transAxes,fontsize=fontsize,rotation=rotation)
+                fontsize=fontsize,rotation=rotation,color=color,
+                transform=ax.transAxes)
 
 
 def myerrorbar(ax,x,y, yerr=None,xerr=None,color='b',ls='none',m='o',s=10.,mew=1,alpha=0.75,label=None):
@@ -618,118 +619,125 @@ class ZeropointHistograms(object):
             xlab=axes[2].set_xlabel(col2plotname(key),fontsize=FS) #0.45'' galaxy
             savefn='hist_1d_perprogram_%s.png' % key
             plt.savefig(savefn, bbox_extra_artists=[leg,xlab,ylab], bbox_inches='tight')
-            plt.close() 
+            #plt.close() 
             print("wrote %s" % savefn)
 
 
 
-    def plot_hist_depth(self,legend=True):
+    def plot_hist_depth(self):
+        for psf_or_gal in ['psf','gal']:
+            self._plot_hist_depth(psf_or_gal)
+    
+    def _plot_hist_depth(self,psf_or_gal):
         # All keys and any ylims to use
         cols= ['psfdepth_extcorr','galdepth_extcorr']
-        xlim= (21,24.5)
-        ylim= None
+        xlim= (21,25)
+        ylim= (0,1.7)
         # Depths
         depth_obj= DepthRequirements()
         # Plot
         FS=14
         eFS=FS+5
         tickFS=FS
-        fig,ax= plt.subplots(2,2,figsize=(10,8))
-        if legend:
-            plt.subplots_adjust(hspace=0.2,wspace=0)
-        else:
-            plt.subplots_adjust(hspace=0,wspace=0)
+        fig,ax= plt.subplots(2,1,figsize=(6,8))
+        plt.subplots_adjust(hspace=0,wspace=0)
+        #if legend:
+        #    plt.subplots_adjust(hspace=0.2,wspace=0)
+        #else:
+        #    plt.subplots_adjust(hspace=0,wspace=0)
         if xlim:
             bins= np.linspace(xlim[0],xlim[1],num=40)
         else:
             bins=40
         d_row=dict(decam=0,mosaic=1,bok=1)
-        d_col=dict(psf=0,gal=1)
-        for which in ['psf','gal']:
-            key= which+'depth_extcorr'
-            # decam
-            if self.decam:
-                row=d_row['decam']
-                col=d_col[which]
-                for band in set(self.decam.filter):
-                    keep= self.decam.filter == band
-                    myh, mybins= myhist_step(ax[row,col],self.decam.get(key)[keep], bins=bins,normed=True,
-                                color=band2color(band),ls='solid',lw=2,
-                                label='%s (DECam)' % band, return_vals=True)
-                    # requirements
-                    if which == 'gal':
-                        p1_depth= depth_obj.get_single_pass_depth(band,which,'decam')
-                        ax[row,col].axvline(p1_depth,
-                                        c=band2color(band),ls='dashed',lw=1,
-                                        label=r'$\mathbf{m_{\rm{DESI}}}$= %.2f' % p1_depth)
-                        # 90% > than requirement
-                        q10= np.percentile(self.decam.get(key)[keep], q=10)
-                        #ax[row,col].axvline(q10,
-                        #                c=band2color(band),ls='dotted',lw=2,
-                        #                label='q10= %.2f' % q10)
-                        mybins= mybins[:-1]
-                        lasth= myh[mybins <= q10][-1]
-                        myh= np.append(myh[mybins <= q10], lasth)
-                        mybins= np.append(mybins[mybins <= q10], q10)
-                        ax[row,col].fill_between(mybins,[0]*len(myh),myh,
-                                                 where= mybins <= q10, interpolate=True,step='post',
-                                                 color=band2color(band),alpha=0.5)
-            # mosaic
-            if self.mosaic:
-                row=d_row['mosaic']
-                col=d_col[which]
-                for band in set(self.mosaic.filter):
-                    mos_color='k'
-                    keep= self.mosaic.filter == band
-                    myh, mybins= myhist_step(ax[row,col],self.mosaic.get(key)[keep], bins=bins,normed=True,
-                                color=band2color(band),ls='solid',lw=2,
-                                label='%s (Mosaic3)' % band, return_vals=True)
-                    # requirements
-                    if which == 'gal':
-                        p1_depth= depth_obj.get_single_pass_depth(band,which,'mosaic')
-                        ax[row,col].axvline(p1_depth,
-                                        c=band2color(band),ls='dashed',lw=1,
-                                        label=r'$\mathbf{m_{\rm{DESI}}}$= %.2f' % p1_depth)
-                        # 90% > than requirement
-                        q10= np.percentile(self.mosaic.get(key)[keep], q=10)
-                        #ax[row].axvline(q10,
-                        #                c=mos_color,ls='dotted',lw=2,
-                        #                label='q10= %.2f' % q10)
-                        mybins= mybins[:-1]
-                        lasth= myh[mybins <= q10][-1]
-                        myh= np.append(myh[mybins <= q10], lasth)
-                        mybins= np.append(mybins[mybins <= q10], q10)
-                        ax[row,col].fill_between(mybins,[0]*len(myh),myh,
-                                                 where= mybins <= q10, interpolate=True,step='post',
-                                                 color=band2color(band),alpha=0.5)
+        text_offet=0.05
+        key= psf_or_gal+'depth_extcorr'
+        # decam
+        if self.decam:
+            row=d_row['decam']
+            for band in sorted(set(self.decam.filter)):
+                keep= self.decam.filter == band
+                myh, mybins= myhist_step(ax[row],self.decam.get(key)[keep], 
+                                         bins=bins,normed=True,
+                            color=band2color(band),ls='solid',lw=2,
+                            label='%s (DECaLS)' % band, return_vals=True)
+                if psf_or_gal == 'gal':
+                    # 90% > than requirement
+                    q10= np.percentile(self.decam.get(key)[keep], q=10)
+                    #ax[row,col].axvline(q10,
+                    #                c=band2color(band),ls='dotted',lw=2,
+                    #                label='q10= %.2f' % q10)
+                    mybins= mybins[:-1]
+                    lasth= myh[mybins <= q10][-1]
+                    myh= np.append(myh[mybins <= q10], lasth)
+                    mybins= np.append(mybins[mybins <= q10], q10)
+                    ax[row].fill_between(mybins,[0]*len(myh),myh,
+                                         where= mybins <= q10, interpolate=True,step='post',
+                                         color=band2color(band),alpha=0.5)
+            # Requirements
+            if psf_or_gal == 'gal':
+                for band in sorted(set(self.decam.filter)):
+                    p1_depth= depth_obj.get_single_pass_depth(band,psf_or_gal,'decam')
+                    ax[row].axvline(p1_depth,
+                                    c=band2color(band),ls='dashed',lw=2)
+                                    #label=r'$\mathbf{m_{\rm{DESI}}}$= %.2f' % p1_depth)
+                    mytext(ax[row],p1_depth+text_offet,ylim[1]-text_offet,
+                           "%.2f" % p1_depth,color=band2color(band),
+                           fontsize=FS+1,dataCoords=True,va='top')
+                           #r'$m_{\rm{DESI}}$= %.2f' % p1_depth,
+        # mosaic
+        if self.mosaic:
+            row=d_row['mosaic']
+            for band in sorted(set(self.mosaic.filter)):
+                mos_color='k'
+                keep= self.mosaic.filter == band
+                myh, mybins= myhist_step(ax[row],self.mosaic.get(key)[keep], 
+                                         bins=bins,normed=True,
+                            color=band2color(band),ls='solid',lw=2,
+                            label='%s (MzLS)' % band, return_vals=True)
+                if psf_or_gal == 'gal':
+                    # 90% > than requirement
+                    q10= np.percentile(self.mosaic.get(key)[keep], q=10)
+                    #ax[row].axvline(q10,
+                    #                c=mos_color,ls='dotted',lw=2,
+                    #                label='q10= %.2f' % q10)
+                    mybins= mybins[:-1]
+                    lasth= myh[mybins <= q10][-1]
+                    myh= np.append(myh[mybins <= q10], lasth)
+                    mybins= np.append(mybins[mybins <= q10], q10)
+                    ax[row].fill_between(mybins,[0]*len(myh),myh,
+                                         where= mybins <= q10, interpolate=True,step='post',
+                                         color=band2color(band),alpha=0.5)
+            # Requirements
+            if psf_or_gal == 'gal':
+                for band in sorted(set(self.mosaic.filter)):
+                    p1_depth= depth_obj.get_single_pass_depth(band,psf_or_gal,'mosaic')
+                    ax[row].axvline(p1_depth,
+                                    c=band2color(band),ls='dashed',lw=2)
+                                    #label=r'$\mathbf{m_{\rm{DESI}}}$= %.2f' % p1_depth)
+                    mytext(ax[row],p1_depth+text_offet,ylim[1]-text_offet,
+                           "%.2f" % p1_depth,color=band2color(band),
+                           fontsize=FS+1,dataCoords=True,va='top')
         # Label
-        cam={}
-        cam['0']='DECaLS'
-        cam['1']='MzLS'
         for row in [1,0]:
-            for col in [0,1]:
-                if legend:
-                    leg=ax[row,col].legend(loc=(0.,1.02),ncol=3,fontsize=FS-5)
-                ax[row,col].tick_params(axis='both', labelsize=tickFS)
-                if ylim:
-                    ax[row,col].set_ylim(ylim)
-                if xlim:
-                    ax[row,col].set_xlim(xlim)
-            ylab=ax[row,0].set_ylabel('PDF (%s)' % cam[str(row)],fontsize=FS)
-        for col,which in zip([0,1],['psf','gal']): 
-            key= which+'depth_extcorr'
-            xlab=ax[1,col].set_xlabel(r'%s' % col2plotname(key),fontsize=FS) 
+            leg=ax[row].legend(loc='upper left',bbox_to_anchor=(0.,0.9),
+                               ncol=1,fontsize=FS-3)
+            ax[row].tick_params(axis='both', labelsize=tickFS)
+            if ylim:
+                ax[row].set_ylim(ylim)
+            if xlim:
+                ax[row].set_xlim(xlim)
+            ylab=ax[row].set_ylabel('PDF',fontsize=FS)
+        key= psf_or_gal+'depth_extcorr'
+        xlab=ax[1].set_xlabel(r'%s' % col2plotname(key),fontsize=FS) 
         # Hide axis labels
-        for col in [0,1]: 
-            ax[0,col].set_xticklabels([])
-        for row in [0,1]:
-            ax[row,1].set_yticklabels([])
-        savefn='hist_depth.png'
-        bbox=[xlab,ylab]
-        if legend:
-            bbox.append(leg)
+        ax[0].set_xticklabels([])
+        #for row in [0,1]:
+        #    ax[row].set_yticklabels([])
+        savefn='hist_depth_%s.png' % psf_or_gal
+        bbox=[xlab,ylab,leg]
         plt.savefig(savefn, bbox_extra_artists=bbox, bbox_inches='tight')
-        plt.close() 
+        #plt.close() 
         print("wrote %s" % savefn)
 
 
