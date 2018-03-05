@@ -346,13 +346,15 @@ def create_legacypipe_table(ccds_fn, camera=None, psf=False, bad_expid=None):
         # https://github.com/legacysurvey/legacypipe/blob/dr5.0/py/legacypipe/decam.py#L50
         g0 = 25.08
         r0 = 25.29
+        i0 = 25.26
         z0 = 24.92
         dg = (-0.5, 0.25)
+        di = (-0.5, 0.25)
         dr = (-0.5, 0.25)
         dz = (-0.5, 0.25)
 
-        zpt_lo = dict(g=g0+dg[0], r=r0+dr[0], z=z0+dz[0])
-        zpt_hi = dict(g=g0+dg[1], r=r0+dr[1], z=z0+dz[1])
+        zpt_lo = dict(g=g0+dg[0], r=r0+dr[0], i=i0+dr[0], z=z0+dz[0])
+        zpt_hi = dict(g=g0+dg[1], r=r0+dr[1], i=i0+dr[1], z=z0+dz[1])
 
         psf_zeropoint_cuts(T, 0.262, zpt_lo, zpt_hi, bad_expid, camera)
 
