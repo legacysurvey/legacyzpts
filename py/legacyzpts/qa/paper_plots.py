@@ -206,6 +206,25 @@ class ZeropointHistograms(object):
         self.add_keys()
         self.num_exp= self.get_num_exp()
 
+    def write_tables(self):
+        for camera in 'decam mosaic bass'.split(' '):
+            self._write_tables(camera)
+
+    def _write_tables(self,camera):
+        if hasattr(self,camera):
+            print(getattr(self,camera).get_columns())
+            date=pd.DatetimeIndex(getattr(self,camera).actualDateObs)
+            isDR5= date < '2017-06-01'
+            T= fits_table()
+            T.filter= getattr(self,camera).filter[isDR5]
+            T.date= getattr(self,camera).actualDateObs[isDR5]
+            T.t_exp= getattr(self,camera).exptime[isDR5]
+            T.zeropoint= getattr(self,camera).zpt[isDR5]
+            # Write
+            fn='processed_table_%s.fits' % camera
+            T.writeto(fn)
+            print('Wrote %s\n' % fn)
+
     def mjd_sorted_order(self):
         if self.decam:
             isort= np.argsort(self.decam.mjd_obs)
@@ -1660,6 +1679,8 @@ if __name__ == '__main__':
         data['Z']= ZeropointHistograms(decam=args.decam,
                                        mosaic=args.mosaic,
                                        bass=args.bass)
+        data['Z'].write_tables()
+        raise ValueError('exiting early')
         if figs == "1-8,11" or plot_all:
             # histograms of ccd stats
             data['Z'].plot()
