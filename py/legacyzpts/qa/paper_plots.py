@@ -240,9 +240,9 @@ class ZeropointHistograms(object):
         self.plot_hist_1d_perprogram()
         self.plot_hist_1d()
         #[('rarms','decrms'),('raoff','decoff'),('phrms','phoff')]
-        self.seaborn_contours(x_key='raoff',y_key='decoff')
+        #self.seaborn_contours(x_key='raoff',y_key='decoff')
         self.plot_astro_photo_scatter()
-        self.plot_hist_depth(legend=False)
+        self.plot_hist_depth()
         self.print_ccds_table()
         self.print_requirements_table()
     
@@ -604,10 +604,10 @@ class ZeropointHistograms(object):
             # decam
             if self.decam:
                 for ax,band in zip(axes,'grz'): #set(self.decam.filter):
-                    mytext(ax,0.02,0.93,band) #fontsize=12)
+                    mytext(ax,0.02,0.93,band,fontsize=FS-1)
                     if key in fiducial_keys:
                         ax.axvline(self.get_fiducial(key,'decam',band),
-                                   c=band2color(band),ls='dotted',lw=1) 
+                                   c='k',ls='--',lw=2) 
                     isBand= self.decam.filter == band
                     for whichProgram,color in zip(set_programs,'bmg'):
                         keep= ((isBand) & (obs_programs.isin([whichProgram]).values))
