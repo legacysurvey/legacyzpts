@@ -174,6 +174,19 @@ class DepthRequirements(object):
 def std_err_mean(x):
     return np.std(x)/np.sqrt(len(x)-1)
 
+
+def write_pickle(fn,data):
+    with open(fn,'wb') as foo:
+        pickle.dump(data,foo)
+    print('Wrote %s\n' % fn)
+
+
+def read_pickle(fn):
+    with open(fn,'wb') as foo:
+        data=pickle.load(foo)
+    print('Read %s\n' % fn)
+    return data
+
 #######
 # Histograms of CCD statistics from legacy zeropoints
 # for paper
@@ -188,6 +201,8 @@ def err_on_radecoff(rarms,decrms,nmatch):
 
 def fitfunc_raoff_v_mjd(p,x):
     return p[0]*np.cos(2*np.pi/p[1]*x+p[2]) + p[3] 
+
+
 
 class ZeropointHistograms(object):
     '''Histograms for papers'''
@@ -235,7 +250,30 @@ class ZeropointHistograms(object):
         if self.bass:
             isort= np.argsort(self.bass.mjd_obs)
             self.bass= self.bass[isort]
-    
+   
+    def write_data_by_month(self,camera='decam',ccd='N4',band='g'):
+        """Returns dict with keys of month,year tuples and zeropoint array for each"""
+        date=pd.DatetimeIndex(getattr(self,camera).actualDateObs)
+        # choose dr5 data, filter, and CCD
+        isDR5= date < '2017-06-01'
+        isBand= getattr(self,camera).filter == band
+        isCCD= np.char.strip(getattr(self,camera).ccdname) == ccd
+        keep= (isDR5) & (isBand) & (isCCD)
+        
+        d=defaultdict(None)
+        minyr,maxyr= date.year.min(), date.year.max()
+        for yr in range(minyr,maxyr+1):
+            for mo in range(1,12+1):
+                isMonthYear= ((keep) &
+                              (date.year == yr) &
+                              (date.month == mo))
+                if len(self.decam[isMonthYear]) > 0:
+                    d['%d_%d' % (mo,yr)]= getattr(self,camera).zpt[isMonthYear]
+        for key in d.keys():
+            print (key,len(d[key]))
+        write_pickle(fn='%s_%s_%s_bymonth.pkl' % (camera,ccd,band),
+                     data=d)
+
     def plot(self):
         self.plot_hist_1d_perprogram()
         self.plot_hist_1d()
@@ -1679,6 +1717,8 @@ if __name__ == '__main__':
         data['Z']= ZeropointHistograms(decam=args.decam,
                                        mosaic=args.mosaic,
                                        bass=args.bass)
+        d= data['Z'].write_data_by_month('decam',ccd='N4',band='g')
+        raise ValueError
         data['Z'].write_tables()
         raise ValueError('exiting early')
         if figs == "1-8,11" or plot_all:
