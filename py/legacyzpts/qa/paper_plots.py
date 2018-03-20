@@ -182,7 +182,7 @@ def write_pickle(fn,data):
 
 
 def read_pickle(fn):
-    with open(fn,'wb') as foo:
+    with open(fn,'rb') as foo:
         data=pickle.load(foo)
     print('Read %s\n' % fn)
     return data
@@ -270,12 +270,13 @@ class ZeropointHistograms(object):
         d=defaultdict(None)
         minyr,maxyr= date.year.min(), date.year.max()
         for yr in range(minyr,maxyr+1):
-            for mo in range(1,12+1):
+            for qtr in [(1,3),(4,6),(7,9),(10,12)]:
                 isMonthYear= ((keep) &
                               (date.year == yr) &
-                              (date.month == mo))
+                              (date.month >= qtr[0]) &
+                              (date.month <= qtr[1]))
                 if len(self.decam[isMonthYear]) > 0:
-                    d['%d_%d' % (mo,yr)]= getattr(self,camera).zpt[isMonthYear]
+                    d['%d_%d_%d' % (yr,qtr[0],qtr[1])]= getattr(self,camera).zpt[isMonthYear]
         for key in d.keys():
             print (key,len(d[key]))
         write_pickle(fn='%s_%s_%s_bymonth.pkl' % (camera,ccd,band),
@@ -1696,6 +1697,47 @@ class histsAtDiffMJDs(object):
         M.T[camera]['a'].set('ccd'+key+'_legunits',val)
 
 
+class DataForPeter(object):
+    def plot_zpt_by_month(self,fn_zpt_by_month):
+        d= read_pickle(fn_zpt_by_month)
+        #max_count=0
+        #for key in d.keys():
+        #    max_count=max((max_count,len(d[key])))
+
+        xlim= (25.8,26.9)
+        ylim= (0,100)
+        fiducial_decam= dict(g=26.610, r=26.818, z=26.484) # e/s
+        FS=14
+        eFS=FS+5
+        tickFS=FS
+        bins= np.linspace(xlim[0],xlim[1],num=40)
+        band='g'
+        quarters= {"1":1,
+                   "4":2,
+                   "7":3,
+                   "10":4}
+        for yyyy_m1_m2 in d.keys():
+            yyyy,m1,m2= tuple(yyyy_m1_m2.split('_'))
+
+            fig,ax= plt.subplots()
+            
+            myhist_step(ax,d[yyyy_m1_m2], bins=bins,normed=False,
+                        color='b',ls='solid')
+                        #label=mm_yyyy)
+     
+            ax.axvline(fiducial_decam[band],c='k',ls='--',lw=2) 
+            # Label
+            ylab=ax.set_ylabel('Number of CCDs',fontsize=FS)
+            ax.legend(loc='upper left',fontsize=FS-2)
+            ax.set_ylim(ylim)
+            ax.set_xlim(xlim)
+            xlab=ax.set_xlabel('zp (e-/sec)')
+            savefn='zp_%s_%d_%d.png' % (band,int(yyyy),quarters[m1])
+            plt.savefig(savefn, bbox_extra_artists=[xlab,ylab], bbox_inches='tight')
+            plt.close() 
+            print("wrote %s" % savefn)
+
+
 
 
 if __name__ == '__main__':
@@ -1703,7 +1745,8 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter,\
                             description='Generate a legacypipe-compatible CCDs file \
                                         from a set of reduced imaging.')
-    parser.add_argument('--figs',type=str,choices=["1-8,11","1a-8a","5a","9-10"],help='legacyzpts "zpt" ccd file',required=False)
+    parser.add_argument('--figs',type=str,choices=["1-8,11","1a-8a","5a","9-10","for_peter"],
+                        help='legacyzpts "zpt" ccd file',required=False)
     parser.add_argument('--plot_all',action="store_true",default=False,help='legacyzpts "zpt" ccd file',required=False)
     parser.add_argument('--decam',type=str,default=None,help='legacyzpts "zpt" ccd file',required=False)
     parser.add_argument('--decam_ann',type=str,default=None,help='annotated ccd file',required=False)
@@ -1724,10 +1767,6 @@ if __name__ == '__main__':
         data['Z']= ZeropointHistograms(decam=args.decam,
                                        mosaic=args.mosaic,
                                        bass=args.bass)
-        d= data['Z'].write_data_by_month('decam',ccd='N4',band='g')
-        raise ValueError
-        data['Z'].write_tables()
-        raise ValueError('exiting early')
         if figs == "1-8,11" or plot_all:
             # histograms of ccd stats
             data['Z'].plot()
@@ -1757,3 +1796,21 @@ if __name__ == '__main__':
         data['Z'].plot_v_mjd('decam')
         histsAtDiffMJDs().plot_hist_at_diff_mjd(data['Z'],data['M'],'decam','zpt')
         histsAtDiffMJDs().plot_hist_at_diff_mjd(data['Z'],data['M'],'mosaic','transp')
+
+    if figs == "for_peter":
+        #write=False
+        write=True
+        if write:
+            data['Z']= ZeropointHistograms(decam=args.decam,
+                                           mosaic=args.mosaic,
+                                           bass=args.bass)
+            # table with filter,date,t_exp,zpt cut to decam,ccd N4,DR5 date range
+            ##data['Z'].write_tables()
+            # dict with keys of each month and items the zeropoints
+            # Cut as the above and also not CPDES82
+            for band in 'grz':
+                data['Z'].write_data_by_month('decam',ccd='N4',band=band)
+        for band in 'grz':
+            fn_by_month='decam_N4_%s_bymonth.pkl' % band
+            p= DataForPeter().plot_zpt_by_month(fn_by_month)
+
