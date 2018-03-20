@@ -1698,7 +1698,7 @@ class histsAtDiffMJDs(object):
 
 
 class DataForPeter(object):
-    def plot_zpt_by_month(self,fn_zpt_by_month):
+    def plot_zpt_by_month(self,fn_zpt_by_month,band='g'):
         d= read_pickle(fn_zpt_by_month)
         #max_count=0
         #for key in d.keys():
@@ -1711,7 +1711,6 @@ class DataForPeter(object):
         eFS=FS+5
         tickFS=FS
         bins= np.linspace(xlim[0],xlim[1],num=40)
-        band='g'
         quarters= {"1":1,
                    "4":2,
                    "7":3,
@@ -1798,8 +1797,8 @@ if __name__ == '__main__':
         histsAtDiffMJDs().plot_hist_at_diff_mjd(data['Z'],data['M'],'mosaic','transp')
 
     if figs == "for_peter":
-        #write=False
-        write=True
+        write=False
+        #write=True
         if write:
             data['Z']= ZeropointHistograms(decam=args.decam,
                                            mosaic=args.mosaic,
@@ -1812,5 +1811,5 @@ if __name__ == '__main__':
                 data['Z'].write_data_by_month('decam',ccd='N4',band=band)
         for band in 'grz':
             fn_by_month='decam_N4_%s_bymonth.pkl' % band
-            p= DataForPeter().plot_zpt_by_month(fn_by_month)
+            p= DataForPeter().plot_zpt_by_month(fn_by_month,band=band)
 
