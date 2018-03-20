@@ -261,6 +261,11 @@ class ZeropointHistograms(object):
         isBand= getattr(self,camera).filter == band
         isCCD= np.char.strip(getattr(self,camera).ccdname) == ccd
         keep= (isDR5) & (isBand) & (isCCD)
+        if camera == 'decam':
+            obs_programs= pd.Series(self.decam.image_filename).str.split('/').str[1]
+            print('Before rem CPDES82',len(date[keep]))
+            keep= (keep) & (obs_programs != 'CPDES82')
+            print('After',len(date[keep]))
         
         d=defaultdict(None)
         minyr,maxyr= date.year.min(), date.year.max()
