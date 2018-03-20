@@ -230,13 +230,15 @@ class ZeropointHistograms(object):
             print(getattr(self,camera).get_columns())
             date=pd.DatetimeIndex(getattr(self,camera).actualDateObs)
             isDR5= date < '2017-06-01'
+            oneCCD= np.char.strip(getattr(self,camera).ccdname) == 'N4'
+            keep= (isDR5) & (oneCCD)
             T= fits_table()
-            T.filter= getattr(self,camera).filter[isDR5]
-            T.date= getattr(self,camera).actualDateObs[isDR5]
-            T.t_exp= getattr(self,camera).exptime[isDR5]
-            T.zeropoint= getattr(self,camera).zpt[isDR5]
+            T.filter= getattr(self,camera).filter[keep]
+            T.date= getattr(self,camera).actualDateObs[keep]
+            T.t_exp= getattr(self,camera).exptime[keep]
+            T.zeropoint= getattr(self,camera).zpt[keep]
             # Write
-            fn='processed_table_%s.fits' % camera
+            fn='processed_table_%s_ccdN4.fits' % camera
             T.writeto(fn)
             print('Wrote %s\n' % fn)
 
