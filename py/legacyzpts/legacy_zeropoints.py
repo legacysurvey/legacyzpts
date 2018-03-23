@@ -43,10 +43,11 @@ except ImportError:
     #pass
     raise
 
-CAMERAS=['decam','mosaic','90prime']
+CAMERAS=['decam','mosaic','90prime','megaprime']
 STAGING_CAMERAS={'decam':'decam',
                  'mosaic':'mosaicz',
-                 '90prime':'bok'}
+                 '90prime':'bok',
+                 'megaprime':'cfis'}
 
 
 def try_mkdir(dir):
@@ -224,7 +225,8 @@ def get_pixscale(camera='decam'):
   assert(camera in CAMERAS)
   return {'decam':0.262,
           'mosaic':0.262,
-          '90prime':0.470}[camera]
+          '90prime':0.470,
+          'megaprime':0.185}[camera]
 
 def run_create_legacypipe_table(zpt_list):
     fns= np.loadtxt(zpt_list,dtype=str)
@@ -714,7 +716,7 @@ class Measurer(object):
         try:
             self.propid = self.primhdr['PROPID']
         except KeyError:
-            self.propid = self.primhdr['DTPROPID']
+            self.propid = self.primhdr.get('DTPROPID')
         self.exptime = self.primhdr['EXPTIME']
         self.date_obs = self.primhdr['DATE-OBS']
         self.mjd_obs = self.primhdr['MJD-OBS']
@@ -764,7 +766,7 @@ class Measurer(object):
         self.hdr = fitsio.read_header(self.fn, ext=ext)
         # Sanity check
         assert(self.ccdname.upper() == self.hdr['EXTNAME'].strip().upper())
-        self.ccdnum = np.int(self.hdr['CCDNUM']) 
+        self.ccdnum = np.int(self.hdr.get('CCDNUM', 0))
         self.gain= self.get_gain(self.hdr)
         # WCS
         self.wcs = self.get_wcs()
@@ -2454,7 +2456,78 @@ class DecamMeasurer(Measurer):
                 thresh = 0.
             invvar[invvar < thresh] = 0
         return invvar
-    
+
+class MegaPrimeMeasurer(Measurer):
+    def __init__(self, *args, **kwargs):
+        super(MegaPrimeMeasurer, self).__init__(*args, **kwargs)
+        self.minstar= 5 # decstat.pro
+        self.camera = 'megaprime'
+        self.pixscale = get_pixscale(self.camera)
+        self.ut = self.primhdr['UTC-OBS']
+        self.band = self.get_band()
+        # {RA,DEC}: center of exposure, TEL{RA,DEC}: boresight of telescope
+        # Use center of exposure if possible
+        self.ra_bore = self.primhdr['RA_DEG']
+        self.dec_bore = self.primhdr['DEC_DEG']
+
+        # # /global/homes/a/arjundey/idl/pro/observing/decstat.pro
+        ### HACK!!!
+        self.zp0 =  dict(g = 26.610,r = 26.818,z = 26.484)
+                         #                  # i,Y from DESY1_Stripe82 95th percentiles
+                         #                  i=26.758, Y=25.321) # e/sec
+        self.sky0 = dict(g = 22.04,r = 20.91,z = 18.46)
+        #                  # i, Y totally made up
+        #                  i=19.68, Y=18.46) # AB mag/arcsec^2
+        self.k_ext = dict(g = 0.17,r = 0.10,z = 0.06,)
+        #                   #i, Y totally made up
+        #                   i=0.08, Y=0.06)
+        # --> e/sec
+        self.cp_header_keys= {'width':['ZNAXIS1','NAXIS1'],
+                              'height':['ZNAXIS2','NAXIS2'],
+                              'fwhm_cp':['FWHM']}
+
+        self.primhdr['WCSCAL'] = 'success'
+        self.goodWcs = True
+
+
+    def get_band(self):
+        band = self.primhdr['FILTER'][0]
+        #band = band.split()[0]
+        return band
+
+    def get_gain(self,hdr):
+        return hdr['GAIN']
+
+    def colorterm_ps1_to_observed(self, ps1stars, band):
+        from legacyanalysis.ps1cat import ps1_to_decam
+        print('HACK -- using DECam color term for CFHT!!')
+        return ps1_to_decam(ps1stars, band)
+
+    def scale_image(self, img):
+        return img * self.gain
+
+    def scale_weight(self, img):
+        return img / (self.gain**2)
+
+    def get_wcs(self):
+        ### FIXME -- no distortion solution in here
+        from astrometry.util.util import Tan
+        return Tan(self.hdr)
+
+    def read_weight(self, clip=True, clipThresh=0.01, **kwargs):
+        # Just estimate from image...
+        img,hdr = self.read_image()
+        print('Image:', img.shape, img.dtype)
+
+        # Estimate per-pixel noise via Blanton's 5-pixel MAD
+        slice1 = (slice(0,-5,10),slice(0,-5,10))
+        slice2 = (slice(5,None,10),slice(5,None,10))
+        mad = np.median(np.abs(img[slice1] - img[slice2]).ravel())
+        sig1 = 1.4826 * mad / np.sqrt(2.)
+        invvar = (1. / sig1**2)
+        return np.zeros_like(img) + invvar
+
+
 class Mosaic3Measurer(Measurer):
     '''Class to measure a variety of quantities from a single Mosaic3 CCD.
     UNITS: e-/s'''
@@ -2626,6 +2699,11 @@ def get_extlist(camera,fn,debug=False,choose_ccd=None):
         extlist= [hdu[i].get_extname() for i in range(1,len(hdu))]
         if debug:
             extlist = ['N4'] #,'S4', 'S22','N19']
+    elif camera == 'megaprime':
+        hdu= fitsio.FITS(fn)
+        extlist= [hdu[i].get_extname() for i in range(1,len(hdu))]
+        if debug:
+            extlist = ['ccd03']
     else:
         print('Camera {} not recognized!'.format(camera))
         pdb.set_trace() 
@@ -2688,6 +2766,8 @@ def measure_image(img_fn, run_calibs=False, survey=None, **measureargs):
         measure = Mosaic3Measurer(img_fn, **measureargs)
     elif camera == '90prime':
         measure = NinetyPrimeMeasurer(img_fn, **measureargs)
+    elif camera == 'megaprime':
+        measure = MegaPrimeMeasurer(img_fn, **measureargs)
     extra_info= dict(zp_fid= measure.zeropoint( measure.band ),
                      sky_fid= measure.sky( measure.band ),
                      ext_fid= measure.extinction( measure.band ),
@@ -2861,7 +2941,7 @@ def get_parser():
     parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter,\
                                      description='Generate a legacypipe-compatible CCDs file \
                                                   from a set of reduced imaging.')
-    parser.add_argument('--camera',choices=['decam','mosaic','90prime'],action='store',required=True)
+    parser.add_argument('--camera',choices=['decam','mosaic','90prime','megaprime'],action='store',required=True)
     parser.add_argument('--image',action='store',default=None,help='relative path to image starting from decam,bok,mosaicz dir',required=False)
     parser.add_argument('--image_list',action='store',default=None,help='text file listing multiples images in same was as --image',required=False)
     parser.add_argument('--outdir', type=str, default='.', help='Where to write zpts/,images/,logs/')
@@ -2918,11 +2998,12 @@ def main(image_list=None,args=None):
     psf = measureargs['psf']
     camera = measureargs['camera']
 
-    if psf and camera in ['mosaic', 'decam']:
-        from legacyzpts.psfzpt_cuts import read_bad_expid
-        fn = 'obstatus/%s-bad_expid.txt' % camera
-        print('Reading', fn)
-        measureargs.update(bad_expid = read_bad_expid(fn))
+    if psf and camera in ['mosaic', 'decam', 'megaprime']:
+        if camera in ['mosaic', 'decam']:
+            from legacyzpts.psfzpt_cuts import read_bad_expid
+            fn = 'obstatus/%s-bad_expid.txt' % camera
+            print('Reading', fn)
+            measureargs.update(bad_expid = read_bad_expid(fn))
 
         from legacypipe.survey import LegacySurveyData
 
@@ -2937,6 +3018,9 @@ def main(image_list=None,args=None):
         if cal is not None:
             survey.calibdir = cal
         survey.imagedir = ''
+
+        from legacypipe.cfht import MegaPrimeImage
+        survey.image_typemap['megaprime'] = MegaPrimeImage
 
         measureargs['survey'] = survey
 
