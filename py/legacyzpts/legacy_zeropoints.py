@@ -109,13 +109,16 @@ def _ccds_table(camera='decam'):
     Description and Units at:
     https://github.com/legacysurvey/legacyzpts/blob/master/DESCRIPTION_OF_OUTPUTS.md
     '''
+
+    max_camera_length = max([len(c) for c in CAMERAS])
+
     cols = [
         ('err_message', 'S30'), 
         ('image_filename', 'S100'), 
         ('image_hdu', '>i2'),      
-        ('camera', 'S7'),          
+        ('camera', 'S%i' % max_camera_length),          
         ('expnum', '>i8'),         
-        ('ccdname', 'S4'),         
+        ('ccdname', 'S5'),         
         ('ccdnum', '>i2'),        
         ('expid', 'S16'),        
         ('object', 'S35'),      
@@ -920,10 +923,12 @@ class Measurer(object):
             skymed= np.median(skyimg)
         else:
             #sky, sig1 = self.sensible_sigmaclip(img[1500:2500, 500:1000])
-            if self.camera == 'decam':
+            if self.camera in ['decam', 'megaprime']:
                 slc=[slice(1500,2500),slice(500,1500)]
             elif self.camera in ['mosaic','90prime']:
                 slc=[slice(500,1500),slice(500,1500)]
+            else:
+                raise RuntimeError('unknown camera %s' % self.camera)
             clip_vals,_,_ = sigmaclip(img[slc],low=nsigma,high=nsigma)
             # from astropy.stats import sigma_clip as sigmaclip_astropy
             #sky_masked= sigmaclip_astropy(img[slc],sigma=nsigma,iters=20)
@@ -2527,6 +2532,14 @@ class MegaPrimeMeasurer(Measurer):
         invvar = (1. / sig1**2)
         return np.zeros_like(img) + invvar
 
+    def read_bitmask(self):
+        # from legacypipe/cfht.py
+        dqfn = 'cfis/test.mask.0.40.01.fits'
+        if self.slc is not None:
+            mask = fitsio.FITS(dqfn)[self.ext][self.slc]
+        else:
+            mask = fitsio.read(dqfn, ext=self.ext)
+        return (mask == 1)
 
 class Mosaic3Measurer(Measurer):
     '''Class to measure a variety of quantities from a single Mosaic3 CCD.
