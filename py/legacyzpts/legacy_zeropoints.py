@@ -2516,8 +2516,11 @@ class MegaPrimeMeasurer(Measurer):
 
     def get_wcs(self):
         ### FIXME -- no distortion solution in here
-        from astrometry.util.util import Tan
-        return Tan(self.hdr)
+        # from astrometry.util.util import Tan
+        # return Tan(self.hdr)
+
+        # "pitcairn" reductions have PV header cards (CTYPE is still RA---TAN)
+        return wcs_pv2sip_hdr(self.hdr)
 
     def read_weight(self, clip=True, clipThresh=0.01, **kwargs):
         # Just estimate from image...
