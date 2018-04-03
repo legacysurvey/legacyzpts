@@ -2733,10 +2733,11 @@ def _measure_image(args):
     '''Utility function to wrap measure_image function for multiprocessing map.''' 
     return measure_image(*args)
 
-def measure_image(img_fn, run_calibs=False, survey=None, **measureargs):
+def measure_image(img_fn, run_calibs=False, survey=None, threads=None, **measureargs):
     '''Wrapper on the camera-specific classes to measure the CCD-level data on all
     the FITS extensions for a given set of images.
     '''
+    from astrometry.util.multiproc import multiproc
     t0= Time()
 
     print('Working on image {}'.format(img_fn))
@@ -2789,18 +2790,29 @@ def measure_image(img_fn, run_calibs=False, survey=None, **measureargs):
                      ext_fid= measure.extinction( measure.band ),
                      exptime= measure.exptime,
                      pixscale= measure.pixscale)
+
+    mp = multiproc(nthreads=(threads or 1))
     
     all_ccds = []
     all_stars_photom = []
     all_stars_astrom = []
     psfex = measureargs['psf']
     splinesky = measureargs['splinesky']
-    for ext in extlist:
-        if run_calibs:
-            measure.run_calibs(survey, ext)
 
-        ccds, stars_photom, stars_astrom = measure.run(ext, psfex=psfex, splinesky=splinesky, save_xy=measureargs['debug'])
-        t0= ptime('measured-ext-%s' % ext,t0)
+    if run_calibs:
+        mp.map(run_one_calib, [(measure, survey, ext) for ext in extlist])
+
+    rtns = mp.map(run_one_ext, [(measure, ext, psfex, splinesky, measureargs['debug'])
+                                for ext in extlist])
+
+    #for ext in extlist:
+        #if run_calibs:
+        #    measure.run_calibs(survey, ext)
+        #ccds, stars_photom, stars_astrom = measure.run(ext, psfex=psfex, splinesky=splinesky, save_xy=measureargs['debug'])
+        #t0= ptime('measured-ext-%s' % ext,t0)
+
+    for ext,rtn in zip(extlist,rtns):
+        ccds, stars_photom, stars_astrom = rtn
 
         if ccds is not None:
             all_ccds.append(ccds)
@@ -2819,6 +2831,14 @@ def measure_image(img_fn, run_calibs=False, survey=None, **measureargs):
     t0= ptime('measure-image-%s' % img_fn,t0)
     return all_ccds, all_stars_photom, all_stars_astrom, extra_info
 
+def run_one_calib(X):
+    measure, survey, ext = X
+    measure.run_calibs(survey, ext)
+
+def run_one_ext(X):
+    measure, ext, psfex, splinesky, debug = X
+    rtns = measure.run(ext, psfex=psfex, splinesky=splinesky, save_xy=debug)
+    return rtns
 
 class outputFns(object):
     def __init__(self,imgfn,outdir, not_on_proj=False,
@@ -2992,6 +3012,8 @@ def get_parser():
                         help='Use spline sky model for sky subtraction?')
     parser.add_argument('--calibdir', default=None, action='store',
                         help='if None will use LEGACY_SURVEY_DIR/calib, e.g. /global/cscratch1/sd/desiproc/dr5-new/calib')
+    parser.add_argument('--threads', default=None, type=int,
+                        help='Multiprocessing threads (parallel by HDU)')
     return parser
 
 
@@ -3020,14 +3042,6 @@ def main(image_list=None,args=None):
             fn = 'obstatus/%s-bad_expid.txt' % camera
             print('Reading', fn)
             measureargs.update(bad_expid = read_bad_expid(fn))
-
-        from legacypipe.survey import LegacySurveyData
-
-        class FakeLegacySurveyData(LegacySurveyData):
-            def get_calib_dir(self):
-                return self.calibdir
-            def get_image_dir(self):
-                return self.imagedir
 
         survey = FakeLegacySurveyData()
         cal = measureargs.get('calibdir')
@@ -3064,7 +3078,7 @@ def main(image_list=None,args=None):
             continue
         # Create the file
         t0=ptime('b4-run',t0)
-        runit(F.imgfn,F.zptfn,F.starfn_photom,F.starfn_astrom, 
+        runit(F.imgfn,F.zptfn,F.starfn_photom,F.starfn_astrom,
               **measureargs)
         #try: 
         #except:
@@ -3073,6 +3087,13 @@ def main(image_list=None,args=None):
     tnow= Time()
     print("TIMING:total %s" % (tnow-tbegin,))
     print("Done")
+
+from legacypipe.survey import LegacySurveyData
+class FakeLegacySurveyData(LegacySurveyData):
+    def get_calib_dir(self):
+        return self.calibdir
+    def get_image_dir(self):
+        return self.imagedir
 
 def read_primary_header(fn):
     '''
