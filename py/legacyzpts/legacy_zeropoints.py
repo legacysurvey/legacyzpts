@@ -1501,6 +1501,10 @@ class Measurer(object):
             # Run tractor fitting of the PS1 stars, using the PsfEx model.
             phot = self.tractor_fit_sources(ps1.ra_ok, ps1.dec_ok, flux0,
                                             fit_img, ierr, psf)
+            print('Got photometry results for', len(phot), 'PS1 stars')
+            if len(phot) == 0:
+                return self.return_on_error('No photometry available',ccds=ccds)
+
             ref = ps1[phot.iref]
             phot.delete_column('iref')
             ref.rename('ra_ok',  'ra')
@@ -1813,6 +1817,10 @@ class Measurer(object):
             if normalize_psf:
                 # print('Normalizing PsfEx model with sum:', s)
                 subpsf.img /= psfsum
+
+            if np.all(subie == 0):
+                print('Inverse-variance map is all zero')
+                continue
 
             #print('PSF model:', subpsf)
             #print('PSF image sum:', subpsf.img.sum())
