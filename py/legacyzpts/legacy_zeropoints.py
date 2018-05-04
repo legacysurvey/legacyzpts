@@ -3019,7 +3019,13 @@ def read_primary_header(fn):
     ff = open(fn, 'rb')
     h = b''
     while True:
-        h = h + ff.read(32768)
+        hnew = ff.read(32768)
+        if len(hnew) == 0:
+            # EOF
+            ff.close()
+            raise RuntimeError('Reached end-of-file in "%s" before finding end of FITS header.' % fn)
+
+        h = h + hnew
         while True:
             line = h[:80]
             h = h[80:]
