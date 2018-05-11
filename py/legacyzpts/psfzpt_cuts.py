@@ -6,27 +6,35 @@ from astrometry.util.fits import fits_table
 from astrometry.util.plotutils import PlotSequence
 from collections import Counter
 
+def psf_cuts_to_string(ccd_cuts, join=', '):
+    s = []
+    for k,v in CCD_CUT_BITS.items():
+        if ccd_cuts & v:
+            s.append(k)
+    return join.join(s)
+
+# Bit codes for why a CCD got cut, used in cut_ccds().
+CCD_CUT_BITS= dict(
+    err_legacyzpts = 0x1,
+    not_grz = 0x2,
+    not_third_pix = 0x4, # Mosaic3 one-third-pixel interpolation problem
+    exptime_lt_30 = 0x8,
+    ccdnmatch_lt_20 = 0x10, 
+    zpt_diff_avg = 0x20, 
+    zpt_small = 0x40,  
+    zpt_large = 0x80,
+    sky_is_bright = 0x100,
+    badexp_file = 0x200,
+    phrms = 0x400,
+    radecrms = 0x800,
+    seeing_bad = 0x1000,
+)
+
 def psf_zeropoint_cuts(P, pixscale,
                        zpt_cut_lo, zpt_cut_hi, bad_expid, camera):
     '''
     zpt_cut_lo, zpt_cut_hi: dict from band to zeropoint.
     '''
-    # Bit codes for why a CCD got cut, used in cut_ccds().
-    CCD_CUT_BITS= dict(
-        err_legacyzpts = 0x1,
-        not_grz = 0x2,
-        not_third_pix = 0x4, # Mosaic3 one-third-pixel interpolation problem
-        exptime_lt_30 = 0x8,
-        ccdnmatch_lt_20 = 0x10, 
-        zpt_diff_avg = 0x20, 
-        zpt_small = 0x40,  
-        zpt_large = 0x80,
-        sky_is_bright = 0x100,
-        badexp_file = 0x200,
-        phrms = 0x400,
-        radecrms = 0x800,
-        seeing_bad = 0x1000,
-    )
 
     ## PSF zeropoints cuts
 

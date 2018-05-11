@@ -1061,6 +1061,7 @@ class Measurer(object):
         assert(len(err_message) > 0 & len(err_message) <= 30)
         if ccds is None:
             ccds= _ccds_table(self.camera)
+            ccds['image_filename'] = self.fn
         if stars_photom is None:
             stars_photom= _stars_table()
         if stars_astrom is None:
@@ -1080,12 +1081,6 @@ class Measurer(object):
         Returns:
             ccds, stars_photom, stars_astrom
         """
-        if not self.goodWcs:
-            print('WCS Failed')
-            return self.return_on_error(err_message='WCS Failed')
-        if self.exptime == 0:
-            print('Exptime = 0')
-            return self.return_on_error(err_message='Exptime = 0')
         self.set_hdu(ext)
         # 
         t0= Time()
@@ -1174,6 +1169,13 @@ class Measurer(object):
         ccds['ra'] = ccdra   # [degree]
         ccds['dec'] = ccddec # [degree]
         t0= ptime('header-info',t0)
+
+        if not self.goodWcs:
+            print('WCS Failed')
+            return self.return_on_error(err_message='WCS Failed', ccds=ccds)
+        if self.exptime == 0:
+            print('Exptime = 0')
+            return self.return_on_error(err_message='Exptime = 0', ccds=ccds)
 
         # Test WCS again IDL, WCS is 1-indexed
         #x_pix= [1,img.shape[0]/2,img.shape[0]]
@@ -1506,6 +1508,10 @@ class Measurer(object):
             # Run tractor fitting of the PS1 stars, using the PsfEx model.
             phot = self.tractor_fit_sources(ps1.ra_ok, ps1.dec_ok, flux0,
                                             fit_img, ierr, psf)
+            print('Got photometry results for', len(phot), 'PS1 stars')
+            if len(phot) == 0:
+                return self.return_on_error('No photometry available',ccds=ccds)
+
             ref = ps1[phot.iref]
             phot.delete_column('iref')
             ref.rename('ra_ok',  'ra')
@@ -1818,6 +1824,10 @@ class Measurer(object):
             if normalize_psf:
                 # print('Normalizing PsfEx model with sum:', s)
                 subpsf.img /= psfsum
+
+            if np.all(subie == 0):
+                print('Inverse-variance map is all zero')
+                continue
 
             #print('PSF model:', subpsf)
             #print('PSF image sum:', subpsf.img.sum())
