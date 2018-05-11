@@ -196,13 +196,6 @@ def get_pixscale(camera='decam'):
           '90prime':0.470,
           'megaprime':0.185}[camera]
 
-def run_create_legacypipe_table(zpt_list):
-    fns= np.loadtxt(zpt_list,dtype=str)
-    assert(len(fns) > 1)
-    for fn in fns:
-        create_legacypipe_table(fn)
-        
-
 def cols_for_legacypipe_table(which='all'):
     """Return list of -legacypipe.fits table colums
 
