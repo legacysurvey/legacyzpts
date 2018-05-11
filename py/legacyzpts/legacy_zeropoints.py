@@ -392,7 +392,7 @@ class Measurer(object):
         self.sn_min = sn_min 
         self.sn_max = sn_max 
         
-        # Tractor fitting of final star sample
+        # Tractor fitting of final star sample (when not doing --psf fitting)
         self.stampradius= 4. # [arcsec] Should be a bit bigger than radius=3.5'' aperture
         self.tractor_nstars= 30 # Tractorize at most this many stars, saves CPU time
 
@@ -473,7 +473,6 @@ class Measurer(object):
         # WCS
         self.wcs = self.get_wcs()
         # Pixscale is assumed CONSTANT! per camera
-        #self.pixscale = self.wcs.pixel_scale()
 
         # From CP Header
         hdrVal={}
@@ -536,7 +535,6 @@ class Measurer(object):
         else:
             img = f.read()
         hdr = f.read_header()
-        #img, hdr = fitsio.read(self.fn, ext=self.ext, header=True)
         img = self.scale_image(img)
         return img, hdr
 
@@ -573,7 +571,7 @@ class Measurer(object):
         return wt
 
     def create_zero_one_mask(self,bitmask,good=[]):
-        """Return zero_one_mask arraygiven a bad pixel map and good pix values
+        """Return zero_one_mask array given a bad pixel map and good pix values
         bitmask: ood image
         good: list of values to treat as good in the bitmask
         """
@@ -631,11 +629,6 @@ class Measurer(object):
             else:
                 raise RuntimeError('unknown camera %s' % self.camera)
             clip_vals,_,_ = sigmaclip(img[slc],low=nsigma,high=nsigma)
-            # from astropy.stats import sigma_clip as sigmaclip_astropy
-            #sky_masked= sigmaclip_astropy(img[slc],sigma=nsigma,iters=20)
-            #use= sky1_masked.mask == False
-            #skymed= np.median(sky_masked[use])
-            #sky1std= np.std(sky_masked[use])
             skymed= np.median(clip_vals) 
             skystd= np.std(clip_vals) 
             skyimg= np.zeros(img.shape) + skymed
@@ -664,12 +657,9 @@ class Measurer(object):
     def fitstars(self, img, ierr, xstar, ystar, fluxstar):
         '''Fit each star using a Tractor model.'''
         import tractor
-
         H, W = img.shape
-
         fwhms = []
         radius_pix = self.stampradius / self.pixscale
-                
         for ii, (xi, yi, fluxi) in enumerate(zip(xstar, ystar, fluxstar)):
             #print('Fitting source', i, 'of', len(Jf))
             ix = int(np.round(xi))
@@ -698,10 +688,8 @@ class Measurer(object):
                 
             tim.freezeAllBut('psf')
             psf.freezeAllBut('sigmas')
-        
             # print('Optimizing params:')
             # tr.printThawedParams()
-        
             #print('Parameter step sizes:', tr.getStepSizes())
             optargs = dict(priors=False, shared_params=False)
             for step in range(50):
@@ -716,7 +704,6 @@ class Measurer(object):
             tr.freezeParam('catalog')
             # print('Optimizing params:')
             # tr.printThawedParams()
-        
             for step in range(50):
                 dlnp, x, alpha = tr.optimize(**optargs)
                 #print('dlnp', dlnp)
@@ -724,11 +711,9 @@ class Measurer(object):
                 #print('psf', psf)
                 if dlnp == 0:
                     break
-
             fwhms.append(2.35 * psf.sigmas[0]) # [pixels]
             #model = tr.getModelImage(0)
             #pdb.set_trace()
-        
         return np.array(fwhms)
 
     def isolated_radec(self,ra,dec,nn=2,minsep=1./3600):
@@ -794,7 +779,7 @@ class Measurer(object):
                                            STAGING_CAMERAS[self.camera])+1:]
         else:
             # img not on proj
-            ccds['image_filename'] = self.fn #os.path.basename(self.fn)
+            ccds['image_filename'] = self.fn
         ccds['image_hdu'] = self.image_hdu 
         ccds['ccdnum'] = self.ccdnum 
         ccds['camera'] = self.camera
@@ -815,24 +800,11 @@ class Measurer(object):
         ccds['gain'] = self.gain
         ccds['pixscale'] = self.pixscale
         ccds['yshift'] = 'YSHIFT' in self.primhdr
-
         ccds['width'] = self.width
         ccds['height'] = self.height
         ccds['fwhm_cp'] = self.fwhm_cp
 
         hdr_fwhm = self.fwhm_cp
-        
-        #hdr_fwhm=-1
-        #for fwhm_key in self.cp_fwhm_keys:
-        #  if fwhm_key in hdr.keys():
-        #    hdr_fwhm= hdr[fwhm_key] #FWHM in pixels
-        #    break
-        #if hdr_fwhm < 0:
-        #    ccds['fwhm_cp']= hdr_fwhm # -1 so know didn't find it
-        #    hdr_fwhm= 1.3 / self.pixscale #fallback value for source detection
-        #else:
-        #    ccds['fwhm_cp']= hdr_fwhm
-        # Same ccd and header names
         notneeded_cols= ['avsky']
         for ccd_col in ['avsky', 'crpix1', 'crpix2', 'crval1', 'crval2', 
                         'cd1_1','cd1_2', 'cd2_1', 'cd2_2']:
@@ -845,19 +817,6 @@ class Measurer(object):
                 else:
                     raise KeyError('Could not find %s, keys not in cp header:' \
                                % ccd_col,ccd_col)
-        #hdrkey = ('avsky', 'crpix1', 'crpix2', 'crval1', 'crval2', 'cd1_1',
-        #          'cd1_2', 'cd2_1', 'cd2_2')
-        #ccdskey = ('avsky', 'crpix1', 'crpix2', 'crval1', 'crval2', 'cd1_1',
-        #           'cd1_2', 'cd2_1', 'cd2_2')
-        #for ckey, hkey in zip(ccdskey, hdrkey):
-        #    try:
-        #        ccds[ckey] = hdr[hkey]
-        #    except KeyError:
-        #        #if hkey == 'avsky':
-        #        #    print('CP image does not have avsky in hdr: %s' % ccds['image_filename'])
-        #        #    ccds[hkey]= -1
-        #        raise NameError('key not in header: %s' % hkey)
-            
         exptime = ccds['exptime'].data[0]
         airmass = ccds['airmass'].data[0]
         print('Band {}, Exptime {}, Airmass {}'.format(self.band, exptime, airmass))
@@ -866,7 +825,7 @@ class Measurer(object):
         H = ccds['height'].data[0]
         W = ccds['width'].data[0]
         print('Image size:', W,H)
-        ccdra, ccddec = self.wcs.pixelxy2radec((W+1) / 2.0, (H + 1) / 2.0)
+        ccdra, ccddec = self.wcs.pixelxy2radec((W+1) / 2.0, (H+1) / 2.0)
         ccds['ra'] = ccdra   # [degree]
         ccds['dec'] = ccddec # [degree]
         t0= ptime('header-info',t0)
@@ -878,22 +837,7 @@ class Measurer(object):
             print('Exptime = 0')
             return self.return_on_error(err_message='Exptime = 0', ccds=ccds)
 
-        # Test WCS again IDL, WCS is 1-indexed
-        #x_pix= [1,img.shape[0]/2,img.shape[0]]
-        #y_pix= [1,img.shape[1]/2,img.shape[1]]
-        #test_wcs= [(_x,_y)+self.wcs.pixelxy2radec(_x,_y) for _x,_y in zip(x_pix,y_pix)]
-        #with open('three_camera_vals.txt','a') as foo:
-        #    foo.write('ccdname=%s, hdu=%d, image=%s\n' % (self.ccdname,self.image_hdu,self.fn))
-        #    foo.write('image shape: x=%d y=%d\n' % (img.shape[0],img.shape[1]))
-        #    for i in test_wcs:
-        #        foo.write('x=%d y=%d ra=%.9f dec=%.9f\n' % (i[0],i[1],i[2],i[3]))
-        #return ccds, _stars_table()
-        
-        #if (self.camera == 'decam') & (ext == 'S7'):
-        #    return self.return_on_error(err_message='S7', ccds=ccds)
-
         weight = self.read_weight(scale=False)
-
         if np.all(weight == 0):
             txt = 'All weight-map pixels are zero'
             print(txt)
@@ -903,13 +847,7 @@ class Measurer(object):
             txt = 'All weight-map pixels are zero or one'
             print(txt)
             return self.return_on_error(txt,ccds=ccds)
-
-        from collections import Counter
-        print('Most common weight-map values:', Counter(weight.ravel()).most_common(10))
-
         weight = self.scale_weight(weight)
-
-        print('Weight-map signs:', Counter(np.sign(weight.ravel())))
 
         if psfex:
             # Quick check for PsfEx file
@@ -920,8 +858,8 @@ class Measurer(object):
                 print('PsfEx model number of stars accepted:', nacc)
                 return self.return_on_error(err_message='Bad PSF model', ccds=ccds)
 
-        self.img,hdr= self.read_image() 
-        self.bitmask= self.read_bitmask()
+        self.img,hdr = self.read_image()
+        self.bitmask = self.read_bitmask()
 
         # Per-pixel error -- weight is 1/sig*2, scaled by scale_weight()
         medweight = np.median(weight[(weight > 0) * (self.bitmask == 0)])
@@ -940,11 +878,6 @@ class Measurer(object):
         print('Computing the sky background.')
         sky_img, skymed, skyrms = self.get_sky_and_sigma(self.img)
         img_sub_sky= self.img - sky_img
-
-        #fn= 'N4.fits' 
-        #fitsio.write(fn,img_sub_sky,extname='N4')
-        #raise ValueError
-        
 
         # Bunch of sky estimates
         # Median of absolute deviation (MAD), std dev = 1.4826 * MAD
