@@ -189,23 +189,6 @@ def _stars_table(nstars=1):
     stars = Table(np.zeros(nstars, dtype=cols))
     return stars
 
-def cuts_for_brick_2016p122(legacy_fn,survey_fn):
-    survey=fits_table(survey_fn)
-    legacy=fits_table(legacy_fn)
-    # cut to same data as survey_fn
-    keep= np.zeros(len(legacy),bool)
-    for sur in survey:
-        ind= (np.char.strip(legacy.image_filename) == sur.image_filename.strip() ) *\
-             (np.char.strip(legacy.ccdname) == sur.ccdname.strip() )
-        keep[ind]= True
-    legacy.cut(keep)
-    print('size legacy=%d' % (len(legacy),))
-    # save
-    fn=legacy_fn.replace('.fits','_wcuts.fits')
-    legacy.writeto(fn) 
-    print('Wrote %s' % fn)
-     
-
 def get_pixscale(camera='decam'):
   assert(camera in CAMERAS)
   return {'decam':0.262,
