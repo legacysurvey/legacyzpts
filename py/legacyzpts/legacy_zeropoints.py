@@ -2410,7 +2410,6 @@ def measure_image(img_fn, run_calibs=False, survey=None, threads=None, **measure
     elif camera == 'megaprime':
         measure = MegaPrimeMeasurer(img_fn, **measureargs)
     extra_info= dict(zp_fid= measure.zeropoint( measure.band ),
-                     sky_fid= measure.sky( measure.band ),
                      ext_fid= measure.extinction( measure.band ),
                      exptime= measure.exptime,
                      pixscale= measure.pixscale)
@@ -2557,7 +2556,7 @@ def runit(imgfn,zptfn,starfn_photom,starfn_astrom,
         t0= ptime('measure_image',t0)
         # Write out.
         ccds.write(zptfn, overwrite=True)
-        # Header <-- fiducial zp,sky,ext, also exptime, pixscale
+        # Header <-- fiducial zp,ext, also exptime, pixscale
         hdulist = fits_astropy.open(zptfn, mode='update')
         prihdr = hdulist[0].header
         for key,val in extra_info.items():
