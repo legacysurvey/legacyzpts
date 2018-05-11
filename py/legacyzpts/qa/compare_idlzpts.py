@@ -347,6 +347,179 @@ class ZptResiduals(Residuals):
     #    return xlim_dict      
 
 
+def convert_stars_table(T, camera=None,
+                        star_table=None):
+    """converts -star.fits table to idl matches table
+
+    Note, unlike converte_zeropoints_table, must treat each band 
+        separately so loop over the bands
+
+    Args:
+        T: legacy stars fits_table, can be a single stars table or a merge
+            of many stars tables
+        camera: CAMERAS
+        star_table: photom or astrom
+    """
+    assert(camera in CAMERAS)
+    assert(star_table in ['photom','astrom'])
+    from legacyzpts.qa.params import get_fiducial
+    fid= get_fiducial(camera=camera)
+    new_T= [] 
+    for band in set(T.filter):
+        isBand= T.filter == band
+        zp0= fid.zp0[band]
+        new_T.append(
+            convert_stars_table_one_band(T[isBand],
+                            camera= camera, star_table= star_table,
+                            zp_fid=fid.zp0[band], 
+                            pixscale=fid.pixscale))
+    return merge_tables(new_T)
+
+def convert_stars_table_one_band(T, camera=None, star_table=None,
+                                 zp_fid=None,pixscale=0.262):
+    """Converts legacy star fits table (T) to idl names and units
+    
+    Attributes:
+        T: legacy star fits table
+        star_table: photom or astrom
+        zp_fid: fiducial zeropoint for the band
+        pixscale: pixscale
+        expnum2exptime: dict mapping expnum to exptime
+    
+    Example:
+        kwargs= primary_hdr(zpt_fn)
+        T= fits_table(stars_fn)
+        newT= convert_stars_table(T, zp_fid=kwargs['zp_fid'],
+        pixscale=kwargs['pixscale'])
+    """ 
+    assert(camera in CAMERAS)
+    assert(star_table in ['photom','astrom'])
+    assert(len(set(T.filter)) == 1)
+    need_keys= cols_for_converted_star_table(
+                        star_table=star_table,
+                        which='all')
+    extname=[ccdname for _,ccdname in np.char.split(T.expid,'-')]
+    T.set('extname', np.array(extname))
+    T.set('ccdname', np.array(extname))
+    # AB mag of stars using fiducial ZP to convert
+    #T.set('exptime', lookup_exptime(T.expnum, expnum2exptime))
+    T.set('ccd_mag',-2.5 * np.log10(T.apflux / T.exptime) +  \
+          zp_fid)
+    # IDL matches- ccd_sky is counts / pix / sec where counts
+    # is ADU for DECam and e- for mosaic/90prime 
+    # legacyzpts star- apskyflux is e- from sky in 7'' aperture
+    area= np.pi*3.5**2/pixscale**2
+    if camera == 'decam':
+        T.set('ccd_sky', T.apskyflux / area)
+    elif camera in ['mosaic','90prime']:
+        T.set('ccd_sky', T.apskyflux / area / T.exptime)
+    # Arjuns ccd_sky is ADUs in 7-10 arcsec sky aperture
+    # e.g. sky (total e/pix/sec)= ccd_sky (ADU) * gain / exptime
+    # Rename
+    rename_keys= [('ra','ccd_ra'),('dec','ccd_dec'),('x','ccd_x'),('y','ccd_y'),
+                  ('radiff','raoff'),('decdiff','decoff'),
+                  ('dmagall','magoff'),
+                  ('image_filename','filename'),
+                  ('gaia_g','gmag')]
+    if star_table == 'astrom':
+        for key in [('dmagall','magoff')]:
+            rename_keys.remove(key)
+    for old,new in rename_keys:
+        T.rename(old,new)
+        #units[new]= units.pop(old)
+    # Delete unneeded keys
+    del_keys= list( set(T.get_columns()).difference(set(need_keys)) )
+    for key in del_keys:
+        T.delete_column(key)
+        #if key in units.keys():
+        #    _= units.pop(key)
+    return T
+
+def cols_for_converted_zpt_table(which='all'):
+    """Return list of columns for -zpt.fits table converted to idl names
+
+    Args:
+        which: all, numeric, 
+       nonzero_diff (numeric and expect non-zero diff with reference 
+       when compute it)
+    """
+    assert(which in ['all','numeric','nonzero_diff'])
+    if which == 'all':
+        need_arjuns_keys= ['filename', 'object', 'expnum', 'exptime', 'filter', 'seeing', 'ra', 'dec', 
+             'date_obs', 'mjd_obs', 'ut', 'ha', 'airmass', 'propid', 'zpt', 'avsky', 
+             'fwhm', 'crpix1', 'crpix2', 'crval1', 'crval2', 'cd1_1', 'cd1_2', 'cd2_1', 'cd2_2', 
+             'naxis1', 'naxis2', 'ccdnum', 'ccdname', 'ccdra', 'ccddec', 
+             'ccdzpt', 'ccdphoff', 'ccdphrms', 'ccdskyrms', 'ccdskymag', 
+             'ccdskycounts', 'ccdraoff', 'ccddecoff', 'ccdrarms', 'ccddecrms', 'ccdtransp', 
+             'ccdnmatch']
+
+    elif which == 'numeric':
+        need_arjuns_keys= ['expnum', 'exptime', 'seeing', 'ra', 'dec', 
+             'mjd_obs', 'airmass', 'zpt', 'avsky', 
+             'fwhm', 'crpix1', 'crpix2', 'crval1', 'crval2', 'cd1_1', 'cd1_2', 'cd2_1', 'cd2_2', 
+             'naxis1', 'naxis2', 'ccdnum', 'ccdra', 'ccddec', 
+             'ccdzpt', 'ccdphoff', 'ccdphrms', 'ccdskyrms', 'ccdskymag', 
+             'ccdskycounts', 'ccdraoff', 'ccddecoff', 'ccdrarms', 'ccddecrms', 'ccdtransp', 
+             'ccdnmatch']
+
+    elif which == 'nonzero_diff':
+        need_arjuns_keys= ['seeing', 'ra', 'dec', 
+             'zpt', 'avsky', 
+             'fwhm', 
+             'ccdra', 'ccddec', 
+             'ccdzpt', 'ccdphoff', 'ccdphrms', 'ccdskyrms', 'ccdskymag', 
+             'ccdskycounts', 'ccdraoff', 'ccddecoff', 'ccdrarms', 'ccddecrms', 'ccdtransp', 
+             'ccdnmatch']
+
+    return need_arjuns_keys
+ 
+
+def convert_zeropoints_table(T, camera=None):
+    """Make column names and units of -zpt.fits identical to IDL zeropoints
+
+    Args:
+        T: fits_table of some -zpt.fits like fits file
+    """
+    assert(camera in CAMERAS)
+    pix= get_pixscale(camera)
+    need_arjuns_keys= cols_for_converted_zpt_table(which='all')
+    # Change units
+    T.set('fwhm', T.fwhm * pix)
+    if camera == "decam":
+        T.set('skycounts', T.skycounts * T.exptime)
+        T.set('skyrms', T.skyrms * T.exptime)
+    elif camera in ['mosaic','90prime']:
+        T.set('fwhm_cp', T.fwhm_cp * pix)
+    # Append 'ccd' to name
+    app_ccd= ['skycounts','skyrms','skymag',
+              'phoff','raoff','decoff',
+              'phrms','rarms','decrms',
+              'transp'] 
+    for ad_ccd in app_ccd:
+        T.rename(ad_ccd,'ccd'+ad_ccd)
+    # Other
+    rename_keys= [('ra','ccdra'),('dec','ccddec'),
+                  ('ra_bore','ra'),('dec_bore','dec'),
+                  ('fwhm','seeing'),('fwhm_cp','fwhm'),
+                  ('zpt','ccdzpt'),('zptavg','zpt'),
+                  ('width','naxis1'),('height','naxis2'),
+                  ('image_filename','filename'),
+                  ('nmatch_photom','ccdnmatch')]
+    for old,new in rename_keys:
+        T.rename(old,new)
+    # New columns
+    #T.set('avsky', np.zeros(len(T)) + np.mean(T.ccdskycounts))
+    
+    # Delete unneeded keys
+    #needed= set(need_arjuns_keys).difference(set(ignoring_these))
+    del_keys= list( set(T.get_columns()).difference(need_arjuns_keys) )
+    for key in del_keys:
+        T.delete_column(key)
+    return T
+
+
+    
+
 class StarResiduals(Residuals): 
     """Matches star data to idl and plots residuals
 

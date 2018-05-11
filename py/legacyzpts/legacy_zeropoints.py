@@ -7,6 +7,9 @@ import matplotlib.pyplot as plt
 import os
 import pdb
 import argparse
+import re
+import datetime
+import sys
 
 import numpy as np
 from glob import glob
@@ -14,15 +17,12 @@ from pickle import dump
 from scipy.optimize import curve_fit
 from scipy.stats import sigmaclip
 from scipy.ndimage.filters import median_filter
-import re
 
 import fitsio
 from astropy.io import fits as fits_astropy
 from astropy.table import Table, vstack
 from astropy import units
 from astropy.coordinates import SkyCoord
-import datetime
-import sys
 
 from photutils import (CircularAperture, CircularAnnulus,
                        aperture_photometry, DAOStarFinder)
@@ -48,7 +48,6 @@ STAGING_CAMERAS={'decam':'decam',
                  'mosaic':'mosaicz',
                  '90prime':'bok',
                  'megaprime':'cfis'}
-
 
 def try_mkdir(dir):
     try:
@@ -76,40 +75,12 @@ def dobash(cmd):
     print('UNIX cmd: %s' % cmd)
     if os.system(cmd): raise ValueError
 
-
-def extra_ccd_keys(camera='decam'):
-    '''Returns list of camera-specific keywords for the ccd table'''
-    if camera == 'decam':
-        keys= [('ccdzpta', '>f4'), ('ccdzptb','>f4'), ('ccdnmatcha', '>i2'), ('ccdnmatchb', '>i2'),\
-               ('temp', '>f4')]
-    elif camera == 'mosaic':
-        keys=[]
-    elif camera == '90prime':
-        keys=[('ccdzpt1', '>f4'), ('ccdzpt2','>f4'), ('ccdzpt3', '>f4'), ('ccdzpt4','>f4'),\
-              ('ccdnmatcha', '>i2'), ('ccdnmatch2', '>i2'), ('ccdnmatch3', '>i2'), ('ccdnmatch4', '>i2')]
-    return keys 
-
-def get_units():
-    return dict(
-        ra='deg',dec='deg',exptime='sec',pixscale='arcsec/pix',
-        fwhm='pix',seeing='arcsec',
-        sky0='mag/arcsec^2',skymag='mag/arcsec^2/sec',
-        skycounts='electron/pix/sec',skyrms='electron/pix/sec',
-        apflux='electron/7 arcsec aperture',apskyflux='electron/7 arcsec aperture',
-        apskyflux_perpix='electron/pix',
-        apmags='-2.5log10(electron/sec) + zpt0',
-        raoff='arcsec',decoff='arcsec',rarms='arcsec',decrms='arcsec',
-        phoff='electron/sec',phrms='electron/sec',
-        zpt0='electron/sec',zpt='electron/sec',transp='electron/sec')
- 
-
 def _ccds_table(camera='decam'):
     '''Initialize the CCDs table.
 
     Description and Units at:
     https://github.com/legacysurvey/legacyzpts/blob/master/DESCRIPTION_OF_OUTPUTS.md
     '''
-
     max_camera_length = max([len(c) for c in CAMERAS])
 
     cols = [
@@ -171,10 +142,8 @@ def _ccds_table(camera='decam'):
         ('rastddev', '>f4'),  
         ('decstddev', '>f4')  
         ]
-
     ccds = Table(np.zeros(1, dtype=cols))
     return ccds
-
      
 def _stars_table(nstars=1):
     '''Initialize the stars table.
@@ -194,49 +163,11 @@ def _stars_table(nstars=1):
     stars = Table(np.zeros(nstars, dtype=cols))
     return stars
 
-def reduce_survey_ccd_cols(survey_fn,legacy_fn):
-    survey=fits_table(survey_fn)
-    legacy=fits_table(legacy_fn)
-    for col in survey.get_columns():
-        if not col in legacy.get_columns():
-            survey.delete_column(col)
-    assert(len(legacy.get_columns()) == len(survey.get_columns()))
-    for col in survey.get_columns():
-        assert(col in legacy.get_columns())
-    fn=survey_fn.replace('.fits.gz','_reduced.fits.gz')
-    survey.writeto(fn) 
-    print('Wrote %s' % fn)
-
-def cuts_for_brick_2016p122(legacy_fn,survey_fn):
-    survey=fits_table(survey_fn)
-    legacy=fits_table(legacy_fn)
-    # cut to same data as survey_fn
-    keep= np.zeros(len(legacy),bool)
-    for sur in survey:
-        ind= (np.char.strip(legacy.image_filename) == sur.image_filename.strip() ) *\
-             (np.char.strip(legacy.ccdname) == sur.ccdname.strip() )
-        keep[ind]= True
-    legacy.cut(keep)
-    print('size legacy=%d' % (len(legacy),))
-    # save
-    fn=legacy_fn.replace('.fits','_wcuts.fits')
-    legacy.writeto(fn) 
-    print('Wrote %s' % fn)
-     
-
 def get_pixscale(camera='decam'):
-  assert(camera in CAMERAS)
   return {'decam':0.262,
           'mosaic':0.262,
           '90prime':0.470,
           'megaprime':0.185}[camera]
-
-def run_create_legacypipe_table(zpt_list):
-    fns= np.loadtxt(zpt_list,dtype=str)
-    assert(len(fns) > 1)
-    for fn in fns:
-        create_legacypipe_table(fn)
-        
 
 def cols_for_legacypipe_table(which='all'):
     """Return list of -legacypipe.fits table colums
@@ -273,7 +204,6 @@ def cols_for_legacypipe_table(which='all'):
         dustins_keys= ['skyrms']
     return need_arjuns_keys + dustins_keys
  
-
 def create_legacypipe_table(ccds_fn, camera=None, psf=False, bad_expid=None):
     """input _ccds_table fn
     output a table formatted for legacypipe/runbrick
@@ -283,20 +213,11 @@ def create_legacypipe_table(ccds_fn, camera=None, psf=False, bad_expid=None):
     # Load full zpt table
     assert('-zpt.fits' in ccds_fn)
     T = fits_table(ccds_fn)
-    #hdr = T.get_header()
-    #primhdr = fitsio.read_header(ccds_fn)
-    #units= get_units()
-
-    #primhdr.add_record(dict(name='ALLBANDS', value=allbands,
-    #                        comment='Band order in array values'))
-    #has_zpt = 'zpt' in T.columns()
-    # Units
-    if camera == 'decam':
-        T.set('zpt',T.zpt - 2.5*np.log10(T.gain))
-        T.set('zptavg',T.zptavg - 2.5*np.log10(T.gain))
     # Rename
-    rename_keys= [('zpt','ccdzpt'),('zptavg','zpt'),
-                  ('raoff','ccdraoff'),('decoff','ccddecoff'),
+    rename_keys= [('zpt','ccdzpt'),
+                  ('zptavg','zpt'),
+                  ('raoff','ccdraoff'),
+                  ('decoff','ccddecoff'),
                   ('skycounts', 'ccdskycounts'),
                   ('rarms',  'ccdrarms'),
                   ('decrms', 'ccddecrms'),
@@ -304,33 +225,17 @@ def create_legacypipe_table(ccds_fn, camera=None, psf=False, bad_expid=None):
                   ('nmatch_photom','ccdnmatch')]
     for old,new in rename_keys:
         T.rename(old,new)
-        #units[new]= units.pop(old)
     # Delete 
     del_keys= list( set(T.get_columns()).difference(set(need_keys)) )
     for key in del_keys:
         T.delete_column(key)
-        #if key in units.keys():
-        #    _= units.pop(key)
-    # legacypipe/merge-zeropoints.py
-    # if camera == 'decam':
-    #     T.set('width', np.zeros(len(T), np.int16) + 2046)
-    #     T.set('height', np.zeros(len(T), np.int16) + 4094)
     # precision
     T.width  = T.width.astype(np.int16)
     T.height = T.height.astype(np.int16)
-    #T.ccdnum = T.ccdnum.astype(np.int16) #number doesn't follow hdu, not using if possible
     T.cd1_1 = T.cd1_1.astype(np.float32)
     T.cd1_2 = T.cd1_2.astype(np.float32)
     T.cd2_1 = T.cd2_1.astype(np.float32)
     T.cd2_2 = T.cd2_2.astype(np.float32)
-    # Align units with 'cols'
-    #cols = T.get_columns()
-    #units = [units.get(c, '') for c in cols]
-    # Column ordering...
-    #cols = []
-    #if dr4:
-    #    cols.append('release')
-    #    T.release = np.zeros(len(T), np.int32) + 4000
 
     if camera == 'mosaic' and psf:
         from legacyzpts.psfzpt_cuts import psf_zeropoint_cuts
@@ -346,7 +251,6 @@ def create_legacypipe_table(ccds_fn, camera=None, psf=False, bad_expid=None):
 
     elif camera == 'decam' and psf:
         from legacyzpts.psfzpt_cuts import psf_zeropoint_cuts
-
         # These are from DR5; eg
         # https://github.com/legacysurvey/legacypipe/blob/dr5.0/py/legacypipe/decam.py#L50
         g0 = 25.08
@@ -357,15 +261,12 @@ def create_legacypipe_table(ccds_fn, camera=None, psf=False, bad_expid=None):
         di = (-0.5, 0.25)
         dr = (-0.5, 0.25)
         dz = (-0.5, 0.25)
-
         zpt_lo = dict(g=g0+dg[0], r=r0+dr[0], i=i0+dr[0], z=z0+dz[0])
         zpt_hi = dict(g=g0+dg[1], r=r0+dr[1], i=i0+dr[1], z=z0+dz[1])
-
         psf_zeropoint_cuts(T, 0.262, zpt_lo, zpt_hi, bad_expid, camera)
 
-
     outfn=ccds_fn.replace('-zpt.fits','-legacypipe.fits')
-    T.writeto(outfn) #, columns=cols, header=hdr, primheader=primhdr, units=units)
+    T.writeto(outfn)
     print('Wrote %s' % outfn)
 
 def create_annotated_table(leg_fn, camera, survey, psf=False):
@@ -421,208 +322,6 @@ def cols_for_converted_star_table(star_table=None,
     # Done 
     return need_arjuns_keys + extra_keys
  
-
-
-def convert_stars_table(T, camera=None,
-                        star_table=None):
-    """converts -star.fits table to idl matches table
-
-    Note, unlike converte_zeropoints_table, must treat each band 
-        separately so loop over the bands
-
-    Args:
-        T: legacy stars fits_table, can be a single stars table or a merge
-            of many stars tables
-        camera: CAMERAS
-        star_table: photom or astrom
-    """
-    assert(camera in CAMERAS)
-    assert(star_table in ['photom','astrom'])
-    from legacyzpts.qa.params import get_fiducial
-    fid= get_fiducial(camera=camera)
-    new_T= [] 
-    for band in set(T.filter):
-        isBand= T.filter == band
-        zp0= fid.zp0[band]
-        new_T.append(
-            convert_stars_table_one_band(T[isBand],
-                            camera= camera, star_table= star_table,
-                            zp_fid=fid.zp0[band], 
-                            pixscale=fid.pixscale))
-    return merge_tables(new_T)
-
-def convert_stars_table_one_band(T, camera=None, star_table=None,
-                                 zp_fid=None,pixscale=0.262):
-    """Converts legacy star fits table (T) to idl names and units
-    
-    Attributes:
-        T: legacy star fits table
-        star_table: photom or astrom
-        zp_fid: fiducial zeropoint for the band
-        pixscale: pixscale
-        expnum2exptime: dict mapping expnum to exptime
-    
-    Example:
-        kwargs= primary_hdr(zpt_fn)
-        T= fits_table(stars_fn)
-        newT= convert_stars_table(T, zp_fid=kwargs['zp_fid'],
-        pixscale=kwargs['pixscale'])
-    """ 
-    assert(camera in CAMERAS)
-    assert(star_table in ['photom','astrom'])
-    assert(len(set(T.filter)) == 1)
-    need_keys= cols_for_converted_star_table(
-                        star_table=star_table,
-                        which='all')
-    extname=[ccdname for _,ccdname in np.char.split(T.expid,'-')]
-    T.set('extname', np.array(extname))
-    T.set('ccdname', np.array(extname))
-    # AB mag of stars using fiducial ZP to convert
-    #T.set('exptime', lookup_exptime(T.expnum, expnum2exptime))
-    T.set('ccd_mag',-2.5 * np.log10(T.apflux / T.exptime) +  \
-          zp_fid)
-    # IDL matches- ccd_sky is counts / pix / sec where counts
-    # is ADU for DECam and e- for mosaic/90prime 
-    # legacyzpts star- apskyflux is e- from sky in 7'' aperture
-    area= np.pi*3.5**2/pixscale**2
-    if camera == 'decam':
-        T.set('ccd_sky', T.apskyflux / area / T.gain)
-    elif camera in ['mosaic','90prime']:
-        T.set('ccd_sky', T.apskyflux / area / T.exptime)
-    # Arjuns ccd_sky is ADUs in 7-10 arcsec sky aperture
-    # e.g. sky (total e/pix/sec)= ccd_sky (ADU) * gain / exptime
-    # Rename
-    rename_keys= [('ra','ccd_ra'),('dec','ccd_dec'),('x','ccd_x'),('y','ccd_y'),
-                  ('radiff','raoff'),('decdiff','decoff'),
-                  ('dmagall','magoff'),
-                  ('image_filename','filename'),
-                  ('gaia_g','gmag')]
-    if star_table == 'astrom':
-        for key in [('dmagall','magoff')]:
-            rename_keys.remove(key)
-    for old,new in rename_keys:
-        T.rename(old,new)
-        #units[new]= units.pop(old)
-    # Delete unneeded keys
-    del_keys= list( set(T.get_columns()).difference(set(need_keys)) )
-    for key in del_keys:
-        T.delete_column(key)
-        #if key in units.keys():
-        #    _= units.pop(key)
-    return T
-
-
-def cols_for_converted_zpt_table(which='all'):
-    """Return list of columns for -zpt.fits table converted to idl names
-
-    Args:
-        which: all, numeric, 
-       nonzero_diff (numeric and expect non-zero diff with reference 
-       when compute it)
-    """
-    assert(which in ['all','numeric','nonzero_diff'])
-    if which == 'all':
-        need_arjuns_keys= ['filename', 'object', 'expnum', 'exptime', 'filter', 'seeing', 'ra', 'dec', 
-             'date_obs', 'mjd_obs', 'ut', 'ha', 'airmass', 'propid', 'zpt', 'avsky', 
-             'fwhm', 'crpix1', 'crpix2', 'crval1', 'crval2', 'cd1_1', 'cd1_2', 'cd2_1', 'cd2_2', 
-             'naxis1', 'naxis2', 'ccdnum', 'ccdname', 'ccdra', 'ccddec', 
-             'ccdzpt', 'ccdphoff', 'ccdphrms', 'ccdskyrms', 'ccdskymag', 
-             'ccdskycounts', 'ccdraoff', 'ccddecoff', 'ccdrarms', 'ccddecrms', 'ccdtransp', 
-             'ccdnmatch']
-
-    elif which == 'numeric':
-        need_arjuns_keys= ['expnum', 'exptime', 'seeing', 'ra', 'dec', 
-             'mjd_obs', 'airmass', 'zpt', 'avsky', 
-             'fwhm', 'crpix1', 'crpix2', 'crval1', 'crval2', 'cd1_1', 'cd1_2', 'cd2_1', 'cd2_2', 
-             'naxis1', 'naxis2', 'ccdnum', 'ccdra', 'ccddec', 
-             'ccdzpt', 'ccdphoff', 'ccdphrms', 'ccdskyrms', 'ccdskymag', 
-             'ccdskycounts', 'ccdraoff', 'ccddecoff', 'ccdrarms', 'ccddecrms', 'ccdtransp', 
-             'ccdnmatch']
-
-    elif which == 'nonzero_diff':
-        need_arjuns_keys= ['seeing', 'ra', 'dec', 
-             'zpt', 'avsky', 
-             'fwhm', 
-             'ccdra', 'ccddec', 
-             'ccdzpt', 'ccdphoff', 'ccdphrms', 'ccdskyrms', 'ccdskymag', 
-             'ccdskycounts', 'ccdraoff', 'ccddecoff', 'ccdrarms', 'ccddecrms', 'ccdtransp', 
-             'ccdnmatch']
-
-    return need_arjuns_keys
- 
-
-def convert_zeropoints_table(T, camera=None):
-    """Make column names and units of -zpt.fits identical to IDL zeropoints
-
-    Args:
-        T: fits_table of some -zpt.fits like fits file
-    """
-    assert(camera in CAMERAS)
-    pix= get_pixscale(camera)
-    need_arjuns_keys= cols_for_converted_zpt_table(which='all')
-    # Change units
-    if camera == "decam":
-        T.set('fwhm', T.fwhm * pix)
-        T.set('skycounts', T.skycounts * T.exptime / T.gain)
-        T.set('skyrms', T.skyrms * T.exptime / T.gain)
-        T.set('zpt',T.zpt - 2.5*np.log10(T.gain))
-        T.set('zptavg',T.zptavg - 2.5*np.log10(T.gain))
-    elif camera in ['mosaic','90prime']:
-        T.set('fwhm', T.fwhm * pix)
-        T.set('fwhm_cp', T.fwhm_cp * pix)
-    # Append 'ccd' to name
-    app_ccd= ['skycounts','skyrms','skymag',
-              'phoff','raoff','decoff',
-              'phrms','rarms','decrms',
-              'transp'] 
-    for ad_ccd in app_ccd:
-        T.rename(ad_ccd,'ccd'+ad_ccd)
-    # Other
-    rename_keys= [('ra','ccdra'),('dec','ccddec'),
-                  ('ra_bore','ra'),('dec_bore','dec'),
-                  ('fwhm','seeing'),('fwhm_cp','fwhm'),
-                  ('zpt','ccdzpt'),('zptavg','zpt'),
-                  ('width','naxis1'),('height','naxis2'),
-                  ('image_filename','filename'),
-                  ('nmatch_photom','ccdnmatch')]
-    for old,new in rename_keys:
-        T.rename(old,new)
-    # New columns
-    #T.set('avsky', np.zeros(len(T)) + np.mean(T.ccdskycounts))
-    
-    # Delete unneeded keys
-    #needed= set(need_arjuns_keys).difference(set(ignoring_these))
-    del_keys= list( set(T.get_columns()).difference(need_arjuns_keys) )
-    for key in del_keys:
-        T.delete_column(key)
-    return T
-
-
-
-#class NativeTable(object):
-#    def __init__(self,fn,camera='decam',ccd_or_stars='ccds'):
-#        '''zpt,stars tables have same units by default (e.g. electron/sec for zpt)
-#        This func takes either the ccds or stars table and converts the relavent columns
-#        into native units for given camera 
-#        e.g. ADU for DECam,  electron/sec for Mosaic/BASS'''
-#        assert(camera in ['decam','mosaic','90prime'])
-#        assert(ccds_or_stars in ['ccds','stars'])
-#        if camera in 'decam':
-#            self.Decam(fn,ccds_or_stars=ccds_or_stars)
-#        if camera in ['mosaic','90prime']:
-#            self.Mosaic90Prime(fn,ccds_or_stars=ccds_or_stars)
-#
-#    def Decam(self,fn,ccds_or_stars):
-#        T = fits_table(fn)
-#        hdr = T.get_header()
-#        primhdr = fitsio.read_header(ccds_fn)
-#        units= get_units()
-#        # Convert units
-#        #T.set('zpt',T.zpt +- 2.5*np.log10(T.gain * T.exptime)) 
-#        # Write
-#        outfn=fn.replace('.fits','native.fits')
-#        T.writeto(outfn, columns=cols, header=hdr, primheader=primhdr, units=units)
-
 def getrms(x):
     return np.sqrt( np.mean( np.power(x,2) ) )
 
@@ -693,7 +392,7 @@ class Measurer(object):
         self.sn_min = sn_min 
         self.sn_max = sn_max 
         
-        # Tractor fitting of final star sample
+        # Tractor fitting of final star sample (when not doing --psf fitting)
         self.stampradius= 4. # [arcsec] Should be a bit bigger than radius=3.5'' aperture
         self.tractor_nstars= 30 # Tractorize at most this many stars, saves CPU time
 
@@ -774,7 +473,6 @@ class Measurer(object):
         # WCS
         self.wcs = self.get_wcs()
         # Pixscale is assumed CONSTANT! per camera
-        #self.pixscale = self.wcs.pixel_scale()
 
         # From CP Header
         hdrVal={}
@@ -837,7 +535,6 @@ class Measurer(object):
         else:
             img = f.read()
         hdr = f.read_header()
-        #img, hdr = fitsio.read(self.fn, ext=self.ext, header=True)
         img = self.scale_image(img)
         return img, hdr
 
@@ -855,6 +552,8 @@ class Measurer(object):
     def remap_invvar_shotnoise(self, invvar, primhdr, img, dq):
         #
         # All three cameras scale the image and weight to units of electrons.
+        # (actually, not DECam any more! But DECamMeasurer doesn't use this
+        #  function.)
         #
         print('Remapping weight map for', self.fn)
         const_sky = primhdr['SKYADU'] # e/s, Recommended sky level keyword from Frank 
@@ -872,7 +571,7 @@ class Measurer(object):
         return wt
 
     def create_zero_one_mask(self,bitmask,good=[]):
-        """Return zero_one_mask arraygiven a bad pixel map and good pix values
+        """Return zero_one_mask array given a bad pixel map and good pix values
         bitmask: ood image
         good: list of values to treat as good in the bitmask
         """
@@ -930,11 +629,6 @@ class Measurer(object):
             else:
                 raise RuntimeError('unknown camera %s' % self.camera)
             clip_vals,_,_ = sigmaclip(img[slc],low=nsigma,high=nsigma)
-            # from astropy.stats import sigma_clip as sigmaclip_astropy
-            #sky_masked= sigmaclip_astropy(img[slc],sigma=nsigma,iters=20)
-            #use= sky1_masked.mask == False
-            #skymed= np.median(sky_masked[use])
-            #sky1std= np.std(sky_masked[use])
             skymed= np.median(clip_vals) 
             skystd= np.std(clip_vals) 
             skyimg= np.zeros(img.shape) + skymed
@@ -963,12 +657,9 @@ class Measurer(object):
     def fitstars(self, img, ierr, xstar, ystar, fluxstar):
         '''Fit each star using a Tractor model.'''
         import tractor
-
         H, W = img.shape
-
         fwhms = []
         radius_pix = self.stampradius / self.pixscale
-                
         for ii, (xi, yi, fluxi) in enumerate(zip(xstar, ystar, fluxstar)):
             #print('Fitting source', i, 'of', len(Jf))
             ix = int(np.round(xi))
@@ -997,10 +688,8 @@ class Measurer(object):
                 
             tim.freezeAllBut('psf')
             psf.freezeAllBut('sigmas')
-        
             # print('Optimizing params:')
             # tr.printThawedParams()
-        
             #print('Parameter step sizes:', tr.getStepSizes())
             optargs = dict(priors=False, shared_params=False)
             for step in range(50):
@@ -1015,7 +704,6 @@ class Measurer(object):
             tr.freezeParam('catalog')
             # print('Optimizing params:')
             # tr.printThawedParams()
-        
             for step in range(50):
                 dlnp, x, alpha = tr.optimize(**optargs)
                 #print('dlnp', dlnp)
@@ -1023,11 +711,9 @@ class Measurer(object):
                 #print('psf', psf)
                 if dlnp == 0:
                     break
-
             fwhms.append(2.35 * psf.sigmas[0]) # [pixels]
             #model = tr.getModelImage(0)
             #pdb.set_trace()
-        
         return np.array(fwhms)
 
     def isolated_radec(self,ra,dec,nn=2,minsep=1./3600):
@@ -1093,7 +779,7 @@ class Measurer(object):
                                            STAGING_CAMERAS[self.camera])+1:]
         else:
             # img not on proj
-            ccds['image_filename'] = self.fn #os.path.basename(self.fn)
+            ccds['image_filename'] = self.fn
         ccds['image_hdu'] = self.image_hdu 
         ccds['ccdnum'] = self.ccdnum 
         ccds['camera'] = self.camera
@@ -1114,24 +800,11 @@ class Measurer(object):
         ccds['gain'] = self.gain
         ccds['pixscale'] = self.pixscale
         ccds['yshift'] = 'YSHIFT' in self.primhdr
-
         ccds['width'] = self.width
         ccds['height'] = self.height
         ccds['fwhm_cp'] = self.fwhm_cp
 
         hdr_fwhm = self.fwhm_cp
-        
-        #hdr_fwhm=-1
-        #for fwhm_key in self.cp_fwhm_keys:
-        #  if fwhm_key in hdr.keys():
-        #    hdr_fwhm= hdr[fwhm_key] #FWHM in pixels
-        #    break
-        #if hdr_fwhm < 0:
-        #    ccds['fwhm_cp']= hdr_fwhm # -1 so know didn't find it
-        #    hdr_fwhm= 1.3 / self.pixscale #fallback value for source detection
-        #else:
-        #    ccds['fwhm_cp']= hdr_fwhm
-        # Same ccd and header names
         notneeded_cols= ['avsky']
         for ccd_col in ['avsky', 'crpix1', 'crpix2', 'crval1', 'crval2', 
                         'cd1_1','cd1_2', 'cd2_1', 'cd2_2']:
@@ -1144,19 +817,6 @@ class Measurer(object):
                 else:
                     raise KeyError('Could not find %s, keys not in cp header:' \
                                % ccd_col,ccd_col)
-        #hdrkey = ('avsky', 'crpix1', 'crpix2', 'crval1', 'crval2', 'cd1_1',
-        #          'cd1_2', 'cd2_1', 'cd2_2')
-        #ccdskey = ('avsky', 'crpix1', 'crpix2', 'crval1', 'crval2', 'cd1_1',
-        #           'cd1_2', 'cd2_1', 'cd2_2')
-        #for ckey, hkey in zip(ccdskey, hdrkey):
-        #    try:
-        #        ccds[ckey] = hdr[hkey]
-        #    except KeyError:
-        #        #if hkey == 'avsky':
-        #        #    print('CP image does not have avsky in hdr: %s' % ccds['image_filename'])
-        #        #    ccds[hkey]= -1
-        #        raise NameError('key not in header: %s' % hkey)
-            
         exptime = ccds['exptime'].data[0]
         airmass = ccds['airmass'].data[0]
         print('Band {}, Exptime {}, Airmass {}'.format(self.band, exptime, airmass))
@@ -1165,7 +825,7 @@ class Measurer(object):
         H = ccds['height'].data[0]
         W = ccds['width'].data[0]
         print('Image size:', W,H)
-        ccdra, ccddec = self.wcs.pixelxy2radec((W+1) / 2.0, (H + 1) / 2.0)
+        ccdra, ccddec = self.wcs.pixelxy2radec((W+1) / 2.0, (H+1) / 2.0)
         ccds['ra'] = ccdra   # [degree]
         ccds['dec'] = ccddec # [degree]
         t0= ptime('header-info',t0)
@@ -1177,22 +837,7 @@ class Measurer(object):
             print('Exptime = 0')
             return self.return_on_error(err_message='Exptime = 0', ccds=ccds)
 
-        # Test WCS again IDL, WCS is 1-indexed
-        #x_pix= [1,img.shape[0]/2,img.shape[0]]
-        #y_pix= [1,img.shape[1]/2,img.shape[1]]
-        #test_wcs= [(_x,_y)+self.wcs.pixelxy2radec(_x,_y) for _x,_y in zip(x_pix,y_pix)]
-        #with open('three_camera_vals.txt','a') as foo:
-        #    foo.write('ccdname=%s, hdu=%d, image=%s\n' % (self.ccdname,self.image_hdu,self.fn))
-        #    foo.write('image shape: x=%d y=%d\n' % (img.shape[0],img.shape[1]))
-        #    for i in test_wcs:
-        #        foo.write('x=%d y=%d ra=%.9f dec=%.9f\n' % (i[0],i[1],i[2],i[3]))
-        #return ccds, _stars_table()
-        
-        #if (self.camera == 'decam') & (ext == 'S7'):
-        #    return self.return_on_error(err_message='S7', ccds=ccds)
-
         weight = self.read_weight(scale=False)
-
         if np.all(weight == 0):
             txt = 'All weight-map pixels are zero'
             print(txt)
@@ -1202,13 +847,7 @@ class Measurer(object):
             txt = 'All weight-map pixels are zero or one'
             print(txt)
             return self.return_on_error(txt,ccds=ccds)
-
-        from collections import Counter
-        print('Most common weight-map values:', Counter(weight.ravel()).most_common(10))
-
         weight = self.scale_weight(weight)
-
-        print('Weight-map signs:', Counter(np.sign(weight.ravel())))
 
         if psfex:
             # Quick check for PsfEx file
@@ -1219,8 +858,8 @@ class Measurer(object):
                 print('PsfEx model number of stars accepted:', nacc)
                 return self.return_on_error(err_message='Bad PSF model', ccds=ccds)
 
-        self.img,hdr= self.read_image() 
-        self.bitmask= self.read_bitmask()
+        self.img,hdr = self.read_image()
+        self.bitmask = self.read_bitmask()
 
         # Per-pixel error -- weight is 1/sig*2, scaled by scale_weight()
         medweight = np.median(weight[(weight > 0) * (self.bitmask == 0)])
@@ -1239,11 +878,6 @@ class Measurer(object):
         print('Computing the sky background.')
         sky_img, skymed, skyrms = self.get_sky_and_sigma(self.img)
         img_sub_sky= self.img - sky_img
-
-        #fn= 'N4.fits' 
-        #fitsio.write(fn,img_sub_sky,extname='N4')
-        #raise ValueError
-        
 
         # Bunch of sky estimates
         # Median of absolute deviation (MAD), std dev = 1.4826 * MAD
@@ -2367,14 +2001,16 @@ class DecamMeasurer(Measurer):
     '''DECam CP units: ADU
     Class to measure a variety of quantities from a single DECam CCD.
 
-    Image read will be converted to e-
-    also zpt to e-
+    Formerly, we converted DECam images to e- (multiplied images by
+    gain), but this was annoying for Eddie's ubercal processing; the
+    photom file reported fluxes included that gain factor, which
+    wanders around over time; removing it resulted in much smaller
+    scatter.
     '''
     def __init__(self, *args, **kwargs):
         super(DecamMeasurer, self).__init__(*args, **kwargs)
-
-        self.minstar= 5 # decstat.pro
-        self.pixscale=0.262 
+        self.minstar = 5 # decstat.pro
+        self.pixscale =0.262 
         self.camera = 'decam'
         self.ut = self.primhdr['TIME-OBS']
         self.band = self.get_band()
@@ -2387,11 +2023,10 @@ class DecamMeasurer(Measurer):
             self.ra_bore = self.primhdr['TELRA']
             self.dec_bore = self.primhdr['TELDEC']
         else:
-            raise ValueError('Neither RA or TELRA in pimhdr, crash')
+            raise ValueError('Neither RA or TELRA in primhdr, crash')
         if type(self.ra_bore) == str:
             self.ra_bore = hmsstring2ra(self.ra_bore) 
             self.dec_bore = dmsstring2dec(self.dec_bore)
-        #self.gain = self.hdr['ARAWGAIN'] # hack! average gain [electron/sec]
 
         # /global/homes/a/arjundey/idl/pro/observing/decstat.pro
         self.zp0 =  dict(g = 26.610,r = 26.818,z = 26.484,
@@ -2403,9 +2038,6 @@ class DecamMeasurer(Measurer):
         self.k_ext = dict(g = 0.17,r = 0.10,z = 0.06,
                           #i, Y totally made up
                           i=0.08, Y=0.06)
-        # --> e/sec
-        #for b in self.zp0.keys(): 
-        #    self.zp0[b] += -2.5*np.log10(self.gain) 
         # Dict: {"ccd col":[possible CP Header keys for that]}
         self.cp_header_keys= {'width':['ZNAXIS1','NAXIS1'],
                               'height':['ZNAXIS2','NAXIS2'],
@@ -2442,7 +2074,6 @@ class DecamMeasurer(Measurer):
 
     def get_gain(self,hdr):
         return np.average((hdr['GAINA'],hdr['GAINB']))
-        #return hdr['ARAWGAIN']
 
     def colorterm_ps1_to_observed(self, ps1stars, band):
         """ps1stars: ps1.median 2D array of median mag for each band"""
@@ -2450,10 +2081,10 @@ class DecamMeasurer(Measurer):
         return ps1_to_decam(ps1stars, band)
 
     def scale_image(self, img):
-        return img * self.gain
+        return img
 
     def scale_weight(self, img):
-        return img / (self.gain**2)
+        return img
 
     def get_wcs(self):
         return wcs_pv2sip_hdr(self.hdr) # PV distortion
@@ -2475,7 +2106,7 @@ class DecamMeasurer(Measurer):
 class MegaPrimeMeasurer(Measurer):
     def __init__(self, *args, **kwargs):
         super(MegaPrimeMeasurer, self).__init__(*args, **kwargs)
-        self.minstar= 5 # decstat.pro
+        self.minstar = 5 # decstat.pro
         self.camera = 'megaprime'
         self.pixscale = get_pixscale(self.camera)
         self.ut = self.primhdr['UTC-OBS']
@@ -2504,7 +2135,6 @@ class MegaPrimeMeasurer(Measurer):
         self.primhdr['WCSCAL'] = 'success'
         self.goodWcs = True
 
-
     def get_band(self):
         band = self.primhdr['FILTER'][0]
         #band = band.split()[0]
@@ -2519,10 +2149,10 @@ class MegaPrimeMeasurer(Measurer):
         return ps1_to_decam(ps1stars, band)
 
     def scale_image(self, img):
-        return img * self.gain
+        return img
 
     def scale_weight(self, img):
-        return img / (self.gain**2)
+        return img
 
     def get_wcs(self):
         ### FIXME -- no distortion solution in here
@@ -2603,8 +2233,6 @@ class Mosaic3Measurer(Measurer):
 
     def get_gain(self,hdr):
         return hdr['GAIN']
-        #return np.average((hdr['GAINA'],hdr['GAINB']))
-        #return hdr['ARAWGAIN']
 
     def colorterm_ps1_to_observed(self, ps1stars, band):
         """ps1stars: ps1.median 2D array of median mag for each band"""
@@ -3124,7 +2752,6 @@ def read_primary_header(fn):
             # EOF
             ff.close()
             raise RuntimeError('Reached end-of-file in "%s" before finding end of FITS header.' % fn)
-
         h = h + hnew
         while True:
             line = h[:80]
