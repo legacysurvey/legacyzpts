@@ -75,18 +75,6 @@ def dobash(cmd):
     print('UNIX cmd: %s' % cmd)
     if os.system(cmd): raise ValueError
 
-def extra_ccd_keys(camera='decam'):
-    '''Returns list of camera-specific keywords for the ccd table'''
-    if camera == 'decam':
-        keys= [('ccdzpta', '>f4'), ('ccdzptb','>f4'), ('ccdnmatcha', '>i2'), ('ccdnmatchb', '>i2'),\
-               ('temp', '>f4')]
-    elif camera == 'mosaic':
-        keys=[]
-    elif camera == '90prime':
-        keys=[('ccdzpt1', '>f4'), ('ccdzpt2','>f4'), ('ccdzpt3', '>f4'), ('ccdzpt4','>f4'),\
-              ('ccdnmatcha', '>i2'), ('ccdnmatch2', '>i2'), ('ccdnmatch3', '>i2'), ('ccdnmatch4', '>i2')]
-    return keys 
-
 def get_units():
     return dict(
         ra='deg',dec='deg',exptime='sec',pixscale='arcsec/pix',
