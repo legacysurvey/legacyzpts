@@ -144,7 +144,6 @@ def _ccds_table(camera='decam'):
         ]
     ccds = Table(np.zeros(1, dtype=cols))
     return ccds
-
      
 def _stars_table(nstars=1):
     '''Initialize the stars table.
@@ -165,7 +164,6 @@ def _stars_table(nstars=1):
     return stars
 
 def get_pixscale(camera='decam'):
-  assert(camera in CAMERAS)
   return {'decam':0.262,
           'mosaic':0.262,
           '90prime':0.470,
