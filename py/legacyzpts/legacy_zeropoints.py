@@ -240,10 +240,6 @@ def create_legacypipe_table(ccds_fn, camera=None, psf=False, bad_expid=None):
     # Load full zpt table
     assert('-zpt.fits' in ccds_fn)
     T = fits_table(ccds_fn)
-    # Units
-    if camera == 'decam':
-        T.set('zpt',T.zpt - 2.5*np.log10(T.gain))
-        T.set('zptavg',T.zptavg - 2.5*np.log10(T.gain))
     # Rename
     rename_keys= [('zpt','ccdzpt'),
                   ('zptavg','zpt'),
@@ -418,7 +414,7 @@ def convert_stars_table_one_band(T, camera=None, star_table=None,
     # legacyzpts star- apskyflux is e- from sky in 7'' aperture
     area= np.pi*3.5**2/pixscale**2
     if camera == 'decam':
-        T.set('ccd_sky', T.apskyflux / area / T.gain)
+        T.set('ccd_sky', T.apskyflux / area)
     elif camera in ['mosaic','90prime']:
         T.set('ccd_sky', T.apskyflux / area / T.exptime)
     # Arjuns ccd_sky is ADUs in 7-10 arcsec sky aperture
@@ -493,14 +489,11 @@ def convert_zeropoints_table(T, camera=None):
     pix= get_pixscale(camera)
     need_arjuns_keys= cols_for_converted_zpt_table(which='all')
     # Change units
+    T.set('fwhm', T.fwhm * pix)
     if camera == "decam":
-        T.set('fwhm', T.fwhm * pix)
-        T.set('skycounts', T.skycounts * T.exptime / T.gain)
-        T.set('skyrms', T.skyrms * T.exptime / T.gain)
-        T.set('zpt',T.zpt - 2.5*np.log10(T.gain))
-        T.set('zptavg',T.zptavg - 2.5*np.log10(T.gain))
+        T.set('skycounts', T.skycounts * T.exptime)
+        T.set('skyrms', T.skyrms * T.exptime)
     elif camera in ['mosaic','90prime']:
-        T.set('fwhm', T.fwhm * pix)
         T.set('fwhm_cp', T.fwhm_cp * pix)
     # Append 'ccd' to name
     app_ccd= ['skycounts','skyrms','skymag',
@@ -787,6 +780,8 @@ class Measurer(object):
     def remap_invvar_shotnoise(self, invvar, primhdr, img, dq):
         #
         # All three cameras scale the image and weight to units of electrons.
+        # (actually, not DECam any more! But DECamMeasurer doesn't use this
+        #  function.)
         #
         print('Remapping weight map for', self.fn)
         const_sky = primhdr['SKYADU'] # e/s, Recommended sky level keyword from Frank 
@@ -2299,14 +2294,16 @@ class DecamMeasurer(Measurer):
     '''DECam CP units: ADU
     Class to measure a variety of quantities from a single DECam CCD.
 
-    Image read will be converted to e-
-    also zpt to e-
+    Formerly, we converted DECam images to e- (multiplied images by
+    gain), but this was annoying for Eddie's ubercal processing; the
+    photom file reported fluxes included that gain factor, which
+    wanders around over time; removing it resulted in much smaller
+    scatter.
     '''
     def __init__(self, *args, **kwargs):
         super(DecamMeasurer, self).__init__(*args, **kwargs)
-
-        self.minstar= 5 # decstat.pro
-        self.pixscale=0.262 
+        self.minstar = 5 # decstat.pro
+        self.pixscale =0.262 
         self.camera = 'decam'
         self.ut = self.primhdr['TIME-OBS']
         self.band = self.get_band()
@@ -2319,11 +2316,10 @@ class DecamMeasurer(Measurer):
             self.ra_bore = self.primhdr['TELRA']
             self.dec_bore = self.primhdr['TELDEC']
         else:
-            raise ValueError('Neither RA or TELRA in pimhdr, crash')
+            raise ValueError('Neither RA or TELRA in primhdr, crash')
         if type(self.ra_bore) == str:
             self.ra_bore = hmsstring2ra(self.ra_bore) 
             self.dec_bore = dmsstring2dec(self.dec_bore)
-        #self.gain = self.hdr['ARAWGAIN'] # hack! average gain [electron/sec]
 
         # /global/homes/a/arjundey/idl/pro/observing/decstat.pro
         self.zp0 =  dict(g = 26.610,r = 26.818,z = 26.484,
@@ -2335,9 +2331,6 @@ class DecamMeasurer(Measurer):
         self.k_ext = dict(g = 0.17,r = 0.10,z = 0.06,
                           #i, Y totally made up
                           i=0.08, Y=0.06)
-        # --> e/sec
-        #for b in self.zp0.keys(): 
-        #    self.zp0[b] += -2.5*np.log10(self.gain) 
         # Dict: {"ccd col":[possible CP Header keys for that]}
         self.cp_header_keys= {'width':['ZNAXIS1','NAXIS1'],
                               'height':['ZNAXIS2','NAXIS2'],
@@ -2374,7 +2367,6 @@ class DecamMeasurer(Measurer):
 
     def get_gain(self,hdr):
         return np.average((hdr['GAINA'],hdr['GAINB']))
-        #return hdr['ARAWGAIN']
 
     def colorterm_ps1_to_observed(self, ps1stars, band):
         """ps1stars: ps1.median 2D array of median mag for each band"""
@@ -2382,10 +2374,10 @@ class DecamMeasurer(Measurer):
         return ps1_to_decam(ps1stars, band)
 
     def scale_image(self, img):
-        return img * self.gain
+        return img
 
     def scale_weight(self, img):
-        return img / (self.gain**2)
+        return img
 
     def get_wcs(self):
         return wcs_pv2sip_hdr(self.hdr) # PV distortion
@@ -2407,7 +2399,7 @@ class DecamMeasurer(Measurer):
 class MegaPrimeMeasurer(Measurer):
     def __init__(self, *args, **kwargs):
         super(MegaPrimeMeasurer, self).__init__(*args, **kwargs)
-        self.minstar= 5 # decstat.pro
+        self.minstar = 5 # decstat.pro
         self.camera = 'megaprime'
         self.pixscale = get_pixscale(self.camera)
         self.ut = self.primhdr['UTC-OBS']
@@ -2436,7 +2428,6 @@ class MegaPrimeMeasurer(Measurer):
         self.primhdr['WCSCAL'] = 'success'
         self.goodWcs = True
 
-
     def get_band(self):
         band = self.primhdr['FILTER'][0]
         #band = band.split()[0]
@@ -2451,10 +2442,10 @@ class MegaPrimeMeasurer(Measurer):
         return ps1_to_decam(ps1stars, band)
 
     def scale_image(self, img):
-        return img * self.gain
+        return img
 
     def scale_weight(self, img):
-        return img / (self.gain**2)
+        return img
 
     def get_wcs(self):
         ### FIXME -- no distortion solution in here
@@ -2535,8 +2526,6 @@ class Mosaic3Measurer(Measurer):
 
     def get_gain(self,hdr):
         return hdr['GAIN']
-        #return np.average((hdr['GAINA'],hdr['GAINB']))
-        #return hdr['ARAWGAIN']
 
     def colorterm_ps1_to_observed(self, ps1stars, band):
         """ps1stars: ps1.median 2D array of median mag for each band"""
