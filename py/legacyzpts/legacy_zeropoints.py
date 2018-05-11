@@ -189,19 +189,6 @@ def _stars_table(nstars=1):
     stars = Table(np.zeros(nstars, dtype=cols))
     return stars
 
-def reduce_survey_ccd_cols(survey_fn,legacy_fn):
-    survey=fits_table(survey_fn)
-    legacy=fits_table(legacy_fn)
-    for col in survey.get_columns():
-        if not col in legacy.get_columns():
-            survey.delete_column(col)
-    assert(len(legacy.get_columns()) == len(survey.get_columns()))
-    for col in survey.get_columns():
-        assert(col in legacy.get_columns())
-    fn=survey_fn.replace('.fits.gz','_reduced.fits.gz')
-    survey.writeto(fn) 
-    print('Wrote %s' % fn)
-
 def cuts_for_brick_2016p122(legacy_fn,survey_fn):
     survey=fits_table(survey_fn)
     legacy=fits_table(legacy_fn)
