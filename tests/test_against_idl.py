@@ -10,9 +10,8 @@ from glob import glob
 import numpy as np
 from scipy import stats 
 
-from legacyzpts.qa.compare_idlzpts import ZptResiduals, StarResiduals
+from legacyzpts.qa.compare_idlzpts import ZptResiduals, StarResiduals, cols_for_converted_zpt_table,cols_for_converted_star_table
 from legacyzpts.fetch import fetch_targz
-from legacyzpts.legacy_zeropoints import cols_for_converted_zpt_table,cols_for_converted_star_table
 
 if __name__ == "__main__":
     from test_against_common import get_tolerance,PlotDifference,differenceChecker 
