@@ -452,9 +452,6 @@ class Measurer(object):
     def zeropoint(self, band):
         return self.zp0[band]
 
-    def sky(self, band):
-        return self.sky0[band]
-
     def extinction(self, band):
         return self.k_ext[band]
 
@@ -871,9 +868,7 @@ class Measurer(object):
 
         t0= ptime('read image',t0)
 
-        # Measure the sky brightness and (sky) noise level.  Need to capture
-        # negative sky.
-        sky0 = self.sky(self.band)
+        # Measure the sky brightness and (sky) noise level.
         zp0 = self.zeropoint(self.band)
         print('Computing the sky background.')
         sky_img, skymed, skyrms = self.get_sky_and_sigma(self.img)
@@ -883,8 +878,7 @@ class Measurer(object):
         # Median of absolute deviation (MAD), std dev = 1.4826 * MAD
         print('sky from median of image= %.2f' % skymed)
         skybr = zp0 - 2.5*np.log10(skymed / self.pixscale / self.pixscale / exptime)
-        print('  Sky brightness: {:.3f} mag/arcsec^2'.format(skybr))
-        print('  Fiducial:       {:.3f} mag/arcsec^2'.format(sky0))
+        print('  Sky brightness: {:.3f} mag/arcsec^2 (assuming nominal zeropoint)'.format(skybr))
 
         ccds['skyrms'] = skyrms / exptime # e/sec
         ccds['skycounts'] = skymed / exptime # [electron/pix]
@@ -2032,9 +2026,6 @@ class DecamMeasurer(Measurer):
         self.zp0 =  dict(g = 26.610,r = 26.818,z = 26.484,
                          # i,Y from DESY1_Stripe82 95th percentiles
                          i=26.758, Y=25.321) # e/sec
-        self.sky0 = dict(g = 22.04,r = 20.91,z = 18.46,
-                         # i, Y totally made up
-                         i=19.68, Y=18.46) # AB mag/arcsec^2
         self.k_ext = dict(g = 0.17,r = 0.10,z = 0.06,
                           #i, Y totally made up
                           i=0.08, Y=0.06)
@@ -2121,9 +2112,6 @@ class MegaPrimeMeasurer(Measurer):
         self.zp0 =  dict(g = 26.610,r = 26.818,z = 26.484)
                          #                  # i,Y from DESY1_Stripe82 95th percentiles
                          #                  i=26.758, Y=25.321) # e/sec
-        self.sky0 = dict(g = 22.04,r = 20.91,z = 18.46)
-        #                  # i, Y totally made up
-        #                  i=19.68, Y=18.46) # AB mag/arcsec^2
         self.k_ext = dict(g = 0.17,r = 0.10,z = 0.06,)
         #                   #i, Y totally made up
         #                   i=0.08, Y=0.06)
@@ -2202,7 +2190,6 @@ class Mosaic3Measurer(Measurer):
         #self.gain = self.hdr['GAIN']
 
         self.zp0 = dict(z = 26.552)
-        self.sky0 = dict(z = 18.46)
         self.k_ext = dict(z = 0.06)
         # --> e/sec
         #for b in self.zp0.keys(): 
@@ -2285,7 +2272,6 @@ class NinetyPrimeMeasurer(Measurer):
 
         # /global/homes/a/arjundey/idl/pro/observing/bokstat.pro
         self.zp0 =  dict(g = 26.93,r = 27.01,z = 26.552) # ADU/sec
-        self.sky0 = dict(g = 22.04,r = 20.91,z = 18.46) # AB mag/arcsec^2
         self.k_ext = dict(g = 0.17,r = 0.10,z = 0.06)
         # --> e/sec
         #for b in self.zp0.keys(): 
