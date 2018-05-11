@@ -7,6 +7,9 @@ import matplotlib.pyplot as plt
 import os
 import pdb
 import argparse
+import re
+import datetime
+import sys
 
 import numpy as np
 from glob import glob
@@ -14,15 +17,12 @@ from pickle import dump
 from scipy.optimize import curve_fit
 from scipy.stats import sigmaclip
 from scipy.ndimage.filters import median_filter
-import re
 
 import fitsio
 from astropy.io import fits as fits_astropy
 from astropy.table import Table, vstack
 from astropy import units
 from astropy.coordinates import SkyCoord
-import datetime
-import sys
 
 from photutils import (CircularAperture, CircularAnnulus,
                        aperture_photometry, DAOStarFinder)
@@ -48,7 +48,6 @@ STAGING_CAMERAS={'decam':'decam',
                  'mosaic':'mosaicz',
                  '90prime':'bok',
                  'megaprime':'cfis'}
-
 
 def try_mkdir(dir):
     try:
@@ -76,7 +75,6 @@ def dobash(cmd):
     print('UNIX cmd: %s' % cmd)
     if os.system(cmd): raise ValueError
 
-
 def extra_ccd_keys(camera='decam'):
     '''Returns list of camera-specific keywords for the ccd table'''
     if camera == 'decam':
@@ -101,7 +99,6 @@ def get_units():
         raoff='arcsec',decoff='arcsec',rarms='arcsec',decrms='arcsec',
         phoff='electron/sec',phrms='electron/sec',
         zpt0='electron/sec',zpt='electron/sec',transp='electron/sec')
- 
 
 def _ccds_table(camera='decam'):
     '''Initialize the CCDs table.
@@ -109,7 +106,6 @@ def _ccds_table(camera='decam'):
     Description and Units at:
     https://github.com/legacysurvey/legacyzpts/blob/master/DESCRIPTION_OF_OUTPUTS.md
     '''
-
     max_camera_length = max([len(c) for c in CAMERAS])
 
     cols = [
@@ -171,7 +167,6 @@ def _ccds_table(camera='decam'):
         ('rastddev', '>f4'),  
         ('decstddev', '>f4')  
         ]
-
     ccds = Table(np.zeros(1, dtype=cols))
     return ccds
 
