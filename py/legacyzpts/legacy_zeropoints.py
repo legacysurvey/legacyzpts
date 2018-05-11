@@ -75,19 +75,6 @@ def dobash(cmd):
     print('UNIX cmd: %s' % cmd)
     if os.system(cmd): raise ValueError
 
-def get_units():
-    return dict(
-        ra='deg',dec='deg',exptime='sec',pixscale='arcsec/pix',
-        fwhm='pix',seeing='arcsec',
-        sky0='mag/arcsec^2',skymag='mag/arcsec^2/sec',
-        skycounts='electron/pix/sec',skyrms='electron/pix/sec',
-        apflux='electron/7 arcsec aperture',apskyflux='electron/7 arcsec aperture',
-        apskyflux_perpix='electron/pix',
-        apmags='-2.5log10(electron/sec) + zpt0',
-        raoff='arcsec',decoff='arcsec',rarms='arcsec',decrms='arcsec',
-        phoff='electron/sec',phrms='electron/sec',
-        zpt0='electron/sec',zpt='electron/sec',transp='electron/sec')
-
 def _ccds_table(camera='decam'):
     '''Initialize the CCDs table.
 
@@ -509,32 +496,6 @@ def convert_zeropoints_table(T, camera=None):
     for key in del_keys:
         T.delete_column(key)
     return T
-
-
-
-#class NativeTable(object):
-#    def __init__(self,fn,camera='decam',ccd_or_stars='ccds'):
-#        '''zpt,stars tables have same units by default (e.g. electron/sec for zpt)
-#        This func takes either the ccds or stars table and converts the relavent columns
-#        into native units for given camera 
-#        e.g. ADU for DECam,  electron/sec for Mosaic/BASS'''
-#        assert(camera in ['decam','mosaic','90prime'])
-#        assert(ccds_or_stars in ['ccds','stars'])
-#        if camera in 'decam':
-#            self.Decam(fn,ccds_or_stars=ccds_or_stars)
-#        if camera in ['mosaic','90prime']:
-#            self.Mosaic90Prime(fn,ccds_or_stars=ccds_or_stars)
-#
-#    def Decam(self,fn,ccds_or_stars):
-#        T = fits_table(fn)
-#        hdr = T.get_header()
-#        primhdr = fitsio.read_header(ccds_fn)
-#        units= get_units()
-#        # Convert units
-#        #T.set('zpt',T.zpt +- 2.5*np.log10(T.gain * T.exptime)) 
-#        # Write
-#        outfn=fn.replace('.fits','native.fits')
-#        T.writeto(outfn, columns=cols, header=hdr, primheader=primhdr, units=units)
 
 def getrms(x):
     return np.sqrt( np.mean( np.power(x,2) ) )
