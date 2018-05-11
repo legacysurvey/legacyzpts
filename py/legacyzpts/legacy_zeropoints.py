@@ -231,7 +231,6 @@ def cols_for_legacypipe_table(which='all'):
         dustins_keys= ['skyrms']
     return need_arjuns_keys + dustins_keys
  
-
 def create_legacypipe_table(ccds_fn, camera=None, psf=False, bad_expid=None):
     """input _ccds_table fn
     output a table formatted for legacypipe/runbrick
@@ -241,20 +240,15 @@ def create_legacypipe_table(ccds_fn, camera=None, psf=False, bad_expid=None):
     # Load full zpt table
     assert('-zpt.fits' in ccds_fn)
     T = fits_table(ccds_fn)
-    #hdr = T.get_header()
-    #primhdr = fitsio.read_header(ccds_fn)
-    #units= get_units()
-
-    #primhdr.add_record(dict(name='ALLBANDS', value=allbands,
-    #                        comment='Band order in array values'))
-    #has_zpt = 'zpt' in T.columns()
     # Units
     if camera == 'decam':
         T.set('zpt',T.zpt - 2.5*np.log10(T.gain))
         T.set('zptavg',T.zptavg - 2.5*np.log10(T.gain))
     # Rename
-    rename_keys= [('zpt','ccdzpt'),('zptavg','zpt'),
-                  ('raoff','ccdraoff'),('decoff','ccddecoff'),
+    rename_keys= [('zpt','ccdzpt'),
+                  ('zptavg','zpt'),
+                  ('raoff','ccdraoff'),
+                  ('decoff','ccddecoff'),
                   ('skycounts', 'ccdskycounts'),
                   ('rarms',  'ccdrarms'),
                   ('decrms', 'ccddecrms'),
@@ -262,33 +256,17 @@ def create_legacypipe_table(ccds_fn, camera=None, psf=False, bad_expid=None):
                   ('nmatch_photom','ccdnmatch')]
     for old,new in rename_keys:
         T.rename(old,new)
-        #units[new]= units.pop(old)
     # Delete 
     del_keys= list( set(T.get_columns()).difference(set(need_keys)) )
     for key in del_keys:
         T.delete_column(key)
-        #if key in units.keys():
-        #    _= units.pop(key)
-    # legacypipe/merge-zeropoints.py
-    # if camera == 'decam':
-    #     T.set('width', np.zeros(len(T), np.int16) + 2046)
-    #     T.set('height', np.zeros(len(T), np.int16) + 4094)
     # precision
     T.width  = T.width.astype(np.int16)
     T.height = T.height.astype(np.int16)
-    #T.ccdnum = T.ccdnum.astype(np.int16) #number doesn't follow hdu, not using if possible
     T.cd1_1 = T.cd1_1.astype(np.float32)
     T.cd1_2 = T.cd1_2.astype(np.float32)
     T.cd2_1 = T.cd2_1.astype(np.float32)
     T.cd2_2 = T.cd2_2.astype(np.float32)
-    # Align units with 'cols'
-    #cols = T.get_columns()
-    #units = [units.get(c, '') for c in cols]
-    # Column ordering...
-    #cols = []
-    #if dr4:
-    #    cols.append('release')
-    #    T.release = np.zeros(len(T), np.int32) + 4000
 
     if camera == 'mosaic' and psf:
         from legacyzpts.psfzpt_cuts import psf_zeropoint_cuts
@@ -304,7 +282,6 @@ def create_legacypipe_table(ccds_fn, camera=None, psf=False, bad_expid=None):
 
     elif camera == 'decam' and psf:
         from legacyzpts.psfzpt_cuts import psf_zeropoint_cuts
-
         # These are from DR5; eg
         # https://github.com/legacysurvey/legacypipe/blob/dr5.0/py/legacypipe/decam.py#L50
         g0 = 25.08
@@ -315,12 +292,9 @@ def create_legacypipe_table(ccds_fn, camera=None, psf=False, bad_expid=None):
         di = (-0.5, 0.25)
         dr = (-0.5, 0.25)
         dz = (-0.5, 0.25)
-
         zpt_lo = dict(g=g0+dg[0], r=r0+dr[0], i=i0+dr[0], z=z0+dz[0])
         zpt_hi = dict(g=g0+dg[1], r=r0+dr[1], i=i0+dr[1], z=z0+dz[1])
-
         psf_zeropoint_cuts(T, 0.262, zpt_lo, zpt_hi, bad_expid, camera)
-
 
     outfn=ccds_fn.replace('-zpt.fits','-legacypipe.fits')
     T.writeto(outfn) #, columns=cols, header=hdr, primheader=primhdr, units=units)
