@@ -1143,16 +1143,23 @@ class Measurer(object):
             phot.decoff = (ref.dec - phot.dec_fit) * 3600.
 
             ok, = np.nonzero(phot.flux > 0)
-            phot.psfmag = np.zeros(len(phot), np.float32)
-            phot.psfmag[ok] = -2.5*np.log10(phot.flux[ok] / exptime) + zp0
-            phot.dpsfmag = np.zeros_like(phot.psfmag)
+            #phot.psfmag = np.zeros(len(phot), np.float32)
+            # Drop the +zp0 -- make these instrumental mags ???
+            # Or later add in our calibrated zeropoint?!
+            #phot.psfmag[ok] = -2.5*np.log10(phot.flux[ok] / exptime) + zp0
+            #phot.psfmag[ok] = -2.5*np.log10(phot.flux[ok] / exptime)
+            phot.instpsfmag = np.zeros(len(phot), np.float32)
+            phot.instpsfmag[ok] = -2.5*np.log10(phot.flux[ok] / exptime)
+
+            # Uncertainty on psfmag
+            phot.dpsfmag = np.zeros(len(phot), np.float32)
             phot.dpsfmag[ok] = np.abs((-2.5 / np.log(10.)) * phot.dflux[ok] / phot.flux[ok])
 
             H,W = self.bitmask.shape
             phot.bitmask = self.bitmask[np.clip(phot.y1, 0, H-1).astype(int),
                                         np.clip(phot.x1, 0, W-1).astype(int)]
     
-            dmagall = ref.legacy_survey_mag - phot.psfmag
+            dmagall = ref.legacy_survey_mag - phot.instpsfmag
             if not np.all(np.isfinite(dmagall)):
                 print(np.sum(np.logical_not(np.isfinite(dmagall))), 'stars have NaN mags; ignoring')
                 dmagall = dmagall[np.isfinite(dmagall)]
@@ -1160,13 +1167,13 @@ class Measurer(object):
 
             dmag, _, _ = sigmaclip(dmagall, low=2.5, high=2.5)
             ndmag = len(dmag)
-            dmagmed = np.median(dmag)
-            dmagsig = np.std(dmag)
-            zptmed = zp0 + dmagmed
+            zptstd = np.std(dmag)
+            zptmed = np.median(dmag)
+            dzpt = zptmed - zp0
             kext = self.extinction(self.band)
-            transp = 10.**(-0.4 * (zp0 - zptmed - kext * (airmass - 1.0)))
+            transp = 10.**(-0.4 * (-dzpt - kext * (airmass - 1.0)))
     
-            raoff = np.median(phot.raoff)
+            raoff  = np.median(phot.raoff)
             decoff = np.median(phot.decoff)
 
             print('Tractor PsfEx-fitting results for PS1 (photometry):')
@@ -1174,18 +1181,26 @@ class Measurer(object):
                   (raoff, decoff))
             print('RA, Dec stddev (arcsec): %.4f, %.4f' %
                   (np.std(phot.raoff), np.std(phot.decoff)))
-            print('Mag offset: %.4f' % dmagmed)
-            print('Scatter: %.4f' % dmagsig)
             print('Number stars used for zeropoint median %d' % ndmag)
             print('Zeropoint %.4f' % zptmed)
+            print('Offset from nominal: %.4f' % dzpt)
+            print('Scatter: %.4f' % zptstd)
             print('Transparency %.4f' % transp)
+
+            phot.psfmag = np.zeros(len(phot), np.float32)
+            phot.psfmag[ok] = phot.instpsfmag[ok] + zptmed
 
             for c in ['x0','y0','x1','y1','flux','raoff','decoff', 'psfmag',
                       'dflux','dx','dy']:
                 phot.set(c, phot.get(c).astype(np.float32))
+            phot.rename('x0', 'x_ps1')
+            phot.rename('y0', 'y_ps1')
+            phot.rename('x1', 'x_fit')
+            phot.rename('y1', 'y_fit')
 
             phot.ra_ps1  = ref.ra
             phot.dec_ps1 = ref.dec
+            phot.ps1_objid  = ref.obj_id
             phot.ps1_mag = ref.legacy_survey_mag
             for band in 'griz':
                 i = ps1cat.ps1band.get(band, None)
@@ -1195,7 +1210,7 @@ class Measurer(object):
             # Save CCD-level information in the per-star table.
             phot.ccd_raoff  = np.zeros(len(phot), np.float32) + raoff
             phot.ccd_decoff = np.zeros(len(phot), np.float32) + decoff
-            phot.ccd_phoff  = np.zeros(len(phot), np.float32) + dmagmed
+            phot.ccd_phoff  = np.zeros(len(phot), np.float32) + dzpt
             phot.ccd_zpt    = np.zeros(len(phot), np.float32) + zptmed
             phot.expnum = np.zeros(len(phot), np.int64) + self.expnum
             phot.ccdname = np.array([self.ccdname] * len(phot))
@@ -1215,8 +1230,8 @@ class Measurer(object):
             ccds['rarms'] = getrms(ra_clip)
             dec_clip, _, _ = sigmaclip(phot.decoff, low=3., high=3.)
             ccds['decrms'] = getrms(dec_clip)
-            ccds['phoff'] = dmagmed
-            ccds['phrms'] = dmagsig
+            ccds['phoff'] = dzpt
+            ccds['phrms'] = zptstd
             ccds['zpt'] = zptmed
             ccds['transp'] = transp       
             ccds['nmatch_photom'] = len(phot)
@@ -1241,8 +1256,8 @@ class Measurer(object):
                 refs = []
                 if len(I):
                     photmatch = fits_table()
-                    for col in ['x0','y0','x1','y1','flux','psfsum','ra_fit','dec_fit',
-                                'dflux','dx','dy']:
+                    for col in ['x_ps1','y_ps1','x_fit','y_fit','flux','psfsum',
+                                'ra_fit','dec_fit', 'dflux','dx','dy']:
                         photmatch.set(col, phot.get(col)[J])
                     # Use as reference catalog the PS1-Gaia sources that matched the PS1 stars.
                     photref = ps1_gaia[I]
@@ -1313,7 +1328,7 @@ class Measurer(object):
                 print('Zeropoint %.4f' % zptmed)
                 print('Transparency %.4f' % transp)
 
-                for c in ['x0','y0','x1','y1','flux','raoff','decoff',
+                for c in ['flux','raoff','decoff',
                           'dflux','dx','dy']:
                     astrom.set(c, astrom.get(c).astype(np.float32))
 
