@@ -1217,6 +1217,15 @@ class Measurer(object):
             phot.exptime = np.zeros(len(phot), np.float32) + self.exptime
             phot.gain = np.zeros(len(phot), np.float32) + self.gain
 
+            import photutils
+            apertures_arcsec_diam = [6, 7, 8]
+            for arcsec_diam in apertures_arcsec_diam:
+                ap = photutils.CircularAperture(np.vstack((phot.x_fit, phot.y_fit)).T,
+                                                arcsec_diam / 2. / self.pixscale)
+                apphot = photutils.aperture_photometry(fit_img, ap, error=1./ierr)
+                phot.set('apflux_%i' % arcsec_diam, apphot.field('aperture_sum'))
+                phot.set('apflux_%i_err' % arcsec_diam, apphot.field('aperture_sum_err'))
+
             # Convert to astropy Table
             cols = phot.get_columns()
             stars_photom = Table([phot.get(c) for c in cols], names=cols)
