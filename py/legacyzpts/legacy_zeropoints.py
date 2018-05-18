@@ -373,13 +373,7 @@ class Measurer(object):
         self.outdir= kwargs.get('outdir')
 
         if kwargs['psf']:
-            if kwargs['calibdir']:
-                self.calibdir= kwargs['calibdir']
-            else:
-                self.calibdir= os.getenv('LEGACY_SURVEY_DIR',None)
-                if self.calibdir is None:
-                    raise ValueError('LEGACY_SURVEY_DIR not set and --calibdir not given')
-                self.calibdir= os.path.join(self.calibdir,'calib')
+            self.calibdir = kwargs['calibdir']
 
         self.aper_sky_sub = aper_sky_sub
         self.calibrate = calibrate
@@ -2656,6 +2650,11 @@ def main(image_list=None,args=None):
     # Add user specified camera, useful check against primhdr
     #measureargs.update(dict(camera= args.camera))
 
+    if measureargs['calibdir'] is None:
+        cal = os.getenv('LEGACY_SURVEY_DIR',None)
+        if cal is not None:
+            measureargs['calibdir'] = os.path.join(cal, 'calib')
+
     psf = measureargs['psf']
     camera = measureargs['camera']
 
@@ -2672,8 +2671,11 @@ def main(image_list=None,args=None):
             survey.calibdir = cal
         survey.imagedir = ''
 
-        from legacypipe.cfht import MegaPrimeImage
-        survey.image_typemap['megaprime'] = MegaPrimeImage
+        try:
+            from legacypipe.cfht import MegaPrimeImage
+            survey.image_typemap['megaprime'] = MegaPrimeImage
+        except:
+            print('MegaPrimeImage class not found')
 
         measureargs['survey'] = survey
 
