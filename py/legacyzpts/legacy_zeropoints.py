@@ -1227,8 +1227,9 @@ class Measurer(object):
                 phot.set('apflux_%i_err' % arcsec_diam, apphot.field('aperture_sum_err'))
 
             # Convert to astropy Table
-            cols = phot.get_columns()
-            stars_photom = Table([phot.get(c) for c in cols], names=cols)
+            #cols = phot.get_columns()
+            #stars_photom = Table([phot.get(c) for c in cols], names=cols)
+            stars_photom = phot
 
             # Add to the zeropoints table
             ccds['raoff']  = raoff
@@ -1350,10 +1351,11 @@ class Measurer(object):
                 astrom.expnum = np.zeros(len(astrom), np.int64) + self.expnum
                 astrom.ccdname = np.array([self.ccdname] * len(astrom))
 
-                # Convert to astropy Table
-                cols = astrom.get_columns()
-                stars_astrom = Table([astrom.get(c) for c in cols], names=cols)
-
+                # Convert to astropy Table?
+                #cols = astrom.get_columns()
+                #stars_astrom = Table([astrom.get(c) for c in cols], names=cols)
+                stars_astrom = astrom
+                
                 # Update the zeropoints table
                 ccds['raoff']  = raoff
                 ccds['decoff'] = decoff
@@ -2427,10 +2429,11 @@ def measure_image(img_fn, run_calibs=False, survey=None, threads=None, **measure
         measure = NinetyPrimeMeasurer(img_fn, **measureargs)
     elif camera == 'megaprime':
         measure = MegaPrimeMeasurer(img_fn, **measureargs)
-    extra_info= dict(zp_fid= measure.zeropoint( measure.band ),
-                     ext_fid= measure.extinction( measure.band ),
-                     exptime= measure.exptime,
-                     pixscale= measure.pixscale)
+    extra_info= dict(zp_fid = measure.zeropoint( measure.band ),
+                     ext_fid = measure.extinction( measure.band ),
+                     exptime = measure.exptime,
+                     pixscale = measure.pixscale,
+                     primhdr = measure.primhdr)
 
     mp = multiproc(nthreads=(threads or 1))
     
@@ -2464,8 +2467,10 @@ def measure_image(img_fn, run_calibs=False, survey=None, threads=None, **measure
 
     # Compute the median zeropoint across all the CCDs.
     all_ccds = vstack(all_ccds)
-    all_stars_photom = vstack(all_stars_photom)
-    all_stars_astrom = vstack(all_stars_astrom)
+    #all_stars_photom = vstack(all_stars_photom)
+    #all_stars_astrom = vstack(all_stars_astrom)
+    all_stars_photom = merge_tables(all_stars_photom)
+    all_stars_astrom = merge_tables(all_stars_astrom)
     zpts = all_ccds['zpt']
     all_ccds['zptavg'] = np.median(zpts[np.isfinite(zpts)])
 
@@ -2577,13 +2582,36 @@ def runit(imgfn,zptfn,starfn_photom,starfn_astrom,
         # Header <-- fiducial zp,ext, also exptime, pixscale
         hdulist = fits_astropy.open(zptfn, mode='update')
         prihdr = hdulist[0].header
+
+        img_primhdr = extra_info.pop('primhdr')
+
         for key,val in extra_info.items():
             prihdr[key] = val
         hdulist.close() # Save changes
         print('Wrote {}'.format(zptfn))
         # Two stars tables
-        stars_photom.write(starfn_photom, overwrite=True)
-        stars_astrom.write(starfn_astrom, overwrite=True)
+        print('Primary header:')
+        primhdr = img_primhdr
+        print(primhdr)
+        hdr = fitsio.FITSHDR()
+        for key in ['AIRMASS', 'OBJECT', 'TELESCOP', 'INSTRUME', 'EXPTIME',
+                    'DATE-OBS', 'MJD-OBS', 'EXPNUM', 'PROGRAM', 'OBSERVER',
+                    'PROPID', 'FILTER', 'HA', 'ZD', 'AZ', 'DOMEAZ', 'HUMIDITY', 'PLVER',
+                    ]:
+            if not key in primhdr:
+                continue
+            hdr.add_record(dict(name=key, value=primhdr[key],
+                                comment=primhdr.get_comment(key)))
+        base = os.path.basename(imgfn)
+        dirnm = os.path.dirname(imgfn)
+        firstdir = os.path.basename(dirnm)
+        hdr.add_record(dict(name='FILENAME', value=os.path.join(firstdir, base)))
+
+        stars_photom.writeto(starfn_photom, overwrite=True, header=hdr)
+        stars_astrom.writeto(starfn_astrom, overwrite=True, header=hdr)
+
+        #stars_photom.write(starfn_photom, overwrite=True)
+        #stars_astrom.write(starfn_astrom, overwrite=True)
         print('Wrote 2 stars tables\n%s\n%s' %  (starfn_photom,starfn_astrom))
     # zpt --> Legacypipe table
     create_legacypipe_table(zptfn, camera=measureargs['camera'],
