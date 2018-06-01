@@ -2554,12 +2554,14 @@ class outputFns(object):
             else:
                 self.imgfn= imgfn
         # zpt,star fns
-        self.zptfn= os.path.join(outdir,dirname,
-                                 basename.replace('.fits.fz','-zpt.fits')) 
-        self.starfn_photom= os.path.join(outdir,dirname,
-                                 basename.replace('.fits.fz','-star-photom.fits')) 
-        self.starfn_astrom= os.path.join(outdir,dirname,
-                                 basename.replace('.fits.fz','-star-astrom.fits')) 
+        base = basename
+        if base.endswith('.fz'):
+            base = base[:-len('.fz')]
+        if base.endswith('.fits'):
+            base = base[:-len('.fits')]
+        self.zptfn= os.path.join(outdir,dirname, base + '-zpt.fits')
+        self.starfn_photom= os.path.join(outdir,dirname, base + '-star-photom.fits')
+        self.starfn_astrom= os.path.join(outdir,dirname, base + '-star-astrom.fits')
         if debug:
             self.zptfn= self.zptfn.replace('-zpt','-debug-zpt')
             self.starfn_photom= self.starfn_photom.replace('-star','-debug-star')
