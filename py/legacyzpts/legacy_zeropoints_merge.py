@@ -77,6 +77,7 @@ if __name__ == "__main__":
     parser.add_argument('--nproc',type=int,action='store',default=1,help='number mpi tasks',required=True)
     parser.add_argument('--outname', type=str, default='combined_legacy_zpt.fits', help='Output directory.')
     parser.add_argument('--fix_hdu', action='store_true',default=False, help='',required=False)
+    parser.add_argument('--remove-file-prefix', help='Remove prefix from image_filename, if present')
     parser.add_argument('--cut', action='store_true',default=False, help='Cut to ccd_cuts==0',required=False)
     parser.add_argument('--cut-expnum', action='store_true',default=False, help='Cut out rows with expnum==0', required=False)
     opt = parser.parse_args()
@@ -130,5 +131,12 @@ if __name__ == "__main__":
             print(len(cats), 'CCDs')
             cats.cut(cats.expnum > 0)
             print(len(cats), 'CCDs have expnum > 0')
+        if opt.remove_file_prefix:
+            fns = []
+            for fn in cats.image_filename:
+                if fn.startswith(opt.remove_file_prefix):
+                    fn = fn.replace(opt.remove_file_prefix, '', 1)
+                fns.append(fn)
+            cats.image_filename = np.array(fns)
         write_cat(cats, outname=opt.outname)
         print("Done")
