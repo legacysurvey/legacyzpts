@@ -897,23 +897,18 @@ class Measurer(object):
             print(txt)
             return self.return_on_error(txt,ccds=ccds)
         assert(len(ps1_gaia.columns()) > len(ps1.columns())) 
-        ps1band = ps1cat.ps1band[self.band]
         # PS1 cuts
         if len(ps1):
             ps1.cut( self.get_ps1_cuts(ps1) )
             # Convert to Legacy Survey mags
-            colorterm = self.colorterm_ps1_to_observed(ps1.median, self.band)
-            ps1.legacy_survey_mag = ps1.median[:, ps1band] + colorterm
+            ps1.legacy_survey_mag = self.ps1_to_observed(ps1)
         if len(ps1_gaia):
             ps1_gaia.cut( self.get_ps1_cuts(ps1_gaia) )
             # Add gaia ra,dec
             ps1_gaia.gaia_dec = ps1_gaia.dec_ok - ps1_gaia.ddec/3600000.
             ps1_gaia.gaia_ra  = (ps1_gaia.ra_ok - 
                          ps1_gaia.dra/3600000./np.cos(np.deg2rad(ps1_gaia.gaia_dec)))
-            # same for ps1_gaia -- but clip the color term because we don't clip the g-i color.
-            colorterm = self.colorterm_ps1_to_observed(ps1_gaia.median, self.band)
-            ps1_gaia.legacy_survey_mag = ps1_gaia.median[:, ps1band] + np.clip(colorterm, -1., +1.)
-        
+            ps1_gaia.legacy_survey_mag = self.ps1_to_observed(ps1_gaia)
 
         if len(ps1) == 0 and len(ps1_gaia) == 0:
             txt = 'No PS1 or PS1/Gaia stars'
@@ -1127,6 +1122,9 @@ class Measurer(object):
             # plt.savefig(fn)
             # print('Wrote', fn)
 
+            #print('PS1 catalog:')
+            #ps1.about()
+
             # Run tractor fitting of the PS1 stars, using the PsfEx model.
             phot = self.tractor_fit_sources(ps1.ra_ok, ps1.dec_ok, flux0,
                                             fit_img, ierr, psf)
@@ -1193,8 +1191,8 @@ class Measurer(object):
             for c in ['x0','y0','x1','y1','flux','raoff','decoff', 'psfmag',
                       'dflux','dx','dy']:
                 phot.set(c, phot.get(c).astype(np.float32))
-            phot.rename('x0', 'x_ps1')
-            phot.rename('y0', 'y_ps1')
+            phot.rename('x0', 'x_ref')
+            phot.rename('y0', 'y_ref')
             phot.rename('x1', 'x_fit')
             phot.rename('y1', 'y_fit')
 
@@ -1261,12 +1259,12 @@ class Measurer(object):
                                     phot.ra_fit, phot.dec_fit, 1./3600.,
                                     nearest=True)
                 print(len(I), 'of', len(ps1_gaia), 'PS1/Gaia sources have a match in PS1')
-                
+
                 fits = []
                 refs = []
                 if len(I):
                     photmatch = fits_table()
-                    for col in ['x_ps1','y_ps1','x_fit','y_fit','flux','psfsum',
+                    for col in ['x_ref','y_ref','x_fit','y_fit','flux','psfsum',
                                 'ra_fit','dec_fit', 'dflux','dx','dy']:
                         photmatch.set(col, phot.get(col)[J])
                     # Use as reference catalog the PS1-Gaia sources that matched the PS1 stars.
@@ -1275,8 +1273,8 @@ class Measurer(object):
                     # coords from pushing the *gaia* RA,Decs through
                     # the WCS.
                     ok,xx,yy = self.wcs.radec2pixelxy(photref.gaia_ra, photref.gaia_dec)
-                    photmatch.x0 = xx - 1.
-                    photmatch.y0 = yy - 1.
+                    photmatch.x_ref = xx - 1.
+                    photmatch.y_ref = yy - 1.
                     fits.append(photmatch)
                     refs.append(photref)
 
@@ -1291,6 +1289,10 @@ class Measurer(object):
                     astrom = self.tractor_fit_sources(ps1_gaia.gaia_ra, ps1_gaia.gaia_dec, flux0,
                                                       fit_img, ierr, psf)
                     if len(astrom):
+                        astrom.rename('x0', 'x_ref')
+                        astrom.rename('y0', 'y_ref')
+                        astrom.rename('x1', 'x_fit')
+                        astrom.rename('y1', 'y_fit')
                         ref = ps1_gaia[astrom.iref]
                         astrom.delete_column('iref')
                         fits.append(astrom)
@@ -1326,7 +1328,7 @@ class Measurer(object):
 
                 raoff = np.median(astrom.raoff)
                 decoff = np.median(astrom.decoff)
-        
+
                 print('Tractor PsfEx-fitting results for PS1/Gaia:')
                 print('RA, Dec offsets (arcsec) relative to Gaia: %.4f, %.4f' %
                       (raoff, decoff))
@@ -1373,6 +1375,11 @@ class Measurer(object):
             self.make_plots(stars,dmag,ccds['zpt'],ccds['transp'])
             t0= ptime('made-plots',t0)
         return ccds, stars_photom, stars_astrom
+
+    def ps1_to_observed(self, ps1):
+        colorterm = self.colorterm_ps1_to_observed(ps1.median, self.band)
+        ps1band = ps1cat.ps1band[self.band]
+        return ps1.median[:, ps1band] + np.clip(colorterm, -1., +1.)
 
     def get_splinesky(self):
         # Find splinesky model file and read it
@@ -2129,10 +2136,17 @@ class MegaPrimeMeasurer(Measurer):
 
         # # /global/homes/a/arjundey/idl/pro/observing/decstat.pro
         ### HACK!!!
-        self.zp0 =  dict(g = 26.610,r = 26.818,z = 26.484)
+        self.zp0 =  dict(g = 26.610,
+                         r = 26.818,
+                         z = 26.484,
+                         # Totally made up
+                         u = 26.610,
+                         )
                          #                  # i,Y from DESY1_Stripe82 95th percentiles
                          #                  i=26.758, Y=25.321) # e/sec
-        self.k_ext = dict(g = 0.17,r = 0.10,z = 0.06,)
+        self.k_ext = dict(g = 0.17,r = 0.10,z = 0.06,
+                          # Totally made up
+                          u = 0.24)
         #                   #i, Y totally made up
         #                   i=0.08, Y=0.06)
         # --> e/sec
@@ -2142,6 +2156,13 @@ class MegaPrimeMeasurer(Measurer):
 
         self.primhdr['WCSCAL'] = 'success'
         self.goodWcs = True
+
+    def ps1_to_observed(self, ps1):
+        # u->g
+        ps1band = dict(u='g').get(self.band, self.band)
+        ps1band_index = ps1cat.ps1band[ps1band]
+        colorterm = self.colorterm_ps1_to_observed(ps1.median, self.band)
+        return ps1.median[:, ps1band_index] + np.clip(colorterm, -1., +1.)
 
     def get_band(self):
         band = self.primhdr['FILTER'][0]
@@ -2154,10 +2175,13 @@ class MegaPrimeMeasurer(Measurer):
     def colorterm_ps1_to_observed(self, ps1stars, band):
         from legacyanalysis.ps1cat import ps1_to_decam
         print('HACK -- using DECam color term for CFHT!!')
+        if band == 'u':
+            print('HACK -- using g-band color term for u band!')
+            band = 'g'
         return ps1_to_decam(ps1stars, band)
 
     def scale_image(self, img):
-        return img
+        return img.astype(np.float32)
 
     def scale_weight(self, img):
         return img
