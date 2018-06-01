@@ -2214,7 +2214,8 @@ class MegaPrimeMeasurer(Measurer):
             mask = fitsio.FITS(dqfn)[self.ext][self.slc]
         else:
             mask = fitsio.read(dqfn, ext=self.ext)
-        return (mask == 1)
+        # This mask is a 16-bit image but has values 0=bad, 1=good.  Flip.
+        return (1 - mask).astype(np.int16)
 
 class Mosaic3Measurer(Measurer):
     '''Class to measure a variety of quantities from a single Mosaic3 CCD.
