@@ -28,7 +28,31 @@ CCD_CUT_BITS= dict(
     phrms = 0x400,
     radecrms = 0x800,
     seeing_bad = 0x1000,
+    early_decam = 0x2000,
 )
+
+MJD_EARLY_DECAM = 56516.
+
+def dr7_early_decam_update():
+    from legacypipe.survey import LegacySurveyData
+    survey = LegacySurveyData('/global/cscratch1/sd/desiproc/dr7')
+    ccds = survey.get_ccds()
+    print('Setting early_decam bit for', np.sum(ccds.mjd_obs < MJD_EARLY_DECAM), 'CCDs')
+    ccds.ccd_cuts |= CCD_CUT_BITS['early_decam'] * (ccds.mjd_obs < MJD_EARLY_DECAM)
+    ccds.writeto('/tmp/survey-ccds-dr7.fits.gz')
+
+    ccds.cut(ccds.ccd_cuts == 0)
+    ccds.writeto('/tmp/ccds.fits')
+    cmd = 'startree -i /tmp/ccds.fits -o /tmp/survey-ccds-dr7.kd.fits -P -k -n ccds -T'
+    print(cmd)
+    import os
+    os.system(cmd)
+
+    ann = survey.get_annotated_ccds()
+    print('Setting early_decam bit for', np.sum(ann.mjd_obs < MJD_EARLY_DECAM), 'CCDs')
+    ann.ccd_cuts |= CCD_CUT_BITS['early_decam'] * (ann.mjd_obs < MJD_EARLY_DECAM)
+    ann.writeto('/tmp/ccds-annotated-dr7.fits.gz')
+
 
 def psf_zeropoint_cuts(P, pixscale,
                        zpt_cut_lo, zpt_cut_hi, bad_expid, camera):
@@ -65,6 +89,9 @@ def psf_zeropoint_cuts(P, pixscale,
     if camera == 'mosaic':
         cuts.append(('not_third_pix', (np.logical_not(P.yshift) * (P.mjd_obs < 57674.))))
 
+    if camera == 'decam':
+        cuts.append(('early_decam', P.mjd_obs < MJD_EARLY_DECAM))
+
     for name,cut in cuts:
         P.ccd_cuts += CCD_CUT_BITS[name] * cut
         print(np.count_nonzero(cut), 'CCDs cut by', name)
@@ -91,6 +118,11 @@ def read_bad_expid(fn='bad_expid.txt'):
     return bad_expid
 
 if __name__ == '__main__':
+
+    dr7_early_decam_update()
+    import sys
+    sys.exit(0)
+
 
     bad_expid = read_bad_expid()
 
