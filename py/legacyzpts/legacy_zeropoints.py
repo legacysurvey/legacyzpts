@@ -513,8 +513,12 @@ class Measurer(object):
             mask = fitsio.FITS(dqfn)[self.ext][self.slc]
         else:
             mask = fitsio.read(dqfn, ext=self.ext)
+        mask = self.remap_bitmask(mask)
         return mask
 
+    def remap_bitmask(self, mask):
+        return mask
+    
     def read_weight(self, scale=True):
         fn= get_weight_fn(self.fn)
 
@@ -1434,6 +1438,8 @@ class Measurer(object):
         cal.dflux = []
         cal.psfsum = []
         cal.iref = []
+        cal.chi2 = []
+        cal.fracmasked = []
 
         for istar in range(len(ref_ra)):
             ok,x,y = self.wcs.radec2pixelxy(ref_ra[istar], ref_dec[istar])
@@ -1513,6 +1519,14 @@ class Measurer(object):
             if len(variance) == 4 and variance[3] is None:
                 print('No variance estimate available')
                 continue
+
+            mod = tr.getModelImage(0)
+            chi = (subimg - mod) * subie
+            psfimg = mod / mod.sum()
+            # profile-weighted chi-squared
+            cal.chi2.append(np.sum(chi**2 * psfimg))
+            # profile-weighted fraction of masked pixels
+            cal.fracmasked.append(np.sum(psfimg * (ierr == 0)))
 
             cal.psfsum.append(psfsum)
             cal.x0.append(x0 + xlo)
