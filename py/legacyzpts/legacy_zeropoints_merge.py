@@ -73,15 +73,20 @@ def fix_hdu_post(tab):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='Generate a legacypipe-compatible CCDs file from a set of reduced imaging.')
-    parser.add_argument('--file_list',action='store',help='List of zeropoint fits files to concatenate',required=True)
-    parser.add_argument('--nproc',type=int,action='store',default=1,help='number mpi tasks',required=True)
+    parser.add_argument('--file_list',help='List of zeropoint fits files to concatenate')
+    parser.add_argument('--nproc',type=int,default=1,help='number mpi tasks')
     parser.add_argument('--outname', type=str, default='combined_legacy_zpt.fits', help='Output directory.')
-    parser.add_argument('--fix_hdu', action='store_true',default=False, help='',required=False)
-    parser.add_argument('--cut', action='store_true',default=False, help='Cut to ccd_cuts==0',required=False)
-    parser.add_argument('--cut-expnum', action='store_true',default=False, help='Cut out rows with expnum==0', required=False)
+    parser.add_argument('--fix_hdu', action='store_true',default=False, help='')
+    parser.add_argument('--remove-file-prefix', help='Remove prefix from image_filename, if present')
+    parser.add_argument('--cut', action='store_true',default=False, help='Cut to ccd_cuts==0')
+    parser.add_argument('--cut-expnum', action='store_true',default=False, help='Cut out rows with expnum==0')
+    parser.add_argument('files', nargs='+', help='Zeropoint files to concatenate')
     opt = parser.parse_args()
     
-    fns= read_lines(opt.file_list) 
+    fns = []
+    if opt.file_list:
+        fns = read_lines(opt.file_list)
+    fns.extend(opt.files)
 
     # RUN HERE
     if opt.nproc > 1:
@@ -130,5 +135,12 @@ if __name__ == "__main__":
             print(len(cats), 'CCDs')
             cats.cut(cats.expnum > 0)
             print(len(cats), 'CCDs have expnum > 0')
+        if opt.remove_file_prefix:
+            fns = []
+            for fn in cats.image_filename:
+                if fn.startswith(opt.remove_file_prefix):
+                    fn = fn.replace(opt.remove_file_prefix, '', 1)
+                fns.append(fn)
+            cats.image_filename = np.array(fns)
         write_cat(cats, outname=opt.outname)
         print("Done")

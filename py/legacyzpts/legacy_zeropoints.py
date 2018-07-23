@@ -373,13 +373,7 @@ class Measurer(object):
         self.outdir= kwargs.get('outdir')
 
         if kwargs['psf']:
-            if kwargs['calibdir']:
-                self.calibdir= kwargs['calibdir']
-            else:
-                self.calibdir= os.getenv('LEGACY_SURVEY_DIR',None)
-                if self.calibdir is None:
-                    raise ValueError('LEGACY_SURVEY_DIR not set and --calibdir not given')
-                self.calibdir= os.path.join(self.calibdir,'calib')
+            self.calibdir = kwargs['calibdir']
 
         self.aper_sky_sub = aper_sky_sub
         self.calibrate = calibrate
@@ -451,9 +445,6 @@ class Measurer(object):
 
     def zeropoint(self, band):
         return self.zp0[band]
-
-    def sky(self, band):
-        return self.sky0[band]
 
     def extinction(self, band):
         return self.k_ext[band]
@@ -875,9 +866,7 @@ class Measurer(object):
 
         t0= ptime('read image',t0)
 
-        # Measure the sky brightness and (sky) noise level.  Need to capture
-        # negative sky.
-        sky0 = self.sky(self.band)
+        # Measure the sky brightness and (sky) noise level.
         zp0 = self.zeropoint(self.band)
         print('Computing the sky background.')
         sky_img, skymed, skyrms = self.get_sky_and_sigma(self.img)
@@ -887,8 +876,7 @@ class Measurer(object):
         # Median of absolute deviation (MAD), std dev = 1.4826 * MAD
         print('sky from median of image= %.2f' % skymed)
         skybr = zp0 - 2.5*np.log10(skymed / self.pixscale / self.pixscale / exptime)
-        print('  Sky brightness: {:.3f} mag/arcsec^2'.format(skybr))
-        print('  Fiducial:       {:.3f} mag/arcsec^2'.format(sky0))
+        print('  Sky brightness: {:.3f} mag/arcsec^2 (assuming nominal zeropoint)'.format(skybr))
 
         ccds['skyrms'] = skyrms / exptime # e/sec
         ccds['skycounts'] = skymed / exptime # [electron/pix]
@@ -913,23 +901,18 @@ class Measurer(object):
             print(txt)
             return self.return_on_error(txt,ccds=ccds)
         assert(len(ps1_gaia.columns()) > len(ps1.columns())) 
-        ps1band = ps1cat.ps1band[self.band]
         # PS1 cuts
         if len(ps1):
             ps1.cut( self.get_ps1_cuts(ps1) )
             # Convert to Legacy Survey mags
-            colorterm = self.colorterm_ps1_to_observed(ps1.median, self.band)
-            ps1.legacy_survey_mag = ps1.median[:, ps1band] + colorterm
+            ps1.legacy_survey_mag = self.ps1_to_observed(ps1)
         if len(ps1_gaia):
             ps1_gaia.cut( self.get_ps1_cuts(ps1_gaia) )
             # Add gaia ra,dec
             ps1_gaia.gaia_dec = ps1_gaia.dec_ok - ps1_gaia.ddec/3600000.
             ps1_gaia.gaia_ra  = (ps1_gaia.ra_ok - 
                          ps1_gaia.dra/3600000./np.cos(np.deg2rad(ps1_gaia.gaia_dec)))
-            # same for ps1_gaia -- but clip the color term because we don't clip the g-i color.
-            colorterm = self.colorterm_ps1_to_observed(ps1_gaia.median, self.band)
-            ps1_gaia.legacy_survey_mag = ps1_gaia.median[:, ps1band] + np.clip(colorterm, -1., +1.)
-        
+            ps1_gaia.legacy_survey_mag = self.ps1_to_observed(ps1_gaia)
 
         if len(ps1) == 0 and len(ps1_gaia) == 0:
             txt = 'No PS1 or PS1/Gaia stars'
@@ -1143,6 +1126,9 @@ class Measurer(object):
             # plt.savefig(fn)
             # print('Wrote', fn)
 
+            #print('PS1 catalog:')
+            #ps1.about()
+
             # Run tractor fitting of the PS1 stars, using the PsfEx model.
             phot = self.tractor_fit_sources(ps1.ra_ok, ps1.dec_ok, flux0,
                                             fit_img, ierr, psf)
@@ -1159,16 +1145,23 @@ class Measurer(object):
             phot.decoff = (ref.dec - phot.dec_fit) * 3600.
 
             ok, = np.nonzero(phot.flux > 0)
-            phot.psfmag = np.zeros(len(phot), np.float32)
-            phot.psfmag[ok] = -2.5*np.log10(phot.flux[ok] / exptime) + zp0
-            phot.dpsfmag = np.zeros_like(phot.psfmag)
+            #phot.psfmag = np.zeros(len(phot), np.float32)
+            # Drop the +zp0 -- make these instrumental mags ???
+            # Or later add in our calibrated zeropoint?!
+            #phot.psfmag[ok] = -2.5*np.log10(phot.flux[ok] / exptime) + zp0
+            #phot.psfmag[ok] = -2.5*np.log10(phot.flux[ok] / exptime)
+            phot.instpsfmag = np.zeros(len(phot), np.float32)
+            phot.instpsfmag[ok] = -2.5*np.log10(phot.flux[ok] / exptime)
+
+            # Uncertainty on psfmag
+            phot.dpsfmag = np.zeros(len(phot), np.float32)
             phot.dpsfmag[ok] = np.abs((-2.5 / np.log(10.)) * phot.dflux[ok] / phot.flux[ok])
 
             H,W = self.bitmask.shape
             phot.bitmask = self.bitmask[np.clip(phot.y1, 0, H-1).astype(int),
                                         np.clip(phot.x1, 0, W-1).astype(int)]
     
-            dmagall = ref.legacy_survey_mag - phot.psfmag
+            dmagall = ref.legacy_survey_mag - phot.instpsfmag
             if not np.all(np.isfinite(dmagall)):
                 print(np.sum(np.logical_not(np.isfinite(dmagall))), 'stars have NaN mags; ignoring')
                 dmagall = dmagall[np.isfinite(dmagall)]
@@ -1176,13 +1169,13 @@ class Measurer(object):
 
             dmag, _, _ = sigmaclip(dmagall, low=2.5, high=2.5)
             ndmag = len(dmag)
-            dmagmed = np.median(dmag)
-            dmagsig = np.std(dmag)
-            zptmed = zp0 + dmagmed
+            zptstd = np.std(dmag)
+            zptmed = np.median(dmag)
+            dzpt = zptmed - zp0
             kext = self.extinction(self.band)
-            transp = 10.**(-0.4 * (zp0 - zptmed - kext * (airmass - 1.0)))
+            transp = 10.**(-0.4 * (-dzpt - kext * (airmass - 1.0)))
     
-            raoff = np.median(phot.raoff)
+            raoff  = np.median(phot.raoff)
             decoff = np.median(phot.decoff)
 
             print('Tractor PsfEx-fitting results for PS1 (photometry):')
@@ -1190,18 +1183,26 @@ class Measurer(object):
                   (raoff, decoff))
             print('RA, Dec stddev (arcsec): %.4f, %.4f' %
                   (np.std(phot.raoff), np.std(phot.decoff)))
-            print('Mag offset: %.4f' % dmagmed)
-            print('Scatter: %.4f' % dmagsig)
             print('Number stars used for zeropoint median %d' % ndmag)
             print('Zeropoint %.4f' % zptmed)
+            print('Offset from nominal: %.4f' % dzpt)
+            print('Scatter: %.4f' % zptstd)
             print('Transparency %.4f' % transp)
+
+            phot.psfmag = np.zeros(len(phot), np.float32)
+            phot.psfmag[ok] = phot.instpsfmag[ok] + zptmed
 
             for c in ['x0','y0','x1','y1','flux','raoff','decoff', 'psfmag',
                       'dflux','dx','dy']:
                 phot.set(c, phot.get(c).astype(np.float32))
+            phot.rename('x0', 'x_ref')
+            phot.rename('y0', 'y_ref')
+            phot.rename('x1', 'x_fit')
+            phot.rename('y1', 'y_fit')
 
             phot.ra_ps1  = ref.ra
             phot.dec_ps1 = ref.dec
+            phot.ps1_objid  = ref.obj_id
             phot.ps1_mag = ref.legacy_survey_mag
             for band in 'griz':
                 i = ps1cat.ps1band.get(band, None)
@@ -1211,16 +1212,26 @@ class Measurer(object):
             # Save CCD-level information in the per-star table.
             phot.ccd_raoff  = np.zeros(len(phot), np.float32) + raoff
             phot.ccd_decoff = np.zeros(len(phot), np.float32) + decoff
-            phot.ccd_phoff  = np.zeros(len(phot), np.float32) + dmagmed
+            phot.ccd_phoff  = np.zeros(len(phot), np.float32) + dzpt
             phot.ccd_zpt    = np.zeros(len(phot), np.float32) + zptmed
             phot.expnum = np.zeros(len(phot), np.int64) + self.expnum
             phot.ccdname = np.array([self.ccdname] * len(phot))
             phot.exptime = np.zeros(len(phot), np.float32) + self.exptime
             phot.gain = np.zeros(len(phot), np.float32) + self.gain
 
+            import photutils
+            apertures_arcsec_diam = [6, 7, 8]
+            for arcsec_diam in apertures_arcsec_diam:
+                ap = photutils.CircularAperture(np.vstack((phot.x_fit, phot.y_fit)).T,
+                                                arcsec_diam / 2. / self.pixscale)
+                apphot = photutils.aperture_photometry(fit_img, ap, error=1./ierr)
+                phot.set('apflux_%i' % arcsec_diam, apphot.field('aperture_sum'))
+                phot.set('apflux_%i_err' % arcsec_diam, apphot.field('aperture_sum_err'))
+
             # Convert to astropy Table
-            cols = phot.get_columns()
-            stars_photom = Table([phot.get(c) for c in cols], names=cols)
+            #cols = phot.get_columns()
+            #stars_photom = Table([phot.get(c) for c in cols], names=cols)
+            stars_photom = phot
 
             # Add to the zeropoints table
             ccds['raoff']  = raoff
@@ -1231,8 +1242,8 @@ class Measurer(object):
             ccds['rarms'] = getrms(ra_clip)
             dec_clip, _, _ = sigmaclip(phot.decoff, low=3., high=3.)
             ccds['decrms'] = getrms(dec_clip)
-            ccds['phoff'] = dmagmed
-            ccds['phrms'] = dmagsig
+            ccds['phoff'] = dzpt
+            ccds['phrms'] = zptstd
             ccds['zpt'] = zptmed
             ccds['transp'] = transp       
             ccds['nmatch_photom'] = len(phot)
@@ -1252,13 +1263,13 @@ class Measurer(object):
                                     phot.ra_fit, phot.dec_fit, 1./3600.,
                                     nearest=True)
                 print(len(I), 'of', len(ps1_gaia), 'PS1/Gaia sources have a match in PS1')
-                
+
                 fits = []
                 refs = []
                 if len(I):
                     photmatch = fits_table()
-                    for col in ['x0','y0','x1','y1','flux','psfsum','ra_fit','dec_fit',
-                                'dflux','dx','dy']:
+                    for col in ['x_ref','y_ref','x_fit','y_fit','flux','psfsum',
+                                'ra_fit','dec_fit', 'dflux','dx','dy']:
                         photmatch.set(col, phot.get(col)[J])
                     # Use as reference catalog the PS1-Gaia sources that matched the PS1 stars.
                     photref = ps1_gaia[I]
@@ -1266,8 +1277,8 @@ class Measurer(object):
                     # coords from pushing the *gaia* RA,Decs through
                     # the WCS.
                     ok,xx,yy = self.wcs.radec2pixelxy(photref.gaia_ra, photref.gaia_dec)
-                    photmatch.x0 = xx - 1.
-                    photmatch.y0 = yy - 1.
+                    photmatch.x_ref = xx - 1.
+                    photmatch.y_ref = yy - 1.
                     fits.append(photmatch)
                     refs.append(photref)
 
@@ -1282,6 +1293,10 @@ class Measurer(object):
                     astrom = self.tractor_fit_sources(ps1_gaia.gaia_ra, ps1_gaia.gaia_dec, flux0,
                                                       fit_img, ierr, psf)
                     if len(astrom):
+                        astrom.rename('x0', 'x_ref')
+                        astrom.rename('y0', 'y_ref')
+                        astrom.rename('x1', 'x_fit')
+                        astrom.rename('y1', 'y_fit')
                         ref = ps1_gaia[astrom.iref]
                         astrom.delete_column('iref')
                         fits.append(astrom)
@@ -1317,7 +1332,7 @@ class Measurer(object):
 
                 raoff = np.median(astrom.raoff)
                 decoff = np.median(astrom.decoff)
-        
+
                 print('Tractor PsfEx-fitting results for PS1/Gaia:')
                 print('RA, Dec offsets (arcsec) relative to Gaia: %.4f, %.4f' %
                       (raoff, decoff))
@@ -1329,7 +1344,7 @@ class Measurer(object):
                 print('Zeropoint %.4f' % zptmed)
                 print('Transparency %.4f' % transp)
 
-                for c in ['x0','y0','x1','y1','flux','raoff','decoff',
+                for c in ['flux','raoff','decoff',
                           'dflux','dx','dy']:
                     astrom.set(c, astrom.get(c).astype(np.float32))
 
@@ -1342,10 +1357,11 @@ class Measurer(object):
                 astrom.expnum = np.zeros(len(astrom), np.int64) + self.expnum
                 astrom.ccdname = np.array([self.ccdname] * len(astrom))
 
-                # Convert to astropy Table
-                cols = astrom.get_columns()
-                stars_astrom = Table([astrom.get(c) for c in cols], names=cols)
-
+                # Convert to astropy Table?
+                #cols = astrom.get_columns()
+                #stars_astrom = Table([astrom.get(c) for c in cols], names=cols)
+                stars_astrom = astrom
+                
                 # Update the zeropoints table
                 ccds['raoff']  = raoff
                 ccds['decoff'] = decoff
@@ -1363,6 +1379,11 @@ class Measurer(object):
             self.make_plots(stars,dmag,ccds['zpt'],ccds['transp'])
             t0= ptime('made-plots',t0)
         return ccds, stars_photom, stars_astrom
+
+    def ps1_to_observed(self, ps1):
+        colorterm = self.colorterm_ps1_to_observed(ps1.median, self.band)
+        ps1band = ps1cat.ps1band[self.band]
+        return ps1.median[:, ps1band] + np.clip(colorterm, -1., +1.)
 
     def get_splinesky(self):
         # Find splinesky model file and read it
@@ -2046,9 +2067,6 @@ class DecamMeasurer(Measurer):
         self.zp0 =  dict(g = 26.610,r = 26.818,z = 26.484,
                          # i,Y from DESY1_Stripe82 95th percentiles
                          i=26.758, Y=25.321) # e/sec
-        self.sky0 = dict(g = 22.04,r = 20.91,z = 18.46,
-                         # i, Y totally made up
-                         i=19.68, Y=18.46) # AB mag/arcsec^2
         self.k_ext = dict(g = 0.17,r = 0.10,z = 0.06,
                           #i, Y totally made up
                           i=0.08, Y=0.06)
@@ -2132,13 +2150,17 @@ class MegaPrimeMeasurer(Measurer):
 
         # # /global/homes/a/arjundey/idl/pro/observing/decstat.pro
         ### HACK!!!
-        self.zp0 =  dict(g = 26.610,r = 26.818,z = 26.484)
+        self.zp0 =  dict(g = 26.610,
+                         r = 26.818,
+                         z = 26.484,
+                         # Totally made up
+                         u = 26.610,
+                         )
                          #                  # i,Y from DESY1_Stripe82 95th percentiles
                          #                  i=26.758, Y=25.321) # e/sec
-        self.sky0 = dict(g = 22.04,r = 20.91,z = 18.46)
-        #                  # i, Y totally made up
-        #                  i=19.68, Y=18.46) # AB mag/arcsec^2
-        self.k_ext = dict(g = 0.17,r = 0.10,z = 0.06,)
+        self.k_ext = dict(g = 0.17,r = 0.10,z = 0.06,
+                          # Totally made up
+                          u = 0.24)
         #                   #i, Y totally made up
         #                   i=0.08, Y=0.06)
         # --> e/sec
@@ -2148,6 +2170,13 @@ class MegaPrimeMeasurer(Measurer):
 
         self.primhdr['WCSCAL'] = 'success'
         self.goodWcs = True
+
+    def ps1_to_observed(self, ps1):
+        # u->g
+        ps1band = dict(u='g').get(self.band, self.band)
+        ps1band_index = ps1cat.ps1band[ps1band]
+        colorterm = self.colorterm_ps1_to_observed(ps1.median, self.band)
+        return ps1.median[:, ps1band_index] + np.clip(colorterm, -1., +1.)
 
     def get_band(self):
         band = self.primhdr['FILTER'][0]
@@ -2160,10 +2189,13 @@ class MegaPrimeMeasurer(Measurer):
     def colorterm_ps1_to_observed(self, ps1stars, band):
         from legacyanalysis.ps1cat import ps1_to_decam
         print('HACK -- using DECam color term for CFHT!!')
+        if band == 'u':
+            print('HACK -- using g-band color term for u band!')
+            band = 'g'
         return ps1_to_decam(ps1stars, band)
 
     def scale_image(self, img):
-        return img
+        return img.astype(np.float32)
 
     def scale_weight(self, img):
         return img
@@ -2196,7 +2228,8 @@ class MegaPrimeMeasurer(Measurer):
             mask = fitsio.FITS(dqfn)[self.ext][self.slc]
         else:
             mask = fitsio.read(dqfn, ext=self.ext)
-        return (mask == 1)
+        # This mask is a 16-bit image but has values 0=bad, 1=good.  Flip.
+        return (1 - mask).astype(np.int16)
 
 class Mosaic3Measurer(Measurer):
     '''Class to measure a variety of quantities from a single Mosaic3 CCD.
@@ -2216,7 +2249,6 @@ class Mosaic3Measurer(Measurer):
         #self.gain = self.hdr['GAIN']
 
         self.zp0 = dict(z = 26.552)
-        self.sky0 = dict(z = 18.46)
         self.k_ext = dict(z = 0.06)
         # --> e/sec
         #for b in self.zp0.keys(): 
@@ -2299,7 +2331,6 @@ class NinetyPrimeMeasurer(Measurer):
 
         # /global/homes/a/arjundey/idl/pro/observing/bokstat.pro
         self.zp0 =  dict(g = 26.93,r = 27.01,z = 26.552) # ADU/sec
-        self.sky0 = dict(g = 22.04,r = 20.91,z = 18.46) # AB mag/arcsec^2
         self.k_ext = dict(g = 0.17,r = 0.10,z = 0.06)
         # --> e/sec
         #for b in self.zp0.keys(): 
@@ -2437,11 +2468,11 @@ def measure_image(img_fn, run_calibs=False, survey=None, threads=None, **measure
         measure = NinetyPrimeMeasurer(img_fn, **measureargs)
     elif camera == 'megaprime':
         measure = MegaPrimeMeasurer(img_fn, **measureargs)
-    extra_info= dict(zp_fid= measure.zeropoint( measure.band ),
-                     sky_fid= measure.sky( measure.band ),
-                     ext_fid= measure.extinction( measure.band ),
-                     exptime= measure.exptime,
-                     pixscale= measure.pixscale)
+    extra_info= dict(zp_fid = measure.zeropoint( measure.band ),
+                     ext_fid = measure.extinction( measure.band ),
+                     exptime = measure.exptime,
+                     pixscale = measure.pixscale,
+                     primhdr = measure.primhdr)
 
     mp = multiproc(nthreads=(threads or 1))
     
@@ -2475,8 +2506,10 @@ def measure_image(img_fn, run_calibs=False, survey=None, threads=None, **measure
 
     # Compute the median zeropoint across all the CCDs.
     all_ccds = vstack(all_ccds)
-    all_stars_photom = vstack(all_stars_photom)
-    all_stars_astrom = vstack(all_stars_astrom)
+    #all_stars_photom = vstack(all_stars_photom)
+    #all_stars_astrom = vstack(all_stars_astrom)
+    all_stars_photom = merge_tables(all_stars_photom)
+    all_stars_astrom = merge_tables(all_stars_astrom)
     zpts = all_ccds['zpt']
     all_ccds['zptavg'] = np.median(zpts[np.isfinite(zpts)])
 
@@ -2535,12 +2568,14 @@ class outputFns(object):
             else:
                 self.imgfn= imgfn
         # zpt,star fns
-        self.zptfn= os.path.join(outdir,dirname,
-                                 basename.replace('.fits.fz','-zpt.fits')) 
-        self.starfn_photom= os.path.join(outdir,dirname,
-                                 basename.replace('.fits.fz','-star-photom.fits')) 
-        self.starfn_astrom= os.path.join(outdir,dirname,
-                                 basename.replace('.fits.fz','-star-astrom.fits')) 
+        base = basename
+        if base.endswith('.fz'):
+            base = base[:-len('.fz')]
+        if base.endswith('.fits'):
+            base = base[:-len('.fits')]
+        self.zptfn= os.path.join(outdir,dirname, base + '-zpt.fits')
+        self.starfn_photom= os.path.join(outdir,dirname, base + '-star-photom.fits')
+        self.starfn_astrom= os.path.join(outdir,dirname, base + '-star-astrom.fits')
         if debug:
             self.zptfn= self.zptfn.replace('-zpt','-debug-zpt')
             self.starfn_photom= self.starfn_photom.replace('-star','-debug-star')
@@ -2585,16 +2620,39 @@ def runit(imgfn,zptfn,starfn_photom,starfn_astrom,
         t0= ptime('measure_image',t0)
         # Write out.
         ccds.write(zptfn, overwrite=True)
-        # Header <-- fiducial zp,sky,ext, also exptime, pixscale
+        # Header <-- fiducial zp,ext, also exptime, pixscale
         hdulist = fits_astropy.open(zptfn, mode='update')
         prihdr = hdulist[0].header
+
+        img_primhdr = extra_info.pop('primhdr')
+
         for key,val in extra_info.items():
             prihdr[key] = val
         hdulist.close() # Save changes
         print('Wrote {}'.format(zptfn))
         # Two stars tables
-        stars_photom.write(starfn_photom, overwrite=True)
-        stars_astrom.write(starfn_astrom, overwrite=True)
+        print('Primary header:')
+        primhdr = img_primhdr
+        print(primhdr)
+        hdr = fitsio.FITSHDR()
+        for key in ['AIRMASS', 'OBJECT', 'TELESCOP', 'INSTRUME', 'EXPTIME',
+                    'DATE-OBS', 'MJD-OBS', 'EXPNUM', 'PROGRAM', 'OBSERVER',
+                    'PROPID', 'FILTER', 'HA', 'ZD', 'AZ', 'DOMEAZ', 'HUMIDITY', 'PLVER',
+                    ]:
+            if not key in primhdr:
+                continue
+            hdr.add_record(dict(name=key, value=primhdr[key],
+                                comment=primhdr.get_comment(key)))
+        base = os.path.basename(imgfn)
+        dirnm = os.path.dirname(imgfn)
+        firstdir = os.path.basename(dirnm)
+        hdr.add_record(dict(name='FILENAME', value=os.path.join(firstdir, base)))
+
+        stars_photom.writeto(starfn_photom, overwrite=True, header=hdr)
+        stars_astrom.writeto(starfn_astrom, overwrite=True, header=hdr)
+
+        #stars_photom.write(starfn_photom, overwrite=True)
+        #stars_astrom.write(starfn_astrom, overwrite=True)
         print('Wrote 2 stars tables\n%s\n%s' %  (starfn_photom,starfn_astrom))
     # zpt --> Legacypipe table
     create_legacypipe_table(zptfn, camera=measureargs['camera'],
@@ -2685,6 +2743,11 @@ def main(image_list=None,args=None):
     # Add user specified camera, useful check against primhdr
     #measureargs.update(dict(camera= args.camera))
 
+    if measureargs['calibdir'] is None:
+        cal = os.getenv('LEGACY_SURVEY_DIR',None)
+        if cal is not None:
+            measureargs['calibdir'] = os.path.join(cal, 'calib')
+
     psf = measureargs['psf']
     camera = measureargs['camera']
 
@@ -2701,8 +2764,11 @@ def main(image_list=None,args=None):
             survey.calibdir = cal
         survey.imagedir = ''
 
-        from legacypipe.cfht import MegaPrimeImage
-        survey.image_typemap['megaprime'] = MegaPrimeImage
+        try:
+            from legacypipe.cfht import MegaPrimeImage
+            survey.image_typemap['megaprime'] = MegaPrimeImage
+        except:
+            print('MegaPrimeImage class not found')
 
         measureargs['survey'] = survey
 
