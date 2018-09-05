@@ -47,10 +47,6 @@ except ImportError:
     raise
 
 CAMERAS=['decam','mosaic','90prime','megaprime']
-STAGING_CAMERAS={'decam':'decam',
-                 'mosaic':'mosaicz',
-                 '90prime':'bok',
-                 'megaprime':'cfis'}
 
 def try_mkdir(dir):
     try:
@@ -1246,6 +1242,8 @@ class Measurer(object):
                 if i is None:
                     continue
                 phot.set('ps1_'+band, ref.median[:,i].astype(np.float32))
+            phot.gaia_sourceid = np.zeros(len(phot), np.int64)
+
             # Save CCD-level information in the per-star table.
             phot.ccd_raoff  = np.zeros(len(phot), np.float32) + raoff
             phot.ccd_decoff = np.zeros(len(phot), np.float32) + decoff
@@ -1262,8 +1260,8 @@ class Measurer(object):
                 ap = photutils.CircularAperture(np.vstack((phot.x_fit, phot.y_fit)).T,
                                                 arcsec_diam / 2. / self.pixscale)
                 apphot = photutils.aperture_photometry(fit_img, ap, error=1./ierr)
-                phot.set('apflux_%i' % arcsec_diam, apphot.field('aperture_sum'))
-                phot.set('apflux_%i_err' % arcsec_diam, apphot.field('aperture_sum_err'))
+                phot.set('apflux_%i' % arcsec_diam, apphot.field('aperture_sum').astype(np.float32))
+                phot.set('apflux_%i_err' % arcsec_diam, apphot.field('aperture_sum_err').astype(np.float32))
 
             # Convert to astropy Table
             #cols = phot.get_columns()
@@ -1306,10 +1304,12 @@ class Measurer(object):
                 if len(I):
                     photmatch = fits_table()
                     for col in ['x_ref','y_ref','x_fit','y_fit','flux','psfsum',
-                                'ra_fit','dec_fit', 'dflux','dx','dy']:
+                                'ra_fit','dec_fit', 'dflux','dx','dy',
+                                'chi2', 'fracmasked']:
                         photmatch.set(col, phot.get(col)[J])
                     # Use as reference catalog the Gaia sources that matched the PS1 stars.
                     photref = gaia[I]
+                    photref.ps1_objid = phot.ps1_objid[J]
                     # Update the "x0","y0" columns to be the X,Y
                     # coords from pushing the *gaia* RA,Decs through
                     # the WCS.
@@ -1334,6 +1334,7 @@ class Measurer(object):
                     astrom.rename('x1', 'x_fit')
                     astrom.rename('y1', 'y_fit')
                     ref = gaia[astrom.iref]
+                    ref.ps1_objid = np.zeros(len(ref), np.int64)
                     astrom.delete_column('iref')
                     fits.append(astrom)
                     refs.append(ref)
@@ -1350,8 +1351,6 @@ class Measurer(object):
             astrom.decoff = (ref.dec - astrom.dec_fit) * 3600.
 
             ok, = np.nonzero(astrom.flux > 0)
-            #astrom.psfmag = np.zeros(len(astrom), np.float32)
-            #astrom.psfmag[ok] = -2.5*np.log10(astrom.flux[ok] / exptime) + zp0
             astrom.instpsfmag = np.zeros(len(astrom), np.float32)
             astrom.instpsfmag[ok] = -2.5*np.log10(astrom.flux[ok] / exptime)
             astrom.dpsfmag = np.zeros(len(astrom), np.float32)
@@ -1361,7 +1360,10 @@ class Measurer(object):
             astrom.bitmask = self.bitmask[np.clip(astrom.y_fit, 0, H-1).astype(int),
                                           np.clip(astrom.x_fit, 0, W-1).astype(int)]
             astrom.gaia_sourceid = ref.source_id
+            astrom.ps1_objid = ref.ps1_objid
 
+            # astrom.psfmag = np.zeros(len(astrom), np.float32)
+            # astrom.psfmag[ok] = -2.5*np.log10(astrom.flux[ok] / exptime) + zp0
             # dmagall = ref.legacy_survey_mag - astrom.psfmag
             # dmag, _, _ = sigmaclip(dmagall, low=2.5, high=2.5)
             # ndmag = len(dmag)
@@ -1409,8 +1411,8 @@ class Measurer(object):
                 ap = photutils.CircularAperture(np.vstack((astrom.x_fit, astrom.y_fit)).T,
                                                 arcsec_diam / 2. / self.pixscale)
                 apphot = photutils.aperture_photometry(fit_img, ap, error=1./ierr)
-                astrom.set('apflux_%i' % arcsec_diam, apphot.field('aperture_sum'))
-                astrom.set('apflux_%i_err' % arcsec_diam, apphot.field('aperture_sum_err'))
+                astrom.set('apflux_%i' % arcsec_diam, apphot.field('aperture_sum').astype(np.float32))
+                astrom.set('apflux_%i_err' % arcsec_diam, apphot.field('aperture_sum_err').astype(np.float32))
 
             # Convert to astropy Table?
             #cols = astrom.get_columns()
@@ -2191,6 +2193,15 @@ class DecamMeasurer(Measurer):
             invvar[invvar < thresh] = 0
         return invvar
 
+    def remap_bitmask(self, mask):
+        from legacypipe.image import remap_dq_cp_codes
+        from legacypipe.decam import decam_has_dq_codes
+        plver = self.primhdr['PLVER']
+        if decam_has_dq_codes(plver):
+            mask = remap_dq_cp_codes(mask)
+        return mask
+
+
 class MegaPrimeMeasurer(Measurer):
     def __init__(self, *args, **kwargs):
         super(MegaPrimeMeasurer, self).__init__(*args, **kwargs)
@@ -2354,6 +2365,11 @@ class Mosaic3Measurer(Measurer):
     def get_wcs(self):
         return wcs_pv2sip_hdr(self.hdr) # PV distortion
 
+    def remap_bitmask(self, mask):
+        from legacypipe.image import remap_dq_cp_codes
+        return remap_dq_cp_codes(mask)
+
+
 class NinetyPrimeMeasurer(Measurer):
     '''Class to measure a variety of quantities from a single 90prime CCD.
     UNITS -- CP e-/s'''
@@ -2430,6 +2446,9 @@ class NinetyPrimeMeasurer(Measurer):
     def get_wcs(self):
         return wcs_pv2sip_hdr(self.hdr) # PV distortion
 
+    def remap_bitmask(self, mask):
+        from legacypipe.image import remap_dq_cp_codes
+        return remap_dq_cp_codes(mask)
 
 def get_extlist(camera,fn,debug=False,choose_ccd=None):
     '''
