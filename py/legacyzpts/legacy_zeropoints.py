@@ -887,37 +887,39 @@ class Measurer(object):
         # We will only used detected sources that have PS1 or PS1-gaia matches
         # So cut to this super set immediately
         
-        #pattern={'ps1':'/project/projectdirs/cosmo/work/ps1/cats/chunks-qz-star-v3/ps1-%(hp)05d.fits',
-        #         'ps1_gaia':'/project/projectdirs/cosmo/work/gaia/chunks-ps1-gaia/chunk-%(hp)05d.fits'}
-        #ps1_pattern= #os.environ["PS1CAT_DIR"]=PS1
-        #ps1_gaia_patternos.environ["PS1_GAIA_MATCHES"]= PS1_GAIA_MATCHES
+        ps1 = ps1_gaia = None
         try:
             ps1 = ps1cat(ccdwcs=self.wcs, 
                          pattern= self.ps1_pattern).get_stars(magrange=None)
             ps1_gaia = ps1cat(ccdwcs=self.wcs,
                               pattern= self.ps1_gaia_pattern).get_stars(magrange=None)
+            assert(len(ps1_gaia.columns()) > len(ps1.columns())) 
         except OSError:
-            txt="outside PS1 footprint,In Gal. Plane"
-            print(txt)
-            return self.return_on_error(txt,ccds=ccds)
-        assert(len(ps1_gaia.columns()) > len(ps1.columns())) 
-        # PS1 cuts
-        if len(ps1):
-            ps1.cut( self.get_ps1_cuts(ps1) )
-            # Convert to Legacy Survey mags
-            ps1.legacy_survey_mag = self.ps1_to_observed(ps1)
-        if len(ps1_gaia):
-            ps1_gaia.cut( self.get_ps1_cuts(ps1_gaia) )
-            # Add gaia ra,dec
-            ps1_gaia.gaia_dec = ps1_gaia.dec_ok - ps1_gaia.ddec/3600000.
-            ps1_gaia.gaia_ra  = (ps1_gaia.ra_ok - 
-                         ps1_gaia.dra/3600000./np.cos(np.deg2rad(ps1_gaia.gaia_dec)))
-            ps1_gaia.legacy_survey_mag = self.ps1_to_observed(ps1_gaia)
+            print('No PS1 or PS1/Gaia stars found for this image -- outside the PS1 footprint, or in the Galactic plane?')
 
-        if len(ps1) == 0 and len(ps1_gaia) == 0:
+        # PS1 cuts
+        if ps1 is not None and len(ps1):
+            ps1.cut( self.get_ps1_cuts(ps1) )
+            if len(ps1) == 0:
+                ps1 = None
+            else:
+                # Convert to Legacy Survey mags
+                ps1.legacy_survey_mag = self.ps1_to_observed(ps1)
+        if ps1_gaia is nto None and len(ps1_gaia):
+            ps1_gaia.cut( self.get_ps1_cuts(ps1_gaia) )
+            if len(ps1_gaia) == 0:
+                ps1_gaia = None
+            else:
+                # Add gaia ra,dec
+                ps1_gaia.gaia_dec = ps1_gaia.dec_ok - ps1_gaia.ddec/3600000.
+                ps1_gaia.gaia_ra  = (ps1_gaia.ra_ok - 
+                                     ps1_gaia.dra/3600000./np.cos(np.deg2rad(ps1_gaia.gaia_dec)))
+                ps1_gaia.legacy_survey_mag = self.ps1_to_observed(ps1_gaia)
+
+        if ps1 is None and ps1_gaia is None:
             txt = 'No PS1 or PS1/Gaia stars'
             print(txt)
-            return self.return_on_error(txt,ccds=ccds)
+            #return self.return_on_error(txt,ccds=ccds)
 
         if not psfex:
             # badpix5 test, all good PS1 
@@ -1096,158 +1098,158 @@ class Measurer(object):
                 fit_img = self.img - skymod
 
 
-            # PS1 for photometry
-
-            # Initial flux estimate, from nominal zeropoint
-            flux0 = 10.**((zp0 - ps1.legacy_survey_mag) / 2.5) * exptime
-
             ierr = np.sqrt(self.invvar)
 
-            # plt.clf()
-            # n,b,p = plt.hist((fit_img * ierr)[ierr > 0], range=(-6,6), bins=100)
-            # plt.xlabel('Image pixel chi')
-            # xx = np.linspace(-6,6, 100)
-            # yy = 1./np.sqrt(2.*np.pi) * np.exp(-0.5 * xx**2)
-            # yy *= sum(n)
-            # db = b[1]-b[0]
-            # plt.plot(xx, yy * db, 'r-')
-            # plt.xlim(-6,6)
-            # fn = 'chi-%i-%s.png' % (self.expnum, self.ccdname)
-            # plt.savefig(fn)
-            # print('Wrote', fn)
-            # 
-            # plt.clf()
-            # I = (ierr > 0) * (fit_img > 1)
-            # plt.hexbin(fit_img[I], 1. / ierr[I],
-            #            xscale='log', yscale='log')
-            # plt.xlabel('Image pixel value')
-            # plt.ylabel('Uncertainty')
-            # fn = 'unc-%i-%s.png' % (self.expnum, self.ccdname)
-            # plt.savefig(fn)
-            # print('Wrote', fn)
+            if ps1 is not None:
+                # PS1 for photometry
+                # Initial flux estimate, from nominal zeropoint
+                flux0 = 10.**((zp0 - ps1.legacy_survey_mag) / 2.5) * exptime
 
-            #print('PS1 catalog:')
-            #ps1.about()
-
-            # Run tractor fitting of the PS1 stars, using the PsfEx model.
-            phot = self.tractor_fit_sources(ps1.ra_ok, ps1.dec_ok, flux0,
-                                            fit_img, ierr, psf)
-            print('Got photometry results for', len(phot), 'PS1 stars')
-            if len(phot) == 0:
-                return self.return_on_error('No photometry available',ccds=ccds)
-
-            ref = ps1[phot.iref]
-            phot.delete_column('iref')
-            ref.rename('ra_ok',  'ra')
-            ref.rename('dec_ok', 'dec')
-
-            phot.raoff  = (ref.ra  - phot.ra_fit ) * 3600. * np.cos(np.deg2rad(ref.dec))
-            phot.decoff = (ref.dec - phot.dec_fit) * 3600.
-
-            ok, = np.nonzero(phot.flux > 0)
-            #phot.psfmag = np.zeros(len(phot), np.float32)
-            # Drop the +zp0 -- make these instrumental mags ???
-            # Or later add in our calibrated zeropoint?!
-            #phot.psfmag[ok] = -2.5*np.log10(phot.flux[ok] / exptime) + zp0
-            #phot.psfmag[ok] = -2.5*np.log10(phot.flux[ok] / exptime)
-            phot.instpsfmag = np.zeros(len(phot), np.float32)
-            phot.instpsfmag[ok] = -2.5*np.log10(phot.flux[ok] / exptime)
-
-            # Uncertainty on psfmag
-            phot.dpsfmag = np.zeros(len(phot), np.float32)
-            phot.dpsfmag[ok] = np.abs((-2.5 / np.log(10.)) * phot.dflux[ok] / phot.flux[ok])
-
-            H,W = self.bitmask.shape
-            phot.bitmask = self.bitmask[np.clip(phot.y1, 0, H-1).astype(int),
-                                        np.clip(phot.x1, 0, W-1).astype(int)]
+                # plt.clf()
+                # n,b,p = plt.hist((fit_img * ierr)[ierr > 0], range=(-6,6), bins=100)
+                # plt.xlabel('Image pixel chi')
+                # xx = np.linspace(-6,6, 100)
+                # yy = 1./np.sqrt(2.*np.pi) * np.exp(-0.5 * xx**2)
+                # yy *= sum(n)
+                # db = b[1]-b[0]
+                # plt.plot(xx, yy * db, 'r-')
+                # plt.xlim(-6,6)
+                # fn = 'chi-%i-%s.png' % (self.expnum, self.ccdname)
+                # plt.savefig(fn)
+                # print('Wrote', fn)
+                # 
+                # plt.clf()
+                # I = (ierr > 0) * (fit_img > 1)
+                # plt.hexbin(fit_img[I], 1. / ierr[I],
+                #            xscale='log', yscale='log')
+                # plt.xlabel('Image pixel value')
+                # plt.ylabel('Uncertainty')
+                # fn = 'unc-%i-%s.png' % (self.expnum, self.ccdname)
+                # plt.savefig(fn)
+                # print('Wrote', fn)
     
-            dmagall = ref.legacy_survey_mag - phot.instpsfmag
-            if not np.all(np.isfinite(dmagall)):
-                print(np.sum(np.logical_not(np.isfinite(dmagall))), 'stars have NaN mags; ignoring')
-                dmagall = dmagall[np.isfinite(dmagall)]
-                print('Continuing with', len(dmagall), 'stars')
-
-            dmag, _, _ = sigmaclip(dmagall, low=2.5, high=2.5)
-            ndmag = len(dmag)
-            zptstd = np.std(dmag)
-            zptmed = np.median(dmag)
-            dzpt = zptmed - zp0
-            kext = self.extinction(self.band)
-            transp = 10.**(-0.4 * (-dzpt - kext * (airmass - 1.0)))
+                #print('PS1 catalog:')
+                #ps1.about()
     
-            raoff  = np.median(phot.raoff)
-            decoff = np.median(phot.decoff)
-
-            print('Tractor PsfEx-fitting results for PS1 (photometry):')
-            print('RA, Dec offsets (arcsec) relative to PS1: %.4f, %.4f' %
-                  (raoff, decoff))
-            print('RA, Dec stddev (arcsec): %.4f, %.4f' %
-                  (np.std(phot.raoff), np.std(phot.decoff)))
-            print('Number stars used for zeropoint median %d' % ndmag)
-            print('Zeropoint %.4f' % zptmed)
-            print('Offset from nominal: %.4f' % dzpt)
-            print('Scatter: %.4f' % zptstd)
-            print('Transparency %.4f' % transp)
-
-            phot.psfmag = np.zeros(len(phot), np.float32)
-            phot.psfmag[ok] = phot.instpsfmag[ok] + zptmed
-
-            for c in ['x0','y0','x1','y1','flux','raoff','decoff', 'psfmag',
-                      'dflux','dx','dy']:
-                phot.set(c, phot.get(c).astype(np.float32))
-            phot.rename('x0', 'x_ref')
-            phot.rename('y0', 'y_ref')
-            phot.rename('x1', 'x_fit')
-            phot.rename('y1', 'y_fit')
-
-            phot.ra_ps1  = ref.ra
-            phot.dec_ps1 = ref.dec
-            phot.ps1_objid  = ref.obj_id
-            phot.ps1_mag = ref.legacy_survey_mag
-            for band in 'griz':
-                i = ps1cat.ps1band.get(band, None)
-                if i is None:
-                    continue
-                phot.set('ps1_'+band, ref.median[:,i].astype(np.float32))
-            # Save CCD-level information in the per-star table.
-            phot.ccd_raoff  = np.zeros(len(phot), np.float32) + raoff
-            phot.ccd_decoff = np.zeros(len(phot), np.float32) + decoff
-            phot.ccd_phoff  = np.zeros(len(phot), np.float32) + dzpt
-            phot.ccd_zpt    = np.zeros(len(phot), np.float32) + zptmed
-            phot.expnum = np.zeros(len(phot), np.int64) + self.expnum
-            phot.ccdname = np.array([self.ccdname] * len(phot))
-            phot.exptime = np.zeros(len(phot), np.float32) + self.exptime
-            phot.gain = np.zeros(len(phot), np.float32) + self.gain
-
-            import photutils
-            apertures_arcsec_diam = [6, 7, 8]
-            for arcsec_diam in apertures_arcsec_diam:
-                ap = photutils.CircularAperture(np.vstack((phot.x_fit, phot.y_fit)).T,
-                                                arcsec_diam / 2. / self.pixscale)
-                apphot = photutils.aperture_photometry(fit_img, ap, error=1./ierr)
-                phot.set('apflux_%i' % arcsec_diam, apphot.field('aperture_sum'))
-                phot.set('apflux_%i_err' % arcsec_diam, apphot.field('aperture_sum_err'))
-
-            # Convert to astropy Table
-            #cols = phot.get_columns()
-            #stars_photom = Table([phot.get(c) for c in cols], names=cols)
-            stars_photom = phot
-
-            # Add to the zeropoints table
-            ccds['raoff']  = raoff
-            ccds['decoff'] = decoff
-            ccds['rastddev'] = np.std(phot.raoff)
-            ccds['decstddev'] = np.std(phot.decoff)
-            ra_clip, _, _ = sigmaclip(phot.raoff, low=3., high=3.)
-            ccds['rarms'] = getrms(ra_clip)
-            dec_clip, _, _ = sigmaclip(phot.decoff, low=3., high=3.)
-            ccds['decrms'] = getrms(dec_clip)
-            ccds['phoff'] = dzpt
-            ccds['phrms'] = zptstd
-            ccds['zpt'] = zptmed
-            ccds['transp'] = transp       
-            ccds['nmatch_photom'] = len(phot)
-            ccds['nmatch_astrom'] = len(phot)
+                # Run tractor fitting of the PS1 stars, using the PsfEx model.
+                phot = self.tractor_fit_sources(ps1.ra_ok, ps1.dec_ok, flux0,
+                                                fit_img, ierr, psf)
+                print('Got photometry results for', len(phot), 'PS1 stars')
+                if len(phot) == 0:
+                    return self.return_on_error('No photometry available',ccds=ccds)
+    
+                ref = ps1[phot.iref]
+                phot.delete_column('iref')
+                ref.rename('ra_ok',  'ra')
+                ref.rename('dec_ok', 'dec')
+    
+                phot.raoff  = (ref.ra  - phot.ra_fit ) * 3600. * np.cos(np.deg2rad(ref.dec))
+                phot.decoff = (ref.dec - phot.dec_fit) * 3600.
+    
+                ok, = np.nonzero(phot.flux > 0)
+                #phot.psfmag = np.zeros(len(phot), np.float32)
+                # Drop the +zp0 -- make these instrumental mags ???
+                # Or later add in our calibrated zeropoint?!
+                #phot.psfmag[ok] = -2.5*np.log10(phot.flux[ok] / exptime) + zp0
+                #phot.psfmag[ok] = -2.5*np.log10(phot.flux[ok] / exptime)
+                phot.instpsfmag = np.zeros(len(phot), np.float32)
+                phot.instpsfmag[ok] = -2.5*np.log10(phot.flux[ok] / exptime)
+    
+                # Uncertainty on psfmag
+                phot.dpsfmag = np.zeros(len(phot), np.float32)
+                phot.dpsfmag[ok] = np.abs((-2.5 / np.log(10.)) * phot.dflux[ok] / phot.flux[ok])
+    
+                H,W = self.bitmask.shape
+                phot.bitmask = self.bitmask[np.clip(phot.y1, 0, H-1).astype(int),
+                                            np.clip(phot.x1, 0, W-1).astype(int)]
+        
+                dmagall = ref.legacy_survey_mag - phot.instpsfmag
+                if not np.all(np.isfinite(dmagall)):
+                    print(np.sum(np.logical_not(np.isfinite(dmagall))), 'stars have NaN mags; ignoring')
+                    dmagall = dmagall[np.isfinite(dmagall)]
+                    print('Continuing with', len(dmagall), 'stars')
+    
+                dmag, _, _ = sigmaclip(dmagall, low=2.5, high=2.5)
+                ndmag = len(dmag)
+                zptstd = np.std(dmag)
+                zptmed = np.median(dmag)
+                dzpt = zptmed - zp0
+                kext = self.extinction(self.band)
+                transp = 10.**(-0.4 * (-dzpt - kext * (airmass - 1.0)))
+        
+                raoff  = np.median(phot.raoff)
+                decoff = np.median(phot.decoff)
+    
+                print('Tractor PsfEx-fitting results for PS1 (photometry):')
+                print('RA, Dec offsets (arcsec) relative to PS1: %.4f, %.4f' %
+                      (raoff, decoff))
+                print('RA, Dec stddev (arcsec): %.4f, %.4f' %
+                      (np.std(phot.raoff), np.std(phot.decoff)))
+                print('Number stars used for zeropoint median %d' % ndmag)
+                print('Zeropoint %.4f' % zptmed)
+                print('Offset from nominal: %.4f' % dzpt)
+                print('Scatter: %.4f' % zptstd)
+                print('Transparency %.4f' % transp)
+    
+                phot.psfmag = np.zeros(len(phot), np.float32)
+                phot.psfmag[ok] = phot.instpsfmag[ok] + zptmed
+    
+                for c in ['x0','y0','x1','y1','flux','raoff','decoff', 'psfmag',
+                          'dflux','dx','dy']:
+                    phot.set(c, phot.get(c).astype(np.float32))
+                phot.rename('x0', 'x_ref')
+                phot.rename('y0', 'y_ref')
+                phot.rename('x1', 'x_fit')
+                phot.rename('y1', 'y_fit')
+    
+                phot.ra_ps1  = ref.ra
+                phot.dec_ps1 = ref.dec
+                phot.ps1_objid  = ref.obj_id
+                phot.ps1_mag = ref.legacy_survey_mag
+                for band in 'griz':
+                    i = ps1cat.ps1band.get(band, None)
+                    if i is None:
+                        continue
+                    phot.set('ps1_'+band, ref.median[:,i].astype(np.float32))
+                # Save CCD-level information in the per-star table.
+                phot.ccd_raoff  = np.zeros(len(phot), np.float32) + raoff
+                phot.ccd_decoff = np.zeros(len(phot), np.float32) + decoff
+                phot.ccd_phoff  = np.zeros(len(phot), np.float32) + dzpt
+                phot.ccd_zpt    = np.zeros(len(phot), np.float32) + zptmed
+                phot.expnum = np.zeros(len(phot), np.int64) + self.expnum
+                phot.ccdname = np.array([self.ccdname] * len(phot))
+                phot.exptime = np.zeros(len(phot), np.float32) + self.exptime
+                phot.gain = np.zeros(len(phot), np.float32) + self.gain
+    
+                import photutils
+                apertures_arcsec_diam = [6, 7, 8]
+                for arcsec_diam in apertures_arcsec_diam:
+                    ap = photutils.CircularAperture(np.vstack((phot.x_fit, phot.y_fit)).T,
+                                                    arcsec_diam / 2. / self.pixscale)
+                    apphot = photutils.aperture_photometry(fit_img, ap, error=1./ierr)
+                    phot.set('apflux_%i' % arcsec_diam, apphot.field('aperture_sum'))
+                    phot.set('apflux_%i_err' % arcsec_diam, apphot.field('aperture_sum_err'))
+    
+                # Convert to astropy Table
+                #cols = phot.get_columns()
+                #stars_photom = Table([phot.get(c) for c in cols], names=cols)
+                stars_photom = phot
+    
+                # Add to the zeropoints table
+                ccds['raoff']  = raoff
+                ccds['decoff'] = decoff
+                ccds['rastddev'] = np.std(phot.raoff)
+                ccds['decstddev'] = np.std(phot.decoff)
+                ra_clip, _, _ = sigmaclip(phot.raoff, low=3., high=3.)
+                ccds['rarms'] = getrms(ra_clip)
+                dec_clip, _, _ = sigmaclip(phot.decoff, low=3., high=3.)
+                ccds['decrms'] = getrms(dec_clip)
+                ccds['phoff'] = dzpt
+                ccds['phrms'] = zptstd
+                ccds['zpt'] = zptmed
+                ccds['transp'] = transp       
+                ccds['nmatch_photom'] = len(phot)
+                ccds['nmatch_astrom'] = len(phot)
 
             # Astrometry
             if self.ps1_only or len(ps1_gaia) < 20:
