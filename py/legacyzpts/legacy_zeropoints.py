@@ -778,12 +778,8 @@ class Measurer(object):
 
         # Initialize 
         ccds = _ccds_table(self.camera)
-        if STAGING_CAMERAS[self.camera] in self.fn:
-            ccds['image_filename'] = self.fn[self.fn.rfind('/%s/' % \
-                                           STAGING_CAMERAS[self.camera])+1:]
-        else:
-            # img not on proj
-            ccds['image_filename'] = self.fn
+        # FIXME -- could clean up paths here??
+        ccds['image_filename'] = self.fn
         ccds['image_hdu'] = self.image_hdu 
         ccds['ccdnum'] = self.ccdnum 
         ccds['camera'] = self.camera
@@ -2591,15 +2587,12 @@ def run_one_ext(X):
     return rtns
 
 class outputFns(object):
-    def __init__(self,imgfn,outdir, not_on_proj=False,
-                 copy_from_proj=False, debug=False):
-        """Assigns filename, makes needed dirs, and copies images to scratch if needed
+    def __init__(self,imgfn,outdir, debug=False):
+        """Assigns filename, makes needed dirs
 
         Args:
             imgfn: abs path to image, should be a ooi or oki file
             outdir: root dir for outptus
-            not_on_proj: True if image not stored on project or projecta
-            copy_from_proj: True if want to copy all image files from project to scratch
             debug: 4 ccds only if true
 
         Attributes:
@@ -2612,26 +2605,9 @@ class outputFns(object):
             outdir/decam/DECam_CP/CP20151226/img_fn-zpt%s.fits
             outdir/decam/DECam_CP/CP20151226/img_fn-star%s.fits
         """
-        # img fns
-        if not_on_proj:
-            # Don't worry about mirroring path, just get image's fn
-            self.imgfn= imgfn
-            dirname='' 
-            basename= os.path.basename(imgfn) 
-        else:
-            # Mirror path to image but write to scratch
-            proj_dir= '/project/projectdirs/cosmo/staging/'
-            proja_dir= '/global/projecta/projectdirs/cosmo/staging/'
-            assert( (proj_dir in imgfn) |
-                  (proja_dir in imgfn))
-            relative_fn= imgfn.replace(proj_dir,'').replace(proja_dir,'')
-            dirname= os.path.dirname(relative_fn) 
-            basename= os.path.basename(relative_fn) 
-            if copy_from_proj:
-                # somwhere on scratch
-                self.imgfn= os.path.join(outdir,dirname,basename)
-            else:
-                self.imgfn= imgfn
+        self.imgfn= imgfn
+        dirname='' 
+        basename= os.path.basename(imgfn) 
         # zpt,star fns
         base = basename
         if base.endswith('.fz'):
@@ -2650,13 +2626,6 @@ class outputFns(object):
             os.makedirs(os.path.join(outdir,dirname))
         except FileExistsError: 
             print('Directory already exists: %s' % os.path.join(outdir,dirname))
-        # Copy if need
-        if copy_from_proj:
-            if not os.path.exists(self.imgfn): 
-                dobash("cp %s %s" % (imgfn,self.imgfn))
-            if not os.path.exists( get_bitmask_fn(self.imgfn)): 
-                dobash("cp %s %s" % ( get_bitmask_fn(imgfn), get_bitmask_fn(self.imgfn)))
-
             
 #def success(ccds,imgfn, debug=False, choose_ccd=None):
 #    num_ccds= dict(decam=60,mosaic=4)
@@ -2729,14 +2698,6 @@ def runit(imgfn,zptfn,starfn_photom,starfn_astrom,
 
     # Clean up
     t0= ptime('write-results-to-fits',t0)
-    if measureargs['copy_from_proj'] & os.path.exists(imgfn): 
-        # Safegaurd against removing stuff on /project
-        assert(not 'project' in imgfn)
-        #dobash("rm %s" % imgfn_scr)
-        #dobash("rm %s" % dqfn_scr)
-        dobash("SOFT rm %s" % imgfn_scr)
-        dobash("SOFT rm %s" % dqfn_scr)
-        t0= ptime('removed-cp-from-scratch',t0)
     
 def parse_coords(s):
     '''stackoverflow: 
@@ -2757,8 +2718,6 @@ def get_parser():
     parser.add_argument('--image',action='store',default=None,help='relative path to image starting from decam,bok,mosaicz dir',required=False)
     parser.add_argument('--image_list',action='store',default=None,help='text file listing multiples images in same was as --image',required=False)
     parser.add_argument('--outdir', type=str, default='.', help='Where to write zpts/,images/,logs/')
-    parser.add_argument('--not_on_proj', action='store_true', default=False, help='set when the image is not on project or projecta')
-    parser.add_argument('--copy_from_proj', action='store_true', default=False, help='copy image data from proj to scratch before analyzing')
     parser.add_argument('--debug', action='store_true', default=False, help='Write additional files and plots for debugging')
     parser.add_argument('--choose_ccd', action='store', default=None, help='forced to use only the specified ccd')
     parser.add_argument('--ps1_only', action='store_true', default=False, help='only ps1 (not gaia) for astrometry. For photometry, only ps1 is used no matter what')
@@ -2843,8 +2802,6 @@ def main(image_list=None,args=None):
     for imgfn in image_list:
         # Check if zpt already written
         F= outputFns(imgfn, outdir,
-                     not_on_proj= measureargs['not_on_proj'],
-                     copy_from_proj= measureargs['copy_from_proj'],
                      debug=measureargs['debug'])
 
         if (os.path.exists(F.zptfn) & 
@@ -2863,9 +2820,6 @@ def main(image_list=None,args=None):
         t0=ptime('b4-run',t0)
         runit(F.imgfn,F.zptfn,F.starfn_photom,F.starfn_astrom,
               **measureargs)
-        #try: 
-        #except:
-        #    print('zpt failed for %s' % imgfn_proj)
         t0=ptime('after-run',t0)
     tnow= Time()
     print("TIMING:total %s" % (tnow-tbegin,))
