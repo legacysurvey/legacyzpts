@@ -366,7 +366,6 @@ class Measurer(object):
                  aper_sky_sub=False, calibrate=False, **kwargs):
         # Set extra kwargs
         self.ps1_pattern= kwargs['ps1_pattern']
-        self.ps1_only= kwargs.get('ps1_only')
         
         self.zptsfile= kwargs.get('zptsfile')
         self.prefix= kwargs.get('prefix')
@@ -2739,7 +2738,6 @@ def get_parser():
     parser.add_argument('--outdir', type=str, default='.', help='Where to write zpts/,images/,logs/')
     parser.add_argument('--debug', action='store_true', default=False, help='Write additional files and plots for debugging')
     parser.add_argument('--choose_ccd', action='store', default=None, help='forced to use only the specified ccd')
-    parser.add_argument('--ps1_only', action='store_true', default=False, help='only ps1 (not gaia) for astrometry. For photometry, only ps1 is used no matter what')
     parser.add_argument('--ps1_pattern', action='store', default='/project/projectdirs/cosmo/work/ps1/cats/chunks-qz-star-v3/ps1-%(hp)05d.fits', help='pattern for PS1 catalogues')
     parser.add_argument('--det_thresh', type=float, default=10., help='source detection, 10x sky sigma')
     parser.add_argument('--match_radius', type=float, default=1., help='arcsec, matching to gaia/ps1, 1 arcsec better astrometry than 3 arcsec as used by IDL codes')
