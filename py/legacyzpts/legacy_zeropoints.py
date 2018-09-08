@@ -1149,11 +1149,12 @@ class Measurer(object):
             ps1.ra_ps1  = ps1.ra_now.copy()
             ps1.dec_ps1 = ps1.dec_now.copy()
             ps1.ps1_objid  = ps1.obj_id
-            for band in 'griz':
+            for band in 'grizY':
                 i = ps1cat.ps1band.get(band, None)
                 if i is None:
+                    print('No band', band, 'in PS1 catalog')
                     continue
-                ps1.set('ps1_'+band, ps1.median[:,i].astype(np.float32))
+                ps1.set('ps1_'+band.lower(), ps1.median[:,i].astype(np.float32))
             # we set 'photom' and omit 'astrom'; it will get filled in with zeros.
             ps1.photom = np.ones (len(ps1), bool)
 
@@ -1206,6 +1207,7 @@ class Measurer(object):
                 ('ps1_r', np.float32),
                 ('ps1_i', np.float32),
                 ('ps1_z', np.float32),
+                ('ps1_y', np.float32),
 
                 ('ra_now', np.double),
                 ('dec_now', np.double),
@@ -1233,6 +1235,14 @@ class Measurer(object):
         # print('(Cleaned) reference stars:')
         # refs.about()
 
+        if False:
+            from astrometry.util.plotutils import PlotSequence
+            ps = PlotSequence('astromfit')
+            plt.clf()
+            plt.hist((fit_img * ierr).ravel(), range=(-5,5), bins=100)
+            plt.xlabel('Image pixel S/N')
+            ps.savefig()
+
         # Run tractor fitting on the ref stars, using the PsfEx model.
         phot = self.tractor_fit_sources(refs.ra_now, refs.dec_now, refs.flux0,
                                         fit_img, ierr, psf)
@@ -1243,6 +1253,7 @@ class Measurer(object):
         # Cut to ref stars that were photometered
         refs.cut(phot.iref)
         phot.delete_column('iref')
+        refs.delete_column('flux0')
 
         phot.raoff  = (refs.ra_now  - phot.ra_fit ) * 3600. * np.cos(np.deg2rad(refs.dec_now))
         phot.decoff = (refs.dec_now - phot.dec_fit) * 3600.
@@ -1319,8 +1330,9 @@ class Measurer(object):
         phot.ccd_decoff = np.zeros(len(phot), np.float32) + decoff
         phot.ccd_phoff  = np.zeros(len(phot), np.float32) + dzpt
         phot.ccd_zpt    = np.zeros(len(phot), np.float32) + zptmed
-        phot.expnum = np.zeros(len(phot), np.int64) + self.expnum
+        phot.expnum  = np.zeros(len(phot), np.int64) + self.expnum
         phot.ccdname = np.array([self.ccdname] * len(phot))
+        phot.filter  = np.array([self.band] * len(phot))
         # ugh, pad ccdname to 3 characters for DECam
         if self.camera == 'decam' and len(self.ccdname) < 3:
             phot.ccdname = phot.ccdname.astype('S3')
@@ -1348,22 +1360,30 @@ class Measurer(object):
         ccds['phoff'] = dzpt
         ccds['phrms'] = zptstd
         ccds['zpt'] = zptmed
-        ccds['transp'] = transp       
+        ccds['transp'] = transp
         ccds['nmatch_photom'] = nphotom
         ccds['nmatch_astrom'] = nastrom
 
+        # .ra,.dec = Gaia else PS1
+        phot.ra  = phot.ra_gaia
+        phot.dec = phot.dec_gaia
+        I, = np.nonzero(phot.ra == 0)
+        phot.ra [I] = phot.ra_ps1 [I]
+        phot.dec[I] = phot.dec_ps1[I]
 
         stars_astrom = phot
 
         # Create subset table for Eddie's ubercal
         stars_photom = phot.copy()
-        cols = ['flux', 'dflux', 'chi2', 'fracmasked', 'instpsfmag', 'dpsfmag',
+        cols = ['ra', 'dec', 'flux', 'dflux', 'chi2', 'fracmasked', 'instpsfmag',
+                'dpsfmag',
                 'bitmask', 'x_fit', 'y_fit', 'gaia_sourceid', 'ra_gaia', 'dec_gaia',
                 'phot_g_mean_mag', 'phot_bp_mean_mag', 'phot_rp_mean_mag',
-                'phot_g_mean_mag_error', 'phot_bp_mean_mag_error', 'phot_rp_mean_mag_error',
+                'phot_g_mean_mag_error', 'phot_bp_mean_mag_error',
+                'phot_rp_mean_mag_error',
                 'ps1_objid', 'ra_ps1', 'dec_ps1',
-                'ps1_g', 'ps1_r', 'ps1_i', 'ps1_z', 'legacy_survey_mag',
-                'expnum', 'ccdname', 'exptime', 'gain', 'airmass',
+                'ps1_g', 'ps1_r', 'ps1_i', 'ps1_z', 'ps1_y', 'legacy_survey_mag',
+                'expnum', 'ccdname', 'exptime', 'gain', 'airmass', 'filter',
                 'apflux_6', 'apflux_7', 'apflux_8',
                 'apflux_6_err', 'apflux_7_err', 'apflux_8_err',]
         for c in stars_photom.get_columns():
@@ -1437,7 +1457,10 @@ class Measurer(object):
     def tractor_fit_sources(self, ref_ra, ref_dec, ref_flux, img, ierr,
                             psf, normalize_psf=True):
         import tractor
+
         plots = False
+        #plot_this = np.hypot(x - 118, y - 1276) < 5
+        plot_this = False
         if plots:
             from astrometry.util.plotutils import PlotSequence
             ps = PlotSequence('astromfit')
@@ -1507,7 +1530,7 @@ class Measurer(object):
             src.thawParam('pos')
             #print('Optimizing position of Gaia star', istar)
 
-            if plots:
+            if plots and plot_this:
                 plt.clf()
                 plt.subplot(2,2,1)
                 plt.imshow(subimg, interpolation='nearest', origin='lower')
@@ -1560,7 +1583,7 @@ class Measurer(object):
             cal.dy.append(std[1])
             cal.dflux.append(std[2])
 
-            if plots:
+            if plots and plot_this:
                 plt.clf()
                 plt.subplot(2,2,1)
                 plt.imshow(subimg, interpolation='nearest', origin='lower')
