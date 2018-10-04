@@ -883,8 +883,8 @@ class Measurer(object):
         ccds['skymag'] = skybr   # [mag/arcsec^2]
         t0= ptime('measure-sky',t0)
 
-        # Load PS1 and PS1-Gaia Catalogues 
-        # We will only used detected sources that have PS1 or PS1-gaia matches
+        # Load PS1 & Gaia catalogues
+        # We will only used detected sources that have PS1 or Gaia matches
         # So cut to this super set immediately
         
         ps1 = None

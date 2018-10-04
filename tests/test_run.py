@@ -15,15 +15,14 @@ CAMERAS= ['decam','mosaic','90prime']
 FN_SUFFIX= {"decam":"c4d",
             "mosaic": "k4m",
             "90prime":"bs4"}
-PS1_GAIA_ARGS= ['--ps1_pattern','tests/testdata/chunks-qz-star-v3/ps1-%(hp)05d.fits',
-                '--ps1_gaia_pattern','tests/testdata/chunks-ps1-gaia/chunk-%(hp)05d.fits']
+PS1_GAIA_ARGS= ['--ps1_pattern','tests/testdata/chunks-qz-star-v3/ps1-%(hp)05d.fits']
 
 def download_ccds():
     outdir= os.path.join(os.path.dirname(__file__),
                          'testdata')
     for targz in ['ccds_decam.tar.gz','ccds_mosaic.tar.gz',
                   'ccds_90prime.tar.gz',
-                  'chunks-qz-star-v3.tar.gz','chunks-ps1-gaia.tar.gz',
+                  'chunks-qz-star-v3.tar.gz',
                   'calib.tar.gz']:
       fetch_targz(os.path.join(DOWNLOAD_DIR,
                                targz), 

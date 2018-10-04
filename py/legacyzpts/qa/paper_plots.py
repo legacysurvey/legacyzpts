@@ -298,7 +298,7 @@ class ZeropointHistograms(object):
 
     def _clean(self,T):
         if 'err_message' in T.get_columns():
-            ind= pd.Series(T.get('err_message')).str.strip().str.len() == 0).values
+            ind= (pd.Series(T.get('err_message')).str.strip().str.len() == 0).values
             print('Cutting on err_message to %d/%d' % (cam,len(T[ind]),len(T)))
             T.cut(ind)
         isGrz= pd.Series(T.get('filter')).str.strip().isin(['g','r','z']).values
@@ -891,7 +891,7 @@ class ZptsTneed(object):
         self.data.cut(keep)
 
 
-def apply_cuts():
+        #def apply_cuts():
     
 
 if __name__ == '__main__':
