@@ -32,6 +32,7 @@ def download_ccds():
     for targz in ['ccds_decam_weights.tar.gz',
                   'ccds_mosaic_weights.tar.gz',
                   'ccds_90prime_weights.tar.gz',
+                  'chunks-gaia-dr2.tar.gz',
                   ]:
       fetch_targz(os.path.join(DOWNLOAD_DIR_2,
                                targz),

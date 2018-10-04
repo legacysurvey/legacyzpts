@@ -120,6 +120,10 @@ before_script:
 script:
   - pwd
   - cd $LEGACYZPTS_DIR
+  - export GAIA_CAT_DIR=$(pwd)/tests/testdata/chunks-gaia-dr2-astrom
+  - export GAIA_CAT_VER=2
+  - echo $GAIA_CAT_DIR
+  - ls $GAIA_CAT_DIR
   - pwd
   - find .
   - pytest -v tests/test_run.py::test_main 
@@ -135,7 +139,7 @@ after_success:
 cache:
   directories:
   - $HOME/legacyzpts/tests/testdata
-
+  - $HOME/build/legacysurvey/legacyzpts/tests/testdata
 
 
 
