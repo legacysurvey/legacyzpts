@@ -892,7 +892,7 @@ class Measurer(object):
             ps1 = ps1cat(ccdwcs=self.wcs, 
                          pattern= self.ps1_pattern).get_stars(magrange=None)
         except OSError:
-            print('No PS1 or PS1/Gaia stars found for this image -- outside the PS1 footprint, or in the Galactic plane?')
+            print('No PS1 stars found for this image -- outside the PS1 footprint, or in the Galactic plane?')
 
         # PS1 cuts
         if ps1 is not None and len(ps1):
@@ -902,14 +902,14 @@ class Measurer(object):
             else:
                 # Convert to Legacy Survey mags
                 ps1.legacy_survey_mag = self.ps1_to_observed(ps1)
-
-
+                print(len(ps1), 'PS1 stars')
 
         gaia = GaiaCatalog().get_catalog_in_wcs(self.wcs)
         assert(gaia is not None)
         assert(len(gaia) > 0)
         gaia = GaiaCatalog.catalog_nantozero(gaia)
         assert(gaia is not None)
+        print(len(gaia), 'Gaia stars')
 
         # Move Gaia stars to the epoch of this image.
 
@@ -923,8 +923,7 @@ class Measurer(object):
 
         if not psfex:
             ccds,photom,astrom = self.run_apphot(ccds, ps1, gaia, skyrms, hdr_fwhm,
-                                                 sky_img,
-                                                 ext=ext, save_xy=save_xy)
+                                                 sky_img, ext=ext, save_xy=save_xy)
             # yuck!
             photom = astropy_to_astrometry_table(photom)
             astrom = astropy_to_astrometry_table(astrom)
