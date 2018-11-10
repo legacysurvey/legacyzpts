@@ -1108,14 +1108,12 @@ class Measurer(object):
             sky.addTo(skymod)
             # Apply the same transformation that was applied to the image...
             skymod = self.scale_image(skymod)
-
             print('Old sky_img: avg', np.mean(sky_img), 'min/max', np.min(sky_img), np.max(sky_img))
             print('Skymod: avg', np.mean(skymod), 'min/max', skymod.min(), skymod.max())
-
             fit_img = self.img - skymod
 
 
-        ierr = np.sqrt(self.invvar)
+        ierr = np.sqrt(np.maximum(0., self.invvar))
 
         # Gaia
         ra,dec = radec_at_mjd(gaia.ra, gaia.dec, gaia.ref_epoch.astype(float),
@@ -1298,7 +1296,7 @@ class Measurer(object):
             kext = self.extinction(self.band)
             transp = 10.**(-0.4 * (-dzpt - kext * (airmass - 1.0)))
     
-            print('Number stars used for zeropoint median %d' % nphotom)
+            print('Number of stars used for zeropoint median %d' % nphotom)
             print('Zeropoint %.4f' % zptmed)
             print('Offset from nominal: %.4f' % dzpt)
             print('Scatter: %.4f' % zptstd)
