@@ -124,6 +124,7 @@ def _ccds_table(camera='decam'):
         ('pixscale', 'f4'),   
         ('zptavg', '>f4'),   
         ('yshift', 'bool'),
+        ('seeing', '>f4'),
         # -- CCD-level quantities --
         ('ra', '>f8'),        
         ('dec', '>f8'),      
@@ -194,6 +195,7 @@ def cols_for_legacypipe_table(which='all'):
                            'cd1_1','cd2_2','cd1_2','cd2_1',
                            'crval1','crval2','crpix1','crpix2']
         dustins_keys= ['skyrms', 'sig1', 'yshift']
+        martins_keys = ['airmass', 'seeing']
     elif which == 'numeric':
         need_arjuns_keys= ['ra','dec','ra_bore','dec_bore',
                            'expnum',
@@ -203,11 +205,13 @@ def cols_for_legacypipe_table(which='all'):
                            'cd1_1','cd2_2','cd1_2','cd2_1',
                            'crval1','crval2','crpix1','crpix2']
         dustins_keys= ['skyrms']
+        martins_keys = []
     elif which == 'nonzero_diff':
         need_arjuns_keys= ['ra','dec','ccdnmatch',
                            'fwhm','zpt','ccdzpt','ccdraoff','ccddecoff']
         dustins_keys= ['skyrms']
-    return need_arjuns_keys + dustins_keys
+        martins_keys = []
+    return need_arjuns_keys + dustins_keys + martins_keys
  
 def create_legacypipe_table(ccds_fn, camera=None, psf=False, bad_expid=None):
     """input _ccds_table fn
@@ -1064,7 +1068,7 @@ class Measurer(object):
         fwhms = self.fitstars(img_sub_sky, ierr, sample['x'], sample['y'], sample['apflux'])
         ccds['fwhm'] = np.median(fwhms) # fwhms= 2.35 * psf.sigmas 
         print('FWHM med=%f, std=%f, std_med=%f' % (np.median(fwhms),np.std(fwhms),np.std(fwhms)/len(sample['x'])))
-        #ccds['seeing'] = self.pixscale * np.median(fwhms)
+        ccds['seeing'] = self.pixscale * np.median(fwhms)
         t0= ptime('Tractor fit FWHM to %d/%d stars' % (len(sample['x']),len(stars_photom)), t0) 
           
         # RESULTS
@@ -1098,6 +1102,7 @@ class Measurer(object):
         # move.
         psf = self.get_psfex_model()
         ccds['fwhm'] = psf.fwhm
+        ccds['seeing'] = self.pixscale * psf.fwhm
 
         fit_img = img_sub_sky
 
