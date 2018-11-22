@@ -80,13 +80,12 @@ if __name__ == "__main__":
     parser.add_argument('--remove-file-prefix', help='Remove prefix from image_filename, if present')
     parser.add_argument('--cut', action='store_true',default=False, help='Cut to ccd_cuts==0')
     parser.add_argument('--cut-expnum', action='store_true',default=False, help='Cut out rows with expnum==0')
-    parser.add_argument('files', nargs='+', help='Zeropoint files to concatenate')
+    parser.add_argument('files', nargs='*', help='Zeropoint files to concatenate')
     opt = parser.parse_args()
     
-    fns = []
+    fns = np.array(opt.files)
     if opt.file_list:
-        fns = read_lines(opt.file_list)
-    fns.extend(opt.files)
+        fns = np.hstack([fns, read_lines(opt.file_list)])
 
     # RUN HERE
     if opt.nproc > 1:
