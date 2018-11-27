@@ -2757,7 +2757,7 @@ def main(image_list=None,args=None):
     survey.imagedir = ''
     measureargs.update(survey=survey)
 
-    if psf and camera in ['mosaic', 'decam', 'megaprime']:
+    if psf and camera in ['mosaic', 'decam', 'megaprime', '90prime']:
         if camera in ['mosaic', 'decam']:
             from legacyzpts.psfzpt_cuts import read_bad_expid
             fn = 'obstatus/%s-bad_expid.txt' % camera
