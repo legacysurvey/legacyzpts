@@ -90,7 +90,7 @@ def _ccds_table(camera='decam'):
 
     cols = [
         ('err_message', 'S30'), 
-        ('image_filename', 'S100'), 
+        ('image_filename', 'S120'), 
         ('image_hdu', '>i2'),      
         ('camera', 'S%i' % max_camera_length),          
         ('expnum', '>i8'),         
@@ -194,6 +194,7 @@ def cols_for_legacypipe_table(which='all'):
                            'cd1_1','cd2_2','cd1_2','cd2_1',
                            'crval1','crval2','crpix1','crpix2']
         dustins_keys= ['skyrms', 'sig1', 'yshift']
+        martins_keys = ['airmass', 'ccdskymag']
     elif which == 'numeric':
         need_arjuns_keys= ['ra','dec','ra_bore','dec_bore',
                            'expnum',
@@ -203,11 +204,13 @@ def cols_for_legacypipe_table(which='all'):
                            'cd1_1','cd2_2','cd1_2','cd2_1',
                            'crval1','crval2','crpix1','crpix2']
         dustins_keys= ['skyrms']
+        martins_keys = ['airmass', 'ccdskymag']
     elif which == 'nonzero_diff':
         need_arjuns_keys= ['ra','dec','ccdnmatch',
                            'fwhm','zpt','ccdzpt','ccdraoff','ccddecoff']
         dustins_keys= ['skyrms']
-    return need_arjuns_keys + dustins_keys
+        martins_keys = ['airmass','ccdskymag']
+    return need_arjuns_keys + dustins_keys + martins_keys
  
 def create_legacypipe_table(ccds_fn, camera=None, psf=False, bad_expid=None):
     """input _ccds_table fn
@@ -224,6 +227,7 @@ def create_legacypipe_table(ccds_fn, camera=None, psf=False, bad_expid=None):
                   ('raoff','ccdraoff'),
                   ('decoff','ccddecoff'),
                   ('skycounts', 'ccdskycounts'),
+                  ('skymag', 'ccdskymag'),
                   ('rarms',  'ccdrarms'),
                   ('decrms', 'ccddecrms'),
                   ('phrms', 'ccdphrms'),
