@@ -2013,8 +2013,6 @@ class Measurer(object):
         if self.get_splinesky() is None:
             do_sky = True
 
-        class FakeCCD(object):
-            pass
         ccd = FakeCCD()
         ccd.image_filename = self.fn
         ccd.image_hdu = self.image_hdu
@@ -2062,6 +2060,9 @@ class Measurer(object):
         git_version = get_git_version(dir=os.path.dirname(legacypipe.__file__))
         im.run_calibs(psfex=do_psf, sky=do_sky, splinesky=True, git_version=git_version)
         return ccd
+
+class FakeCCD(object):
+    pass
 
 class DecamMeasurer(Measurer):
     '''DECam CP units: ADU
