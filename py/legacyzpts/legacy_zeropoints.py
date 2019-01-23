@@ -748,10 +748,6 @@ class Measurer(object):
         if ccds is None:
             ccds= _ccds_table(self.camera)
             ccds['image_filename'] = self.fn
-        if stars_photom is None:
-            stars_photom= _stars_table()
-        if stars_astrom is None:
-            stars_astrom= _stars_table()
         ccds['err_message']= err_message
         ccds['zpt']= np.nan
         return ccds, stars_photom, stars_astrom
@@ -2565,6 +2561,14 @@ def measure_image(img_fn, run_calibs=False, run_calibs_only=False, survey=None, 
 
     # Compute the median zeropoint across all the CCDs.
     all_ccds = vstack(all_ccds)
+
+    print('all_stars_photom:', all_stars_photom)
+    for p in all_stars_photom:
+        print('  ', type(p), p)
+    print('all_stars_astrom:', all_stars_astrom)
+    for p in all_stars_astrom:
+        print('  ', type(p), p)
+
 
     if len(all_stars_photom):
         all_stars_photom = merge_tables(all_stars_photom)
