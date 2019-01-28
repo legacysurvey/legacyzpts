@@ -2695,11 +2695,8 @@ def runit(imgfn,zptfn,starfn_photom,starfn_astrom,
 
     if stars_photom is not None:
         stars_photom.writeto(starfn_photom, overwrite=True, header=hdr)
-    stars_astrom.writeto(starfn_astrom, overwrite=True, header=hdr)
-
-    #stars_photom.write(starfn_photom, overwrite=True)
-    #stars_astrom.write(starfn_astrom, overwrite=True)
-    print('Wrote 2 stars tables\n%s\n%s' %  (starfn_photom,starfn_astrom))
+    if stars_astrom is not None:
+        stars_astrom.writeto(starfn_astrom, overwrite=True, header=hdr)
 
     # zpt --> Legacypipe table
     create_legacypipe_table(zptfn, camera=measureargs['camera'],
