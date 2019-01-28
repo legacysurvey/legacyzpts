@@ -892,6 +892,9 @@ class Measurer(object):
         except OSError:
             print('No PS1 stars found for this image -- outside the PS1 footprint, or in the Galactic plane?')
 
+        if ps1 is not None and len(ps1) == 0:
+            ps1 = None
+
         # PS1 cuts
         if ps1 is not None and len(ps1):
             ps1.cut( self.get_ps1_cuts(ps1) )
