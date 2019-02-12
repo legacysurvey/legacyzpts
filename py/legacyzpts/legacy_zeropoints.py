@@ -2057,7 +2057,7 @@ class Measurer(object):
         im = survey.get_image_object(ccd)
         print('Created image object', im)
         git_version = get_git_version(dir=os.path.dirname(legacypipe.__file__))
-        im.run_calibs(psfex=do_psf, sky=do_sky, splinesky=True, git_version=git_version)
+        im.run_calibs(psfex=do_psf, sky=do_sky, splinesky=True, git_version=git_version, survey=survey)
         return ccd
 
 class FakeCCD(object):
