@@ -1997,7 +1997,7 @@ class Measurer(object):
         plt.close()
         print('Wrote %s' % fn)
 
-    def run_calibs(self, survey, ext):
+    def run_calibs(self, survey, ext, psfex=True, splinesky=True):
         if not self.goodWcs:
             print('WCS Failed; not trying to run calibs')
             return
@@ -2007,9 +2007,9 @@ class Measurer(object):
         self.set_hdu(ext)
         do_psf = False
         do_sky = False
-        if self.get_psfex_model() is None:
+        if psfex and self.get_psfex_model() is None:
             do_psf = True
-        if self.get_splinesky() is None:
+        if splinesky and self.get_splinesky() is None:
             do_sky = True
 
         ccd = FakeCCD()
@@ -2530,7 +2530,7 @@ def measure_image(img_fn, run_calibs=False, run_calibs_only=False, survey=None, 
     splinesky = measureargs['splinesky']
 
     if run_calibs:
-        ccds = mp.map(run_one_calib, [(measure, survey, ext) for ext in extlist])
+        ccds = mp.map(run_one_calib, [(measure, survey, ext, psfex, splinesky) for ext in extlist])
         # ccds: list of fake CCD objects
 
         if all([ccd is not None for ccd in ccds]):
@@ -2588,7 +2588,7 @@ def measure_image(img_fn, run_calibs=False, run_calibs_only=False, survey=None, 
     return all_ccds, all_stars_photom, all_stars_astrom, extra_info
 
 def run_one_calib(X):
-    measure, survey, ext = X
+    measure, survey, ext, psfex, splinesky = X
     return measure.run_calibs(survey, ext)
 
 def run_one_ext(X):
