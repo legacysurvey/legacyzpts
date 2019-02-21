@@ -29,6 +29,7 @@ CCD_CUT_BITS= dict(
     radecrms = 0x800,
     seeing_bad = 0x1000,
     early_decam = 0x2000,
+    depth_cut = 0x4000,
 )
 
 MJD_EARLY_DECAM = 56516.
