@@ -2,7 +2,7 @@ from __future__ import print_function
 import numpy as np
 import pylab as plt
 import fitsio
-from astrometry.util.fits import fits_table
+from astrometry.util.fits import fits_table, merge_tables
 from astrometry.util.plotutils import PlotSequence
 from collections import Counter
 
@@ -45,7 +45,7 @@ def detrend_decam_zeropoints(P):
     for band,k in [('g', 0.173),
                    ('r', 0.090),
                    ('z', 0.060),]:
-        I = np.flatnonzero((P.band == band) * (P.airmass >= 1.0))
+        I = np.flatnonzero((P.filter == band) * (P.airmass >= 1.0))
         if len(I) == 0:
             continue
         ntot += len(I)
@@ -84,7 +84,7 @@ def detrend_decam_zeropoints(P):
     ntot = 0
     mjd0 = 56658.5
     for band,zpt0,terms in mjd_terms:
-        I = np.flatnonzero((P.band == band) * (P.mjd_obs > 0))
+        I = np.flatnonzero((P.filter == band) * (P.mjd_obs > 0))
         if len(I) == 0:
             continue
         day = P.mjd_obs[I] - mjd0
@@ -99,6 +99,9 @@ def detrend_decam_zeropoints(P):
             zpt_corr[J] += zpt0 - (c0 + c1*day[Jday])
     if ntot < len(P):
         print('In detrend_decam_zeropoints: did not detrend for temporal variation for', len(P)-ntot, 'CCDs due to unknown band or MJD_OBS')
+
+    # Zeros stay zero!
+    zpt_corr[P.ccdzpt == 0] = 0
 
     return zpt_corr
 
@@ -175,7 +178,7 @@ if __name__ == '__main__':
     # DECam updated for DR8, post detrend_decam_zeropoints.
 
     camera = 'decam'
-    bad_expid = read_bad_expid('obstatus/bad_expid.txt')
+    bad_expid = read_bad_expid('obstatus/decam-bad_expid.txt')
 
     g0 = 25.08
     r0 = 25.29
@@ -196,13 +199,46 @@ if __name__ == '__main__':
         print('Read', len(T), 'CCDs for', band)
         print('Initial:', np.sum(T.ccd_cuts == 0), 'CCDs pass cuts')
 
+        plt.figure(figsize=(8,8))
         plt.clf()
         detrend = detrend_decam_zeropoints(T)
+        ylo,yhi = zpt_lo[band], zpt_hi[band]
         plt.subplot(2,1,1)
-        plt.plot(T.mjd_obs, T.ccdzpt, 'b.')
+        plt.plot(T.mjd_obs, np.clip(T.ccdzpt, ylo, yhi), 'b.', alpha=0.02)
+        plt.ylim(ylo-0.01, yhi+0.01)
+        plt.title('Original zpt')
         plt.subplot(2,1,2)
-        plt.plot(T.mjd_obs, detrend, 'b.')
+        plt.plot(T.mjd_obs, np.clip(detrend, ylo, yhi), 'b.', alpha=0.02)
+        plt.ylim(ylo-0.01, yhi+0.01)
+        plt.title('Detrended')
         plt.savefig('detrend-%s.png' % band)
+
+        plt.clf()
+        plt.subplot(2,1,1)
+        ha = dict(bins=100, range=(ylo-0.01, yhi+0.01))
+        plt.hist(np.clip(T.ccdzpt, ylo, yhi), **ha)
+        plt.xlim(ylo-0.01, yhi+0.01)
+        plt.ylim(0, 100000)
+        plt.title('Original zpt')
+        plt.subplot(2,1,2)
+        plt.hist(np.clip(detrend, ylo, yhi), **ha)
+        plt.xlim(ylo-0.01, yhi+0.01)
+        plt.ylim(0, 100000)
+        plt.title('Detrended')
+        plt.savefig('detrend-h-%s.png' % band)
+
+        from astrometry.util.plotutils import *
+        plt.clf()
+        plt.subplot(2,1,1)
+        ha = dict(doclf=False, docolorbar=False, nbins=200,
+                  range=((T.mjd_obs.min(), T.mjd_obs.max()),
+                         (ylo-0.01, yhi+0.01)))
+        loghist(T.mjd_obs, np.clip(T.ccdzpt, ylo, yhi), **ha)
+        plt.title('Original zpt %s' % band)
+        plt.subplot(2,1,2)
+        loghist(T.mjd_obs, np.clip(detrend, ylo, yhi), **ha)
+        plt.title('Detrended')
+        plt.savefig('detrend-h2-%s.png' % band)
         
         psf_zeropoint_cuts(T, 0.262, zpt_lo, zpt_hi, bad_expid, camera)
         print('Final:', np.sum(T.ccd_cuts == 0), 'CCDs pass cuts')
