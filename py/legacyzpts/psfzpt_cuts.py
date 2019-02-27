@@ -32,28 +32,75 @@ CCD_CUT_BITS= dict(
     depth_cut = 0x4000,
 )
 
-MJD_EARLY_DECAM = 56516.
+MJD_EARLY_DECAM = 56730.
 
-def dr7_early_decam_update():
-    from legacypipe.survey import LegacySurveyData
-    survey = LegacySurveyData('/global/cscratch1/sd/desiproc/dr7')
-    ccds = survey.get_ccds()
-    print('Setting early_decam bit for', np.sum(ccds.mjd_obs < MJD_EARLY_DECAM), 'CCDs')
-    ccds.ccd_cuts |= CCD_CUT_BITS['early_decam'] * (ccds.mjd_obs < MJD_EARLY_DECAM)
-    ccds.writeto('/tmp/survey-ccds-dr7.fits.gz')
+def detrend_decam_zeropoints(P):
+    '''
+    Per Arjun's email 2019-02-27 "Zeropoint variations with MJD for
+    DECam data", correct zeropoints for trends with airmass and MJD
+    before making too-big/too-small cuts.
+    '''
+    zpt_corr = P.ccdzpt.copy()
+    ntot = 0
+    for band,k in [('g', 0.173),
+                   ('r', 0.090),
+                   ('z', 0.060),]:
+        I = np.flatnonzero((P.band == band) * (P.airmass >= 1.0))
+        if len(I) == 0:
+            continue
+        ntot += len(I)
+        zpt_corr[I] -= k * (P.airmass[I] - 1.0)
 
-    ccds.cut(ccds.ccd_cuts == 0)
-    ccds.writeto('/tmp/ccds.fits')
-    cmd = 'startree -i /tmp/ccds.fits -o /tmp/survey-ccds-dr7.kd.fits -P -k -n ccds -T'
-    print(cmd)
-    import os
-    os.system(cmd)
+    if ntot < len(P):
+        print('In detrend_decam_zeropoints: did not detrend for airmass variation for', len(P)-ntot, 'CCDs due to unknown band or bad airmass')
 
-    ann = survey.get_annotated_ccds()
-    print('Setting early_decam bit for', np.sum(ann.mjd_obs < MJD_EARLY_DECAM), 'CCDs')
-    ann.ccd_cuts |= CCD_CUT_BITS['early_decam'] * (ann.mjd_obs < MJD_EARLY_DECAM)
-    ann.writeto('/tmp/ccds-annotated-dr7.fits.gz')
+    mjd_terms = [
+        ('g', 25.08, [
+            (   0.0,  160.0, 25.170, 25.130, 25.170,  -2.5001e-04),
+            ( 160.0,  480.0, 25.180, 25.080, 25.230,  -3.1250e-04),
+            ( 480.0,  810.0, 25.080, 25.080, 25.080,   0.0000e+00),
+            ( 810.0,  950.0, 25.130, 25.130, 25.130,   0.0000e+00),
+            ( 950.0, 1250.0, 25.130, 25.040, 25.415,  -2.9999e-04),
+            (1250.0, 1650.0, 25.080, 25.000, 25.330,  -2.0000e-04),
+            (1650.0, 1900.0, 25.270, 25.210, 25.666,  -2.4001e-04),]),
+        ('r', 25.29, [
+            (   0.0,  160.0, 25.340, 25.340, 25.340,   0.0000e+00),
+            ( 160.0,  480.0, 25.370, 25.300, 25.405,  -2.1876e-04),
+            ( 480.0,  810.0, 25.300, 25.280, 25.329,  -6.0602e-05),
+            ( 810.0,  950.0, 25.350, 25.350, 25.350,   0.0000e+00),
+            ( 950.0, 1250.0, 25.350, 25.260, 25.635,  -3.0000e-04),
+            (1250.0, 1650.0, 25.320, 25.240, 25.570,  -2.0000e-04),
+            (1650.0, 1900.0, 25.440, 25.380, 25.836,  -2.4001e-04),]),
+        ('z', 24.92, [
+            (   0.0,  160.0, 24.970, 24.970, 24.970,   0.0000e+00),
+            ( 160.0,  480.0, 25.030, 24.950, 25.070,  -2.5000e-04),
+            ( 480.0,  760.0, 24.970, 24.900, 25.090,  -2.5000e-04),
+            ( 760.0,  950.0, 24.900, 25.030, 24.380,   6.8422e-04),
+            ( 950.0, 1150.0, 25.030, 24.880, 25.743,  -7.5001e-04),
+            (1150.0, 1270.0, 24.880, 25.030, 23.442,   1.2500e-03),
+            (1270.0, 1650.0, 25.030, 24.890, 25.498,  -3.6842e-04),
+            (1650.0, 1900.0, 25.070, 24.940, 25.928,  -5.2000e-04),]),]
 
+    ntot = 0
+    mjd0 = 56658.5
+    for band,zpt0,terms in mjd_terms:
+        I = np.flatnonzero((P.band == band) * (P.mjd_obs > 0))
+        if len(I) == 0:
+            continue
+        day = P.mjd_obs[I] - mjd0
+        # Piecewise linear function
+        for day_i, day_f, zpt_i, zpt_f, c0, c1 in terms:
+            c1 = (zpt_f - zpt_i) / (day_f - day_i)
+            Jday = (day >= day_i) * (day < day_f)
+            J = I[Jday]
+            if len(J) == 0:
+                continue
+            ntot += len(J)
+            zpt_corr[J] += zpt0 - (c0 + c1*day[Jday])
+    if ntot < len(P):
+        print('In detrend_decam_zeropoints: did not detrend for temporal variation for', len(P)-ntot, 'CCDs due to unknown band or MJD_OBS')
+
+    return zpt_corr
 
 def psf_zeropoint_cuts(P, pixscale,
                        zpt_cut_lo, zpt_cut_hi, bad_expid, camera):
@@ -74,10 +121,15 @@ def psf_zeropoint_cuts(P, pixscale,
 
     keys = zpt_cut_lo.keys()
 
+    if camera == 'decam':
+        ccdzpt = detrend_decam_zeropoints(P)
+    else:
+        ccdzpt = P.ccdzpt
+
     cuts = [
         ('not_grz',   np.array([f.strip() not in keys for f in P.filter])),
-        ('zpt_small', np.array([ccdzpt < zpt_cut_lo.get(f,0) for f,ccdzpt in zip(P.filter, P.ccdzpt)])),
-        ('zpt_large', np.array([ccdzpt > zpt_cut_hi.get(f,0) for f,ccdzpt in zip(P.filter, P.ccdzpt)])),
+        ('zpt_small', np.array([ccdzpt < zpt_cut_lo.get(f,0) for f,ccdzpt in zip(P.filter, ccdzpt)])),
+        ('zpt_large', np.array([ccdzpt > zpt_cut_hi.get(f,0) for f,ccdzpt in zip(P.filter, ccdzpt)])),
         ('phrms',     P.ccdphrms > 0.1),
         ('radecrms',  np.logical_or(P.ccdrarms > 0.25,
                                     P.ccddecrms > 0.25)),
@@ -119,13 +171,54 @@ def read_bad_expid(fn='bad_expid.txt'):
     return bad_expid
 
 if __name__ == '__main__':
-
-    dr7_early_decam_update()
     import sys
+    # DECam updated for DR8, post detrend_decam_zeropoints.
+
+    camera = 'decam'
+    bad_expid = read_bad_expid('obstatus/bad_expid.txt')
+
+    g0 = 25.08
+    r0 = 25.29
+    i0 = 25.26
+    z0 = 24.92
+    dg = (-0.5, 0.25)
+    di = (-0.5, 0.25)
+    dr = (-0.5, 0.25)
+    dz = (-0.5, 0.25)
+    zpt_lo = dict(g=g0+dg[0], r=r0+dr[0], i=i0+dr[0], z=z0+dz[0])
+    zpt_hi = dict(g=g0+dg[1], r=r0+dr[1], i=i0+dr[1], z=z0+dz[1])
+
+    TT = []
+    for band in ['g','r','z']:
+        infn = '/global/project/projectdirs/cosmo/work/legacysurvey/dr8/DECaLS/survey-ccds-decam-%s.fits.gz' % band
+
+        T = fits_table(infn)
+        print('Read', len(T), 'CCDs for', band)
+        print('Initial:', np.sum(T.ccd_cuts == 0), 'CCDs pass cuts')
+
+        plt.clf()
+        detrend = detrend_decam_zeropoints(T)
+        plt.subplot(2,1,1)
+        plt.plot(T.mjd_obs, T.ccdzpt, 'b.')
+        plt.subplot(2,1,2)
+        plt.plot(T.mjd_obs, detrend, 'b.')
+        plt.savefig('detrend-%s.png' % band)
+        
+        psf_zeropoint_cuts(T, 0.262, zpt_lo, zpt_hi, bad_expid, camera)
+        print('Final:', np.sum(T.ccd_cuts == 0), 'CCDs pass cuts')
+        TT.append(T)
+
+    T = merge_tables(TT)
+    fn = 'survey-ccds.fits'
+    T.writeto(fn)
+    from legacypipe.create_kdtrees import create_kdtree
+    kdfn = 'survey-ccds.kd.fits'
+    create_kdtree(fn, kdfn, True)
+    print('Wrote', kdfn)
+
     sys.exit(0)
 
-
-    bad_expid = read_bad_expid()
+    ################################
 
     g0 = 25.74
     r0 = 25.52
