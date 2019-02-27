@@ -49,7 +49,7 @@ def detrend_decam_zeropoints(P):
         if len(I) == 0:
             continue
         ntot += len(I)
-        zpt_corr[I] -= k * (P.airmass[I] - 1.0)
+        zpt_corr[I] += k * (P.airmass[I] - 1.0)
 
     if ntot < len(P):
         print('In detrend_decam_zeropoints: did not detrend for airmass variation for', len(P)-ntot, 'CCDs due to unknown band or bad airmass')
@@ -180,6 +180,30 @@ if __name__ == '__main__':
     camera = 'decam'
     bad_expid = read_bad_expid('obstatus/decam-bad_expid.txt')
 
+    # T = fits_table()
+    # T.mjd_obs = np.arange(56658, 58500)
+    # T.airmass = np.ones(len(T))
+    # T.ccdzpt = np.zeros(len(T)) + 25.0
+    # 
+    # T.filter = np.array(['g'] * len(T))
+    # corr = detrend_decam_zeropoints(T)
+    # 
+    # plt.clf()
+    # plt.plot(T.mjd_obs, corr, 'g.')
+    # 
+    # T.filter = np.array(['r'] * len(T))
+    # corr = detrend_decam_zeropoints(T)
+    # 
+    # plt.plot(T.mjd_obs, corr, 'r.')
+    # 
+    # T.filter = np.array(['z'] * len(T))
+    # corr = detrend_decam_zeropoints(T)
+    # 
+    # plt.plot(T.mjd_obs, corr, 'm.')
+    # plt.savefig('corr.png')
+    # sys.exit(0)
+
+
     g0 = 25.08
     r0 = 25.29
     i0 = 25.26
@@ -199,10 +223,26 @@ if __name__ == '__main__':
         print('Read', len(T), 'CCDs for', band)
         print('Initial:', np.sum(T.ccd_cuts == 0), 'CCDs pass cuts')
 
+        ylo,yhi = zpt_lo[band], zpt_hi[band]
+
         plt.figure(figsize=(8,8))
+
+        plt.clf()
+        plt.subplot(2,1,1)
+        plt.plot(T.airmass, T.ccdzpt, 'b.', alpha=0.01)
+        plt.ylim(ylo,yhi)
+        plt.subplot(2,1,2)
+        mjd = T.mjd_obs
+        T.mjd_obs = np.zeros(len(T))
+        detrend = detrend_decam_zeropoints(T)
+        plt.plot(T.airmass, detrend, 'b.', alpha=0.01)
+        plt.ylim(ylo,yhi)
+        plt.savefig('airmass-%s.png' % band)
+
+        T.mjd_obs = mjd
+
         plt.clf()
         detrend = detrend_decam_zeropoints(T)
-        ylo,yhi = zpt_lo[band], zpt_hi[band]
         plt.subplot(2,1,1)
         plt.plot(T.mjd_obs, np.clip(T.ccdzpt, ylo, yhi), 'b.', alpha=0.02)
         plt.ylim(ylo-0.01, yhi+0.01)
