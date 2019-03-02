@@ -29,6 +29,7 @@ from photutils import (CircularAperture, CircularAnnulus,
 
 # Sphinx build would crash
 try:
+    from astrometry.util.file import trymakedirs
     from astrometry.util.starutil_numpy import hmsstring2ra, dmsstring2dec
     from astrometry.util.util import wcs_pv2sip_hdr
     from astrometry.util.ttime import Time
@@ -47,16 +48,6 @@ except ImportError:
     raise
 
 CAMERAS=['decam','mosaic','90prime','megaprime']
-
-def try_mkdir(dir):
-    try:
-        os.makedirs(dir)
-    except OSError:
-        pass # Already exists, thats fine
-
-def image_to_fits(img,fn,header=None,extname=None):
-    fitsio.write(fn,img,header=header,extname=extname)
-    print('Wrote %s' % fn)
 
 def ptime(text,t0):
     tnow=Time()
@@ -277,7 +268,7 @@ def create_legacypipe_table(ccds_fn, camera=None, psf=False, bad_expid=None):
         psf_zeropoint_cuts(T, 0.262, zpt_lo, zpt_hi, bad_expid, camera)
 
     outfn=ccds_fn.replace('-zpt.fits','-legacypipe.fits')
-    T.writeto(outfn)
+    writeto_via_temp(outfn, T)
     print('Wrote %s' % outfn)
 
 def create_annotated_table(leg_fn, camera, survey, psf=False):
@@ -287,7 +278,7 @@ def create_annotated_table(leg_fn, camera, survey, psf=False):
     init_annotations(T)
     annotate(T, survey, mzls=(camera == 'mosaic'), normalizePsf=psf)
     outfn=leg_fn.replace('-legacypipe.fits', '-annotated.fits')
-    T.writeto(outfn)
+    writeto_via_temp(outfn, T)
     print('Wrote %s' % outfn)
 
 def cols_for_converted_star_table(star_table=None,
@@ -2658,8 +2649,10 @@ class outputFns(object):
             outdir/decam/DECam_CP/CP20151226/img_fn-star%s.fits
         """
         self.imgfn= imgfn
-        dirname='' 
-        basename= os.path.basename(imgfn) 
+
+        # Keep the last directory component
+        dirname = os.path.basename(os.path.dirname(imgfn))
+        basename = os.path.basename(imgfn) 
         # zpt,star fns
         base = basename
         if base.endswith('.fz'):
@@ -2673,11 +2666,7 @@ class outputFns(object):
             self.zptfn= self.zptfn.replace('-zpt','-debug-zpt')
             self.starfn_photom= self.starfn_photom.replace('-star','-debug-star')
             self.starfn_astrom= self.starfn_astrom.replace('-star','-debug-star')
-        # Makedirs
-        try:
-            os.makedirs(os.path.join(outdir,dirname))
-        except FileExistsError: 
-            print('Directory already exists: %s' % os.path.join(outdir,dirname))
+        trymakedirs(os.path.join(outdir, dirname))
             
 #def success(ccds,imgfn, debug=False, choose_ccd=None):
 #    num_ccds= dict(decam=60,mosaic=4)
@@ -2694,6 +2683,13 @@ class outputFns(object):
 #    else:
 #        return False
 
+def writeto_via_temp(outfn, obj, func_write=False, **kwargs):
+    tempfn = os.path.join(os.path.dirname(outfn), 'tmp-' + os.path.basename(outfn))
+    if func_write:
+        obj.write(tempfn, **kwargs)
+    else:
+        obj.writeto(tempfn, **kwargs)
+    os.rename(tempfn, outfn)
 
 def runit(imgfn,zptfn,starfn_photom,starfn_astrom,
           psf=False, bad_expid=None, survey=None, run_calibs_only=False, **measureargs):
@@ -2709,7 +2705,7 @@ def runit(imgfn,zptfn,starfn_photom,starfn_astrom,
     ccds, stars_photom, stars_astrom, extra_info = results
     t0= ptime('measure_image',t0)
     # Write out.
-    ccds.write(zptfn, overwrite=True)
+    writeto_via_temp(zptfn, ccds, func_write=True, overwrite=True)
     # Header <-- fiducial zp,ext, also exptime, pixscale
     hdulist = fits_astropy.open(zptfn, mode='update')
     prihdr = hdulist[0].header
@@ -2739,9 +2735,9 @@ def runit(imgfn,zptfn,starfn_photom,starfn_astrom,
     hdr.add_record(dict(name='FILENAME', value=os.path.join(firstdir, base)))
 
     if stars_photom is not None:
-        stars_photom.writeto(starfn_photom, overwrite=True, header=hdr)
+        writeto_via_temp(starfn_photom, stars_photom, overwrite=True, header=hdr)
     if stars_astrom is not None:
-        stars_astrom.writeto(starfn_astrom, overwrite=True, header=hdr)
+        writeto_via_temp(starfn_astrom, stars_astrom, overwrite=True, header=hdr)
 
     # zpt --> Legacypipe table
     create_legacypipe_table(zptfn, camera=measureargs['camera'],
@@ -2854,7 +2850,7 @@ def main(image_list=None,args=None):
             print('MegaPrimeImage class not found')
 
     outdir = measureargs.pop('outdir')
-    try_mkdir(outdir)
+    trymakedirs(outdir)
     t0=ptime('parse-args',t0)
     for imgfn in image_list:
         # Check if zpt already written
