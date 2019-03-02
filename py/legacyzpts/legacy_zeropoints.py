@@ -2819,6 +2819,8 @@ def main(image_list=None,args=None):
         F= outputFns(imgfn, outdir,
                      debug=measureargs['debug'])
 
+        import pdb ; pdb.set_trace()
+
         if (os.path.exists(F.zptfn) & 
             os.path.exists(F.starfn_photom) & 
             os.path.exists(F.starfn_astrom) ):
