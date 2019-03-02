@@ -1390,7 +1390,9 @@ class Measurer(object):
                 'ps1_g', 'ps1_r', 'ps1_i', 'ps1_z', 'ps1_y', 'legacy_survey_mag',
                 'expnum', 'ccdname', 'exptime', 'gain', 'airmass', 'filter',
                 'apflux_6', 'apflux_7', 'apflux_8',
-                'apflux_6_err', 'apflux_7_err', 'apflux_8_err',]
+                'apflux_6_err', 'apflux_7_err', 'apflux_8_err',
+                'ra_now', 'dec_now', 'ra_fit', 'dec_fit', 'x_ref', 'y_ref'
+            ]
         for c in stars_photom.get_columns():
             if not c in cols:
                 stars_photom.delete_column(c)
@@ -2729,6 +2731,16 @@ def runit(imgfn,zptfn,starfn_photom,starfn_astrom,
             continue
         hdr.add_record(dict(name=key, value=primhdr[key],
                             comment=primhdr.get_comment(key)))
+    procdate = primhdr.get('DATE', '')
+    hdr.add_record(dict(name='PROCDATE', value=procdate, comment='CP processing date'))
+    hdr.add_record(dict(name='RA_BORE', value=hmsstring2ra(primhdr['RA']), comment='Boresight RA'))
+    hdr.add_record(dict(name='DEC_BORE', value=dmsstring2dec(primhdr['DEC']), comment='Boresight Dec'))
+    hdr.add_record(dict(name='CCD_ZPT', value=ccds['zpt'][0], comment='Exposure median zeropoint'))
+    fwhm = np.median(ccds['fwhm'])
+    pixscale = extra_info['pixscale']
+    hdr.add_record(dict(name='FWHM', value=fwhm, comment='Exposure median FWHM (CP)'))
+    hdr.add_record(dict(name='SEEING', value=fwhm * pixscale, comment='Exposure median seeing (FWHM*pixscale'))
+
     base = os.path.basename(imgfn)
     dirnm = os.path.dirname(imgfn)
     firstdir = os.path.basename(dirnm)
