@@ -1098,7 +1098,9 @@ class Measurer(object):
         # sources there, optimize them and see how much they want to
         # move.
         psf = self.get_psfex_model()
-        ccds['fwhm'] = psf.fwhm
+        # Just keep the CP FWHM measurement!!
+        ccds['fwhm'] = ccds['fwhm_cp']
+        #ccds['fwhm'] = psf.fwhm
 
         if np.any(self.invvar[self.bitmask != 0] != 0):
             # FIX SPLINESKIES that got hit by the fpack >0 weight bug
