@@ -2807,7 +2807,11 @@ def get_parser():
 def main(image_list=None,args=None): 
     ''' Produce zeropoints for all CP images in image_list
     image_list -- iterable list of image filenames
-    args -- parsed argparser objection from get_parser()'''
+    args -- parsed argparser objection from get_parser()
+
+    '''
+    from pkg_resources import resource_filename
+        
     assert(not args is None)
     assert(not image_list is None)
     t0 = Time()
@@ -2837,9 +2841,13 @@ def main(image_list=None,args=None):
     if psf and camera in ['mosaic', 'decam', 'megaprime', '90prime']:
         if camera in ['mosaic', 'decam']:
             from legacyzpts.psfzpt_cuts import read_bad_expid
-            fn = 'obstatus/%s-bad_expid.txt' % camera
-            print('Reading', fn)
-            measureargs.update(bad_expid = read_bad_expid(fn))
+
+            fn = resource_filename('legacyzpts', 'data/{}_bad_expid.txt'.format(camera))
+            if os.path.isfile(fn):
+                print('Reading {}'.format(fn))
+                measureargs.update(bad_expid = read_bad_expid(fn))
+            else:
+                print('No bad exposure file for camera {}'.format(camera))
 
         cal = measureargs.get('calibdir')
         if cal is not None:
