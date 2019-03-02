@@ -124,6 +124,8 @@ def _ccds_table(camera='decam'):
         ('pixscale', 'f4'),   
         ('zptavg', '>f4'),   
         ('yshift', 'bool'),
+        # yuck
+        ('fixed_sky', 'bool'),
         # -- CCD-level quantities --
         ('ra', '>f8'),        
         ('dec', '>f8'),      
@@ -752,7 +754,7 @@ class Measurer(object):
         ccds['zpt']= np.nan
         return ccds, stars_photom, stars_astrom
 
-    def run(self, ext=None, save_xy=False, psfex=False, splinesky=False):
+    def run(self, ext=None, save_xy=False, psfex=False, splinesky=False, survey=None):
 
         """Computes statistics for 1 CCD
         
@@ -931,7 +933,7 @@ class Measurer(object):
             return ccds,photom,astrom
 
         return self.run_psfphot(ccds, ps1, gaia, zp0, exptime, airmass, sky_img,
-                                splinesky)
+                                splinesky, survey)
 
     def run_apphot(self, ccds, ps1, gaia, skyrms, hdr_fwhm, sky_img,
                    ext=None, save_xy=False):
@@ -1085,10 +1087,8 @@ class Measurer(object):
         return ccds, stars_photom, stars_astrom
 
     def run_psfphot(self, ccds, ps1, gaia, zp0, exptime, airmass, sky_img,
-                    splinesky):
+                    splinesky, survey):
         t0= Time()
-
-        img_sub_sky = self.img - sky_img
 
         # Now put Gaia stars into the image and re-fit their centroids
         # and fluxes using the tractor with the PsfEx PSF model.
@@ -1100,7 +1100,19 @@ class Measurer(object):
         psf = self.get_psfex_model()
         ccds['fwhm'] = psf.fwhm
 
-        fit_img = img_sub_sky
+        if np.any(self.invvar[self.bitmask != 0] != 0):
+            # FIX SPLINESKIES that got hit by the fpack >0 weight bug
+            if splinesky:
+                fn = self.get_splinesky_unmerged_filename()
+                if os.path.exists(fn):
+                    print('Deleting bad splinesky file', fn)
+                    os.remove(fn)
+                print('Re-running splinesky calib')
+                self.run_calibs(survey, self.ext, psfex=False, read_hdu=False)
+                ccds['fixed_sky'] = True
+
+            print('Resetting', np.sum(self.invvar[self.bitmask != 0] != 0), 'bad invvar pixels')
+            self.invvar[self.bitmask != 0] = 0.
 
         if splinesky:
             sky = self.get_splinesky()
@@ -1109,9 +1121,11 @@ class Measurer(object):
             sky.addTo(skymod)
             # Apply the same transformation that was applied to the image...
             skymod = self.scale_image(skymod)
-            print('Old sky_img: avg', np.mean(sky_img), 'min/max', np.min(sky_img), np.max(sky_img))
-            print('Skymod: avg', np.mean(skymod), 'min/max', skymod.min(), skymod.max())
+            #print('Old sky_img: avg', np.mean(sky_img), 'min/max', np.min(sky_img), np.max(sky_img))
+            #print('Skymod: avg', np.mean(skymod), 'min/max', skymod.min(), skymod.max())
             fit_img = self.img - skymod
+        else:
+            fit_img = self.img - sky_img
 
 
         ierr = np.sqrt(np.maximum(0., self.invvar))
@@ -1406,12 +1420,16 @@ class Measurer(object):
                           '%s-%s.fits' % (self.camera, expstr))
         return fn
 
+    def get_splinesky_unmerged_filename(self):
+        expstr = '%08i' % self.expnum
+        return os.path.join(self.calibdir, self.camera, 'splinesky', expstr[:5], expstr,
+                            '%s-%s-%s.fits' % (self.camera, expstr, self.ext))
+
     def get_splinesky(self):
         # Find splinesky model file and read it
         import tractor
         from tractor.utils import get_class_from_name
 
-        expstr = '%08i' % self.expnum
         # Look for merged file
         fn = self.get_splinesky_merged_filename()
         print('Looking for file', fn)
@@ -1435,8 +1453,7 @@ class Measurer(object):
                 return sky
 
         # Look for single-CCD file
-        fn = os.path.join(self.calibdir, self.camera, 'splinesky', expstr[:5], expstr,
-                          '%s-%s-%s.fits' % (self.camera, expstr, self.ext))
+        fn = self.get_splinesky_unmerged_filename()
         print('Reading file', fn)
         if not os.path.exists(fn):
             return None
@@ -1997,7 +2014,7 @@ class Measurer(object):
         plt.close()
         print('Wrote %s' % fn)
 
-    def run_calibs(self, survey, ext, psfex=True, splinesky=True):
+    def run_calibs(self, survey, ext, psfex=True, splinesky=True, read_hdu=True):
         if not self.goodWcs:
             print('WCS Failed; not trying to run calibs')
             return
@@ -2044,6 +2061,7 @@ class Measurer(object):
 
         if (not do_psf) and (not do_sky):
             # Nothing to do!
+            print('No need to run calibs')
             return ccd
 
         # Check for all-zero weight maps
@@ -2055,7 +2073,7 @@ class Measurer(object):
         import legacypipe
         from legacypipe.survey import get_git_version
         im = survey.get_image_object(ccd)
-        print('Created image object', im)
+        print('Created legacypipe image object', im)
         git_version = get_git_version(dir=os.path.dirname(legacypipe.__file__))
         im.run_calibs(psfex=do_psf, sky=do_sky, splinesky=True, git_version=git_version, survey=survey)
         return ccd
@@ -2529,27 +2547,39 @@ def measure_image(img_fn, run_calibs=False, run_calibs_only=False, survey=None, 
     psfex = measureargs['psf']
     splinesky = measureargs['splinesky']
 
+
+    def do_merge_calibs(measure, survey, ccds, splinesky, psfex):
+        from legacypipe.merge_calibs import merge_splinesky, merge_psfex
+        class FakeOpts(object):
+            pass
+        opts = FakeOpts()
+        opts.all_found=True
+        if splinesky:
+            skyoutfn = measure.get_splinesky_merged_filename()
+            merge_splinesky(survey, measure.expnum, ccds, skyoutfn, opts)
+        if psfex:
+            psfoutfn = measure.get_psfex_merged_filename()
+            merge_psfex(survey, measure.expnum, ccds, psfoutfn, opts)
+
+    do_merge_splinesky = False
+    do_merge_psfex = False
+    calib_ccds = None
+
     if run_calibs:
         ccds = mp.map(run_one_calib, [(measure, survey, ext, psfex, splinesky) for ext in extlist])
         # ccds: list of fake CCD objects
-
+        calib_ccds = ccds
         if all([ccd is not None for ccd in ccds]):
-            from legacypipe.merge_calibs import merge_splinesky, merge_psfex
-            class FakeOpts(object):
-                pass
-            opts = FakeOpts()
-            opts.all_found=True
             if any([ccd.wrote_sky for ccd in ccds]):
-                skyoutfn = measure.get_splinesky_merged_filename()
-                merge_splinesky(survey, measure.expnum, ccds, skyoutfn, opts)
+                do_merge_splinesky = True
             if any([ccd.wrote_psf for ccd in ccds]):
-                psfoutfn = measure.get_psfex_merged_filename()
-                merge_psfex(survey, measure.expnum, ccds, psfoutfn, opts)
+                do_merge_psfex = True
 
     if run_calibs_only:
+        do_merge_calibs(measure, survey, calib_ccds, do_merge_splinesky, do_merge_psfex)
         return
 
-    rtns = mp.map(run_one_ext, [(measure, ext, psfex, splinesky, measureargs['debug'])
+    rtns = mp.map(run_one_ext, [(measure, ext, survey, psfex, splinesky, measureargs['debug'])
                                 for ext in extlist])
 
     for ext,rtn in zip(extlist,rtns):
@@ -2565,13 +2595,23 @@ def measure_image(img_fn, run_calibs=False, run_calibs_only=False, survey=None, 
     # Compute the median zeropoint across all the CCDs.
     all_ccds = vstack(all_ccds)
 
-    print('all_stars_photom:', all_stars_photom)
-    for p in all_stars_photom:
-        print('  ', type(p), p)
-    print('all_stars_astrom:', all_stars_astrom)
-    for p in all_stars_astrom:
-        print('  ', type(p), p)
+    #print('all_ccds:', type(all_ccds))
+    #print(all_ccds)
 
+    # This is so ugly -- if we deleted and re-created the splinesky model, re-merge the files.
+    if np.any(all_ccds['fixed_sky']):
+        do_merge_splinesky = True
+    if do_merge_psfex or do_merge_splinesky:
+        if calib_ccds is None:
+            calib_ccds = mp.map(run_one_calib, [(measure, survey, ext, False, splinesky) for ext in extlist])
+        do_merge_calibs(measure, survey, calib_ccds, do_merge_splinesky, do_merge_psfex)
+
+    # print('all_stars_photom:', all_stars_photom)
+    # for p in all_stars_photom:
+    #     print('  ', type(p), p)
+    # print('all_stars_astrom:', all_stars_astrom)
+    # for p in all_stars_astrom:
+    #     print('  ', type(p), p)
 
     if len(all_stars_photom):
         all_stars_photom = merge_tables(all_stars_photom)
@@ -2592,8 +2632,8 @@ def run_one_calib(X):
     return measure.run_calibs(survey, ext)
 
 def run_one_ext(X):
-    measure, ext, psfex, splinesky, debug = X
-    rtns = measure.run(ext, psfex=psfex, splinesky=splinesky, save_xy=debug)
+    measure, ext, survey, psfex, splinesky, debug = X
+    rtns = measure.run(ext, psfex=psfex, splinesky=splinesky, survey=survey, save_xy=debug)
     return rtns
 
 class outputFns(object):
@@ -2679,9 +2719,9 @@ def runit(imgfn,zptfn,starfn_photom,starfn_astrom,
     hdulist.close() # Save changes
     print('Wrote {}'.format(zptfn))
     # Two stars tables
-    print('Primary header:')
     primhdr = img_primhdr
-    print(primhdr)
+    #print('Primary header:')
+    #print(primhdr)
     hdr = fitsio.FITSHDR()
     for key in ['AIRMASS', 'OBJECT', 'TELESCOP', 'INSTRUME', 'EXPTIME',
                 'DATE-OBS', 'MJD-OBS', 'EXPNUM', 'PROGRAM', 'OBSERVER',
