@@ -1425,6 +1425,13 @@ class Measurer(object):
         print('Looking for file', fn)
         if os.path.exists(fn):
             T = fits_table(fn)
+
+            # Validate the data model.
+            for key in ('procdate', 'plver', 'expnum'):
+                if key not in T.columns:
+                    print('Warning: outdated data model (missing {})'.format(key.upper())
+                    return None
+            
             I, = np.nonzero((T.expnum == self.expnum) *
                             np.array([c.strip() == self.ext for c in T.ccdname]))
             if len(I) == 1:
@@ -1452,7 +1459,18 @@ class Measurer(object):
         try:
             skyclass = hdr['SKY']
         except NameError:
-            raise NameError('SKY not in header: skyfn=%s, imgfn=%s' % (fn,self.imgfn))
+            raise NameError('SKY not in header: skyfn={}'.format(fn))
+
+        # Check the data model.  Temporarily allow EXPNUM to not be present,
+        # since we can glean that from the file name.
+        #if 'EXPNUM' not in hdr:
+        #    print('WARNING: Missing EXPNUM header card.')
+        #for key in ('procdate', 'plver'):
+        for key in ('procdate', 'plver', 'expnum'):
+            if key.upper() not in hdr:
+                print('Warning: outdated data model (missing {})'.format(key.upper())
+                return None
+        
         clazz = get_class_from_name(skyclass)
 
         if getattr(clazz, 'from_fits', None) is not None:
@@ -2065,6 +2083,9 @@ class Measurer(object):
         im = survey.get_image_object(ccd)
         print('Created legacypipe image object', im)
         git_version = get_git_version(dir=os.path.dirname(legacypipe.__file__))
+
+        pdb.set_trace()
+
         im.run_calibs(psfex=do_psf, sky=do_sky, splinesky=True, git_version=git_version, survey=survey)
         return ccd
 
@@ -2460,7 +2481,7 @@ def get_extlist(camera,fn,debug=False,choose_ccd=None):
             extlist = ['ccd03']
     else:
         print('Camera {} not recognized!'.format(camera))
-        pdb.set_trace() 
+        raise ValueError
     if choose_ccd:
         print('CHOOSING CCD %s' % choose_ccd)
         extlist= [choose_ccd]
@@ -2471,7 +2492,8 @@ def _measure_image(args):
     '''Utility function to wrap measure_image function for multiprocessing map.''' 
     return measure_image(*args)
 
-def measure_image(img_fn, run_calibs=False, run_calibs_only=False, survey=None, threads=None, **measureargs):
+def measure_image(img_fn, run_calibs=False, run_calibs_only=False,
+                  survey=None, threads=None, **measureargs):
     '''Wrapper on the camera-specific classes to measure the CCD-level data on all
     the FITS extensions for a given set of images.
     '''
@@ -2510,7 +2532,7 @@ def measure_image(img_fn, run_calibs=False, run_calibs_only=False, survey=None, 
     # mosaic listed as mosaic3 in header, other combos maybe
     assert(camera in camera_check or camera_check in camera)
     
-    extlist = get_extlist(camera,img_fn, 
+    extlist = get_extlist(camera, img_fn, 
                           debug=measureargs['debug'],
                           choose_ccd=measureargs['choose_ccd'])
     nnext = len(extlist)
@@ -2537,7 +2559,6 @@ def measure_image(img_fn, run_calibs=False, run_calibs_only=False, survey=None, 
     psfex = measureargs['psf']
     splinesky = measureargs['splinesky']
 
-
     def do_merge_calibs(measure, survey, ccds, splinesky, psfex):
         from legacypipe.merge_calibs import merge_splinesky, merge_psfex
         class FakeOpts(object):
@@ -2557,6 +2578,8 @@ def measure_image(img_fn, run_calibs=False, run_calibs_only=False, survey=None, 
 
     if run_calibs:
         ccds = mp.map(run_one_calib, [(measure, survey, ext, psfex, splinesky) for ext in extlist])
+        print('HERE!')
+        pdb.set_trace()
         # ccds: list of fake CCD objects
         calib_ccds = ccds
         if all([ccd is not None for ccd in ccds]):
@@ -2875,11 +2898,12 @@ def main(image_list=None,args=None):
     t0=ptime('parse-args',t0)
     for imgfn in image_list:
         # Check if zpt already written
-        F= outputFns(imgfn, outdir,
-                     debug=measureargs['debug'])
+        F = outputFns(imgfn, outdir, debug=measureargs['debug'])
 
         # Annotated is written last...
         if os.path.exists(F.annfn):
+            print('VALIDATE THE DATA MODEL!')
+            pdb.set_trace()
             print('Already finished: %s' % F.annfn)
             # if not os.path.exists(F.annfn):
             #     create_legacypipe_table(F.zptfn, camera=camera,
