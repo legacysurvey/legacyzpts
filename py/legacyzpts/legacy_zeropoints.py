@@ -205,15 +205,12 @@ def cols_for_legacypipe_table(which='all'):
         martins_keys = ['airmass','ccdskymag']
     return need_arjuns_keys + dustins_keys + martins_keys
  
-def create_legacypipe_table(ccds_fn, camera=None, psf=False, bad_expid=None):
+def create_legacypipe_table(T, legfn, camera=None, psf=False, bad_expid=None):
     """input _ccds_table fn
     output a table formatted for legacypipe/runbrick
     """
     assert(camera in CAMERAS)
     need_keys= cols_for_legacypipe_table(which='all')
-    # Load full zpt table
-    assert('-zpt.fits' in ccds_fn)
-    T = fits_table(ccds_fn)
     # Rename
     rename_keys= [('zpt','ccdzpt'),
                   ('zptavg','zpt'),
@@ -267,19 +264,17 @@ def create_legacypipe_table(ccds_fn, camera=None, psf=False, bad_expid=None):
         zpt_hi = dict(g=g0+dg[1], r=r0+dr[1], i=i0+dr[1], z=z0+dz[1])
         psf_zeropoint_cuts(T, 0.262, zpt_lo, zpt_hi, bad_expid, camera)
 
-    outfn=ccds_fn.replace('-zpt.fits','-legacypipe.fits')
-    writeto_via_temp(outfn, T)
-    print('Wrote %s' % outfn)
+    writeto_via_temp(legfn, T)
+    print('Wrote %s' % legfn)
 
-def create_annotated_table(leg_fn, camera, survey, psf=False):
+def create_annotated_table(leg_fn, ann_fn, camera, survey, psf=False):
     from legacypipe.annotate_ccds import annotate, init_annotations
     T = fits_table(leg_fn)
     T = survey.cleanup_ccds_table(T)
     init_annotations(T)
     annotate(T, survey, mzls=(camera == 'mosaic'), normalizePsf=psf)
-    outfn=leg_fn.replace('-legacypipe.fits', '-annotated.fits')
-    writeto_via_temp(outfn, T)
-    print('Wrote %s' % outfn)
+    writeto_via_temp(ann_fn, T)
+    print('Wrote %s' % ann_fn)
 
 def cols_for_converted_star_table(star_table=None,
                                   which=None):
@@ -2654,6 +2649,8 @@ class outputFns(object):
 
         # Keep the last directory component
         dirname = os.path.basename(os.path.dirname(imgfn))
+        trymakedirs(os.path.join(outdir, dirname))
+
         basename = os.path.basename(imgfn) 
         # zpt,star fns
         base = basename
@@ -2661,14 +2658,14 @@ class outputFns(object):
             base = base[:-len('.fz')]
         if base.endswith('.fits'):
             base = base[:-len('.fits')]
-        self.zptfn= os.path.join(outdir,dirname, base + '-zpt.fits')
-        self.starfn_photom= os.path.join(outdir,dirname, base + '-star-photom.fits')
-        self.starfn_astrom= os.path.join(outdir,dirname, base + '-star-astrom.fits')
         if debug:
-            self.zptfn= self.zptfn.replace('-zpt','-debug-zpt')
-            self.starfn_photom= self.starfn_photom.replace('-star','-debug-star')
-            self.starfn_astrom= self.starfn_astrom.replace('-star','-debug-star')
-        trymakedirs(os.path.join(outdir, dirname))
+            base += '-debug'
+        self.zptfn= os.path.join(outdir,dirname, base + '-zpt.fits')
+        self.starfn_photom= os.path.join(outdir,dirname, base + '-photom.fits')
+        self.starfn_astrom= os.path.join(outdir,dirname, base + '-astrom.fits')
+        self.legfn = os.path.join(outdir,dirname, base + '-legacypipe.fits')
+        self.annfn = os.path.join(outdir,dirname, base + '-annotated.fits')
+
             
 #def success(ccds,imgfn, debug=False, choose_ccd=None):
 #    num_ccds= dict(decam=60,mosaic=4)
@@ -2693,7 +2690,7 @@ def writeto_via_temp(outfn, obj, func_write=False, **kwargs):
         obj.writeto(tempfn, **kwargs)
     os.rename(tempfn, outfn)
 
-def runit(imgfn,zptfn,starfn_photom,starfn_astrom,
+def runit(imgfn,zptfn,starfn_photom,starfn_astrom, legfn, annfn,
           psf=False, bad_expid=None, survey=None, run_calibs_only=False, **measureargs):
     '''Generate a legacypipe-compatible CCDs file for a given image.
     '''
@@ -2706,18 +2703,21 @@ def runit(imgfn,zptfn,starfn_photom,starfn_astrom,
 
     ccds, stars_photom, stars_astrom, extra_info = results
     t0= ptime('measure_image',t0)
-    # Write out.
-    writeto_via_temp(zptfn, ccds, func_write=True, overwrite=True)
-    # Header <-- fiducial zp,ext, also exptime, pixscale
-    hdulist = fits_astropy.open(zptfn, mode='update')
-    prihdr = hdulist[0].header
 
     img_primhdr = extra_info.pop('primhdr')
 
-    for key,val in extra_info.items():
-        prihdr[key] = val
-    hdulist.close() # Save changes
-    print('Wrote {}'.format(zptfn))
+    # Write out.
+    if False:
+        writeto_via_temp(zptfn, ccds, func_write=True, overwrite=True)
+        # Header <-- fiducial zp,ext, also exptime, pixscale
+        hdulist = fits_astropy.open(zptfn, mode='update')
+        prihdr = hdulist[0].header
+        for key,val in extra_info.items():
+            prihdr[key] = val
+        hdulist.close() # Save changes
+        print('Wrote {}'.format(zptfn))
+
+
     # Two stars tables
     primhdr = img_primhdr
     #print('Primary header:')
@@ -2739,7 +2739,7 @@ def runit(imgfn,zptfn,starfn_photom,starfn_astrom,
     fwhm = np.median(ccds['fwhm'])
     pixscale = extra_info['pixscale']
     hdr.add_record(dict(name='FWHM', value=fwhm, comment='Exposure median FWHM (CP)'))
-    hdr.add_record(dict(name='SEEING', value=fwhm * pixscale, comment='Exposure median seeing (FWHM*pixscale'))
+    hdr.add_record(dict(name='SEEING', value=fwhm * pixscale, comment='Exposure median seeing (FWHM*pixscale)'))
 
     base = os.path.basename(imgfn)
     dirnm = os.path.dirname(imgfn)
@@ -2748,15 +2748,16 @@ def runit(imgfn,zptfn,starfn_photom,starfn_astrom,
 
     if stars_photom is not None:
         writeto_via_temp(starfn_photom, stars_photom, overwrite=True, header=hdr)
-    if stars_astrom is not None:
-        writeto_via_temp(starfn_astrom, stars_astrom, overwrite=True, header=hdr)
+    # if stars_astrom is not None:
+    #     writeto_via_temp(starfn_astrom, stars_astrom, overwrite=True, header=hdr)
+
+    accds = astropy_to_astrometry_table(ccds)
 
     # zpt --> Legacypipe table
-    create_legacypipe_table(zptfn, camera=measureargs['camera'],
+    create_legacypipe_table(accds, legfn, camera=measureargs['camera'],
                             psf=psf, bad_expid=bad_expid)
     # legacypipe --> annotated
-    create_annotated_table(zptfn.replace('-zpt.fits', '-legacypipe.fits'),
-                           measureargs['camera'], survey, psf=psf)
+    create_annotated_table(legfn, annfn, measureargs['camera'], survey, psf=psf)
 
     # Clean up
     t0= ptime('write-results-to-fits',t0)
@@ -2869,21 +2870,18 @@ def main(image_list=None,args=None):
         F= outputFns(imgfn, outdir,
                      debug=measureargs['debug'])
 
-        if (os.path.exists(F.zptfn) & 
-            os.path.exists(F.starfn_photom) & 
-            os.path.exists(F.starfn_astrom) ):
-            print('Already finished: %s' % F.zptfn)
-
-            annfn = F.zptfn.replace('-zpt.fits', '-annotated.fits')
-            if not os.path.exists(annfn):
-                create_legacypipe_table(F.zptfn, camera=camera,
-                                        psf=psf, bad_expid=measureargs.get('bad_expid'))
-                create_annotated_table(F.zptfn.replace('-zpt.fits', '-legacypipe.fits'),
-                                       camera, measureargs.get('survey'), psf=psf)
+        # Annotated is written last...
+        if os.path.exists(F.annfn):
+            print('Already finished: %s' % F.annfn)
+            # if not os.path.exists(F.annfn):
+            #     create_legacypipe_table(F.zptfn, camera=camera,
+            #                             psf=psf, bad_expid=measureargs.get('bad_expid'))
+            #     create_annotated_table(F.legfn, F.annfn,
+            #                            camera, measureargs.get('survey'), psf=psf)
             continue
         # Create the file
         t0=ptime('b4-run',t0)
-        runit(F.imgfn,F.zptfn,F.starfn_photom,F.starfn_astrom,
+        runit(F.imgfn,F.zptfn,F.starfn_photom,F.starfn_astrom, F.legfn, F.annfn,
               **measureargs)
         t0=ptime('after-run',t0)
     tnow= Time()
