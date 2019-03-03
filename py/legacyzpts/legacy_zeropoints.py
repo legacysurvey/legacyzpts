@@ -2840,7 +2840,7 @@ def main(image_list=None,args=None):
         if camera in ['mosaic', 'decam']:
             from legacyzpts.psfzpt_cuts import read_bad_expid
 
-            fn = resource_filename('legacyzpts', 'data/{}_bad_expid.txt'.format(camera))
+            fn = resource_filename('legacyzpts', 'data/{}-bad_expid.txt'.format(camera))
             if os.path.isfile(fn):
                 print('Reading {}'.format(fn))
                 measureargs.update(bad_expid = read_bad_expid(fn))
