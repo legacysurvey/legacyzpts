@@ -409,17 +409,20 @@ class Measurer(object):
         self.exptime = self.primhdr['EXPTIME']
         self.date_obs = self.primhdr['DATE-OBS']
         self.mjd_obs = self.primhdr['MJD-OBS']
-        # Keys may not exist in header
-        for key in ['AIRMASS','HA']:
+        # Add more attributes.
+        for key, attrkey in zip(['AIRMASS','HA', 'DATE', 'PLVER'],
+                                ['AIRMASS','HA', 'PROCDATE', 'PLVER']):
             try:
                 val= self.primhdr[key]
             except KeyError:
                 val= -1
                 print('WARNING! not in primhdr: %s' % key) 
-            setattr(self, key.lower(),val)
+            setattr(self, attrkey.lower(), val)
 
         self.expnum = self.get_expnum(self.primhdr)
         print('CP Header: EXPNUM = ',self.expnum)
+        print('CP Header: PROCDATE = ',self.procdate)
+        print('CP Header: PLVER = ',self.plver)
         self.obj = self.primhdr['OBJECT']
 
     def get_good_image_subregion(self):
@@ -701,7 +704,6 @@ class Measurer(object):
                     break
             fwhms.append(2.35 * psf.sigmas[0]) # [pixels]
             #model = tr.getModelImage(0)
-            #pdb.set_trace()
         return np.array(fwhms)
 
     def isolated_radec(self,ra,dec,nn=2,minsep=1./3600):
@@ -1429,9 +1431,16 @@ class Measurer(object):
             # Validate the data model.
             for key in ('procdate', 'plver', 'expnum'):
                 if key not in T.columns:
-                    print('Warning: outdated data model (missing {})'.format(key.upper())
+                    print('Warning: outdated data model (missing {})'.format(key.upper()))
                     return None
-            
+
+            #for key in ('procdate', 'plver', 'expnum'):
+            for key in ('procdate', 'plver'):
+                if getattr(self, key) != hdr[key.upper()]:
+                    print('Warning: mismatch in {}: {} (image) != {} (calib)'.format(
+                        key.upper(), getattr(self, key), hdr[key.upper()]))
+                    return None
+                
             I, = np.nonzero((T.expnum == self.expnum) *
                             np.array([c.strip() == self.ext for c in T.ccdname]))
             if len(I) == 1:
@@ -1463,14 +1472,20 @@ class Measurer(object):
 
         # Check the data model.  Temporarily allow EXPNUM to not be present,
         # since we can glean that from the file name.
-        #if 'EXPNUM' not in hdr:
-        #    print('WARNING: Missing EXPNUM header card.')
-        #for key in ('procdate', 'plver'):
-        for key in ('procdate', 'plver', 'expnum'):
+        #for key in ('procdate', 'plver', 'expnum'):
+        for key in ('procdate', 'plver'):
             if key.upper() not in hdr:
-                print('Warning: outdated data model (missing {})'.format(key.upper())
+                print('Warning: outdated data model (missing {})'.format(key.upper()))
                 return None
-        
+
+        # Ensure EXPNUM+PROCDATE+PLVER consistency between the image and
+        # corresponding calibration file.
+        #for key in ('procdate', 'plver', 'expnum'):
+        for key in ('procdate', 'plver'):
+            if getattr(self, key) != hdr[key.upper()]:
+                print('Warning: mismatch in {}: {} (image) != {} (calib)'.format(
+                    key.upper(), getattr(self, key), hdr[key.upper()]))
+
         clazz = get_class_from_name(skyclass)
 
         if getattr(clazz, 'from_fits', None) is not None:
@@ -2578,8 +2593,6 @@ def measure_image(img_fn, run_calibs=False, run_calibs_only=False,
 
     if run_calibs:
         ccds = mp.map(run_one_calib, [(measure, survey, ext, psfex, splinesky) for ext in extlist])
-        print('HERE!')
-        pdb.set_trace()
         # ccds: list of fake CCD objects
         calib_ccds = ccds
         if all([ccd is not None for ccd in ccds]):
