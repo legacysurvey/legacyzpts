@@ -175,11 +175,19 @@ def read_bad_expid(fn='bad_expid.txt'):
 
 if __name__ == '__main__':
     import sys
+    from pkg_resources import resource_filename
+
     # DECam updated for DR8, post detrend_decam_zeropoints.
 
     camera = 'decam'
-    bad_expid = read_bad_expid('obstatus/decam-bad_expid.txt')
-
+    fn = resource_filename('legacyzpts', 'data/{}-bad_expid.txt'.format(camera))
+    if os.path.isfile(fn):
+        print('Reading {}'.format(fn))
+        bad_expid = read_bad_expid(fn)
+    else:
+        print('No bad exposure file for camera {}'.format(camera))
+        raise IOError
+                
     # T = fits_table()
     # T.mjd_obs = np.arange(56658, 58500)
     # T.airmass = np.ones(len(T))
