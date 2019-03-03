@@ -473,7 +473,7 @@ class Measurer(object):
                     break
         for ccd_col in ['width','height','fwhm_cp']:
             if ccd_col in hdrVal.keys():
-                print('CP Header: %s = ' % ccd_col,hdrVal[ccd_col])
+                #print('CP Header: %s = ' % ccd_col,hdrVal[ccd_col])
                 setattr(self, ccd_col, hdrVal[ccd_col])
             else:
                 warning='Could not find %s, keys not in cp header: %s' % \
@@ -793,7 +793,7 @@ class Measurer(object):
         for ccd_col in ['avsky', 'crpix1', 'crpix2', 'crval1', 'crval2', 
                         'cd1_1','cd1_2', 'cd2_1', 'cd2_2']:
             if ccd_col.upper() in self.hdr.keys():
-                print('CP Header: %s = ' % ccd_col,self.hdr[ccd_col])
+                #print('CP Header: %s = ' % ccd_col,self.hdr[ccd_col])
                 ccds[ccd_col]= self.hdr[ccd_col]
             else:
                 if ccd_col in notneeded_cols:
@@ -1425,8 +1425,9 @@ class Measurer(object):
 
         # Look for merged file
         fn = self.get_splinesky_merged_filename()
-        print('Looking for file', fn)
+        #print('Looking for file', fn)
         if os.path.exists(fn):
+            print('Reading splinesky-merged {}'.format(fn))
             T = fits_table(fn)
 
             # Validate the data model and ensure image-calibration consistency.
@@ -1458,10 +1459,11 @@ class Measurer(object):
 
         # Look for single-CCD file
         fn = self.get_splinesky_unmerged_filename()
-        print('Reading file', fn)
+        #print('Reading file', fn)
         if not os.path.exists(fn):
             return None
         
+        print('Reading splinesky {}'.format(fn))
         hdr = read_primary_header(fn)
         try:
             skyclass = hdr['SKY']
@@ -1650,8 +1652,9 @@ class Measurer(object):
         # Look for merged PsfEx file
         fn = self.get_psfex_merged_filename()
         expstr = '%08i' % self.expnum
-        print('Looking for PsfEx file', fn)
+        #print('Looking for PsfEx file', fn)
         if os.path.exists(fn):
+            print('Reading psfex-merged {}'.format(fn))
             T = fits_table(fn)
 
             # Validate the data model and ensure image-calibration consistency.
@@ -1682,9 +1685,11 @@ class Measurer(object):
         # Look for single-CCD PsfEx file
         fn = os.path.join(self.calibdir, self.camera, 'psfex', expstr[:5], expstr,
                           '%s-%s-%s.fits' % (self.camera, expstr, self.ext))
-        print('Reading PsfEx file', fn)
+        #print('Reading PsfEx file', fn)
         if not os.path.exists(fn):
             return None
+
+        print('Reading psfex {}'.format(fn))
         hdr = fitsio.read_header(fn, ext=1)
         # Validate the data model and image-calibration consistency.
         # Temporarily allow EXPNUM to not be present.
@@ -2098,7 +2103,7 @@ class Measurer(object):
 
         if (not do_psf) and (not do_sky):
             # Nothing to do!
-            print('No need to run calibs')
+            #print('No need to run calibs')
             return ccd
 
         # Check for all-zero weight maps
@@ -2521,6 +2526,7 @@ def _measure_image(args):
     return measure_image(*args)
 
 def measure_image(img_fn, run_calibs=False, run_calibs_only=False,
+                  just_measure=False,
                   survey=None, threads=None, **measureargs):
     '''Wrapper on the camera-specific classes to measure the CCD-level data on all
     the FITS extensions for a given set of images.
@@ -2528,15 +2534,15 @@ def measure_image(img_fn, run_calibs=False, run_calibs_only=False,
     from astrometry.util.multiproc import multiproc
     t0= Time()
 
-    print('Working on image {}'.format(img_fn))
+    print('Working on {}'.format(img_fn))
 
     # Fitsio can throw error: ValueError: CONTINUE not supported
     try:
-        print('img_fn=%s' % img_fn)
+        #print('img_fn=%s' % img_fn)
         primhdr = read_primary_header(img_fn)
     except ValueError:
         # astropy can handle it
-        tmp= fits_astropy.open(img_fn)
+        tmp = fits_astropy.open(img_fn)
         primhdr= tmp[0].header
         tmp.close()
         del tmp
@@ -2555,7 +2561,7 @@ def measure_image(img_fn, run_calibs=False, run_calibs_only=False,
 #        stars = vstack(stars)
 #        return ccds,stars
     
-    camera= measureargs['camera']
+    camera = measureargs['camera']
     camera_check = primhdr.get('INSTRUME','').strip().lower()
     # mosaic listed as mosaic3 in header, other combos maybe
     assert(camera in camera_check or camera_check in camera)
@@ -2578,6 +2584,9 @@ def measure_image(img_fn, run_calibs=False, run_calibs_only=False,
                      exptime = measure.exptime,
                      pixscale = measure.pixscale,
                      primhdr = measure.primhdr)
+
+    if just_measure:
+        return measure
 
     mp = multiproc(nthreads=(threads or 1))
     
@@ -2694,7 +2703,7 @@ class outputFns(object):
             outdir/decam/DECam_CP/CP20151226/img_fn-zpt%s.fits
             outdir/decam/DECam_CP/CP20151226/img_fn-star%s.fits
         """
-        self.imgfn= imgfn
+        self.imgfn = imgfn
 
         # Keep the last directory component
         dirname = os.path.basename(os.path.dirname(imgfn))
@@ -2709,12 +2718,11 @@ class outputFns(object):
             base = base[:-len('.fits')]
         if debug:
             base += '-debug'
-        self.zptfn= os.path.join(outdir,dirname, base + '-zpt.fits')
-        self.starfn_photom= os.path.join(outdir,dirname, base + '-photom.fits')
-        self.starfn_astrom= os.path.join(outdir,dirname, base + '-astrom.fits')
+        #self.zptfn = os.path.join(outdir,dirname, base + '-zpt.fits')
+        #self.starfn_astrom = os.path.join(outdir,dirname, base + '-astrom.fits')
+        self.starfn_photom = os.path.join(outdir,dirname, base + '-photom.fits')
         self.legfn = os.path.join(outdir,dirname, base + '-legacypipe.fits')
         self.annfn = os.path.join(outdir,dirname, base + '-annotated.fits')
-
             
 #def success(ccds,imgfn, debug=False, choose_ccd=None):
 #    num_ccds= dict(decam=60,mosaic=4)
@@ -2929,19 +2937,27 @@ def main(image_list=None,args=None):
         # Check if zpt already written
         F = outputFns(imgfn, outdir, debug=measureargs['debug'])
 
-        # Annotated is written last...
-        if os.path.exists(F.annfn):
-            print('VALIDATE THE DATA MODEL!')
-            pdb.set_trace()
-            print('Already finished: %s' % F.annfn)
-            # if not os.path.exists(F.annfn):
-            #     create_legacypipe_table(F.zptfn, camera=camera,
-            #                             psf=psf, bad_expid=measureargs.get('bad_expid'))
-            #     create_annotated_table(F.legfn, F.annfn,
-            #                            camera, measureargs.get('survey'), psf=psf)
+        # Validate the data model of every file
+        measure = measure_image(imgfn, just_measure=True, **measureargs)
+
+        for zptfile in (F.starfn_photom, F.legfn, F.annfn):
+            zptdoit = False
+            if os.path.exists(zptfile):
+                cols = fitsio.FITS(zptfile)[1].get_colnames()
+                for key in ('procdate', 'plver', 'expnum'):
+                    if key not in cols:
+                        print('Warning: outdated data model in {} (missing {})'.format(
+                            zptfile, key.upper()))
+                        zptdoit = True
+            else:
+                zptdoit = False
+
+        if not zptdoit:
+            print('Already finished: {}'.format(F.annfn))
             continue
         
         # Create the file
+        pdb.set_trace()
         t0=ptime('b4-run',t0)
         runit(F.imgfn,F.zptfn,F.starfn_photom,F.starfn_astrom, F.legfn, F.annfn,
               **measureargs)
