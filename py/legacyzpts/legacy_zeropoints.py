@@ -39,6 +39,7 @@ try:
 
     from tractor.splinesky import SplineSky
 
+    import legacypipe
     from legacypipe.ps1cat import ps1cat
     from legacypipe.gaiacat import GaiaCatalog
     from legacypipe.survey import radec_at_mjd
@@ -1428,17 +1429,14 @@ class Measurer(object):
         if os.path.exists(fn):
             T = fits_table(fn)
 
-            # Validate the data model.
+            # Validate the data model and ensure image-calibration consistency.
             for key in ('procdate', 'plver', 'expnum'):
-                if key not in T.columns:
+                if key not in T.get_columns():
                     print('Warning: outdated data model (missing {})'.format(key.upper()))
                     return None
-
-            #for key in ('procdate', 'plver', 'expnum'):
-            for key in ('procdate', 'plver'):
-                if getattr(self, key) != hdr[key.upper()]:
+                if not np.all(getattr(self, key) == getattr(T, key)):
                     print('Warning: mismatch in {}: {} (image) != {} (calib)'.format(
-                        key.upper(), getattr(self, key), hdr[key.upper()]))
+                        key.upper(), getattr(self, key), getattr(T[0], key)))
                     return None
                 
             I, = np.nonzero((T.expnum == self.expnum) *
@@ -1470,21 +1468,16 @@ class Measurer(object):
         except NameError:
             raise NameError('SKY not in header: skyfn={}'.format(fn))
 
-        # Check the data model.  Temporarily allow EXPNUM to not be present,
-        # since we can glean that from the file name.
-        #for key in ('procdate', 'plver', 'expnum'):
-        for key in ('procdate', 'plver'):
+        # Validate the data model and image-calibration consistency.
+        # Temporarily allow EXPNUM to not be present.
+        for key in ('procdate', 'plver'): #, 'expnum'):
             if key.upper() not in hdr:
                 print('Warning: outdated data model (missing {})'.format(key.upper()))
                 return None
-
-        # Ensure EXPNUM+PROCDATE+PLVER consistency between the image and
-        # corresponding calibration file.
-        #for key in ('procdate', 'plver', 'expnum'):
-        for key in ('procdate', 'plver'):
             if getattr(self, key) != hdr[key.upper()]:
                 print('Warning: mismatch in {}: {} (image) != {} (calib)'.format(
                     key.upper(), getattr(self, key), hdr[key.upper()]))
+                return None
 
         clazz = get_class_from_name(skyclass)
 
@@ -1660,6 +1653,17 @@ class Measurer(object):
         print('Looking for PsfEx file', fn)
         if os.path.exists(fn):
             T = fits_table(fn)
+
+            # Validate the data model and ensure image-calibration consistency.
+            for key in ('procdate', 'plver', 'expnum'):
+                if key not in T.get_columns():
+                    print('Warning: outdated data model (missing {})'.format(key.upper()))
+                    return None
+                if not np.all(getattr(self, key) == getattr(T, key)):
+                    print('Warning: mismatch in {}: {} (image) != {} (calib)'.format(
+                        key.upper(), getattr(self, key), getattr(T[0], key)))
+                    return None
+            
             I, = np.nonzero((T.expnum == self.expnum) *
                             np.array([c.strip() == self.ext for c in T.ccdname]))
             if len(I) == 1:
@@ -1681,9 +1685,19 @@ class Measurer(object):
         print('Reading PsfEx file', fn)
         if not os.path.exists(fn):
             return None
-        psf = tractor.PixelizedPsfEx(fn)
-        import fitsio
         hdr = fitsio.read_header(fn, ext=1)
+        # Validate the data model and image-calibration consistency.
+        # Temporarily allow EXPNUM to not be present.
+        for key in ('procdate', 'plver'): #, 'expnum'):
+            if key.upper() not in hdr:
+                print('Warning: outdated data model (missing {})'.format(key.upper()))
+                return None
+            if getattr(self, key) != hdr[key.upper()]:
+                print('Warning: mismatch in {}: {} (image) != {} (calib)'.format(
+                    key.upper(), getattr(self, key), hdr[key.upper()]))
+                return None
+    
+        psf = tractor.PixelizedPsfEx(fn)
         psf.header = hdr
         psf.fwhm = hdr['PSF_FWHM']
         return psf
@@ -2093,15 +2107,14 @@ class Measurer(object):
             print('Weight map is all zero -- skipping')
             return
 
-        import legacypipe
         from legacypipe.survey import get_git_version
         im = survey.get_image_object(ccd)
         print('Created legacypipe image object', im)
         git_version = get_git_version(dir=os.path.dirname(legacypipe.__file__))
 
-        pdb.set_trace()
-
-        im.run_calibs(psfex=do_psf, sky=do_sky, splinesky=True, git_version=git_version, survey=survey)
+        im.run_calibs(psfex=do_psf, sky=do_sky, splinesky=True,
+                      git_version=git_version, survey=survey,
+                      force=True) # note!
         return ccd
 
 class FakeCCD(object):
@@ -2768,6 +2781,9 @@ def runit(imgfn,zptfn,starfn_photom,starfn_astrom, legfn, annfn,
         hdr.add_record(dict(name=key, value=primhdr[key],
                             comment=primhdr.get_comment(key)))
     procdate = primhdr.get('DATE', '')
+    if procdate.strip() == '':
+        print('Missing PROCDATE from image {}'.format(imgfn))
+        raise ValueError
     hdr.add_record(dict(name='PROCDATE', value=procdate, comment='CP processing date'))
     hdr.add_record(dict(name='RA_BORE', value=hmsstring2ra(primhdr['RA']), comment='Boresight RA'))
     hdr.add_record(dict(name='DEC_BORE', value=dmsstring2dec(primhdr['DEC']), comment='Boresight Dec'))
@@ -2796,7 +2812,7 @@ def runit(imgfn,zptfn,starfn_photom,starfn_astrom, legfn, annfn,
     create_annotated_table(legfn, annfn, measureargs['camera'], survey, psf=psf)
 
     # Clean up
-    t0= ptime('write-results-to-fits',t0)
+    t0 = ptime('write-results-to-fits',t0)
     
 def parse_coords(s):
     '''stackoverflow: 
