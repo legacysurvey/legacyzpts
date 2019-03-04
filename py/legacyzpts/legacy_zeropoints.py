@@ -462,13 +462,11 @@ class Measurer(object):
         # Add more attributes.
         for key, attrkey in zip(['AIRMASS','HA', 'DATE', 'PLVER'],
                                 ['AIRMASS','HA', 'PROCDATE', 'PLVER']):
-            try:
-                val = self.primhdr[key]
-                if type(val) == str:
-                    val = val.strip()
-            except ValueError:
-                val= -1
-                print('WARNING! not in primhdr: %s' % key) 
+            val = self.primhdr[key]
+            if type(val) == str:
+                val = val.strip()
+                if len(val) == 0:
+                    raise ValueError('Empty header card: %s' % key)
             setattr(self, attrkey.lower(), val)
 
         self.expnum = self.get_expnum(self.primhdr)
@@ -2260,7 +2258,6 @@ class DecamMeasurer(Measurer):
             mask = remap_dq_cp_codes(mask)
         return mask
 
-
 class MegaPrimeMeasurer(Measurer):
     def __init__(self, *args, **kwargs):
         super(MegaPrimeMeasurer, self).__init__(*args, **kwargs)
@@ -2811,12 +2808,11 @@ def runit(imgfn, starfn_photom, legfn, annfn, psf=False, bad_expid=None,
                 ]:
         if not key in primhdr:
             continue
-        hdr.add_record(dict(name=key, value=primhdr[key],
+        v = primhdr[key]
+        if type(v) == str:
+            v = v.strip()
+        hdr.add_record(dict(name=key, value=v,
                             comment=primhdr.get_comment(key)))
-    #procdate = primhdr.get('DATE', '')
-    #if procdate.strip() == '':
-    #    print('Missing PROCDATE from image {}'.format(imgfn))
-    #    raise ValueError
     hdr.add_record(dict(name='PROCDATE', value=measure.procdate, comment='CP processing date'))
     hdr.add_record(dict(name='RA_BORE', value=hmsstring2ra(primhdr['RA']), comment='Boresight RA'))
     hdr.add_record(dict(name='DEC_BORE', value=dmsstring2dec(primhdr['DEC']), comment='Boresight Dec'))
