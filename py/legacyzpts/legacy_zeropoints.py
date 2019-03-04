@@ -2761,7 +2761,6 @@ def runit(imgfn, starfn_photom, legfn, annfn, psf=False, bad_expid=None,
     t0 = Time()
 
     results = measure_image(imgfn, psf=psf, survey=survey, run_calibs_only=run_calibs_only, **measureargs)
-    pdb.set_trace()
     if run_calibs_only:
         return
 
@@ -2958,7 +2957,6 @@ def main(image_list=None,args=None):
                         print('Warning: outdated data model: {} (missing {})'.format(
                             zptfile, key.upper()))
                         dozpt[ii] = True
-                print(zptfile, dozpt[ii])
 
         if np.all(~dozpt):
             print('Already finished: {}'.format(F.annfn))
