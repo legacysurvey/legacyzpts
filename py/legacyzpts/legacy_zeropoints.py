@@ -1102,10 +1102,6 @@ class Measurer(object):
         ccds['fwhm'] = ccds['fwhm_cp']
         #ccds['fwhm'] = psf.fwhm
 
-        if np.any(self.invvar[self.bitmask != 0] != 0):
-            print('Resetting', np.sum(self.invvar[self.bitmask != 0] != 0), 'bad invvar pixels')
-            self.invvar[self.bitmask != 0] = 0.
-
         if splinesky:
             sky = self.get_splinesky()
             print('Instantiating and subtracting sky model')
@@ -1119,8 +1115,7 @@ class Measurer(object):
         else:
             fit_img = self.img - sky_img
 
-
-        ierr = np.sqrt(np.maximum(0., self.invvar))
+        ierr = np.sqrt(self.invvar)
 
         # Gaia
         ra,dec = radec_at_mjd(gaia.ra, gaia.dec, gaia.ref_epoch.astype(float),
@@ -1530,7 +1525,7 @@ class Measurer(object):
                 subpsf.img /= psfsum
 
             if np.all(subie == 0):
-                print('Inverse-variance map is all zero')
+                #print('Inverse-variance map is all zero')
                 continue
 
             #print('PSF model:', subpsf)
