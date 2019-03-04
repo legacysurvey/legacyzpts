@@ -270,6 +270,53 @@ def create_legacypipe_table(T, legfn, camera=None, psf=False, bad_expid=None):
     writeto_via_temp(legfn, T)
     print('Wrote %s' % legfn)
 
+def validate_data_model(fn, filetype, expnum, plver, procdate, data=None):
+    if not os.path.exists(fn):
+        return False
+    # Check the data model
+    if filetype == 'table':
+        if data is None:
+            T = fits_table(fn)
+        else:
+            T = data
+        cols = T.get_columns()
+        for key,targetval,strip in (('procdate', procdate, True),
+                                    ('plver', plver, True),
+                                    ('expnum', expnum, False)):
+            if key not in cols:
+                print('Warning: outdated data model: {} (missing {})'.format(
+                    fn, key.upper()))
+                return False
+            val = T.get(key)
+            if strip:
+                val = np.array([v.strip() for v in val])
+            if not np.all(val == targetval):
+                print('Warning: table value', val, 'not equal to', targetval)
+                return False
+        return True
+    elif filetype == 'primaryheader':
+        if data is None:
+            hdr = read_primary_header(fn)
+        else:
+            hdr = data
+        for key,targetval,strip in (('PROCDATE', procdate, True),
+                                    ('PLVER', plver, True),
+                                    ('EXPNUM', expnum, False)):
+            if key not in hdr:
+                print('Warning: outdated data model: {} (missing {})'.format(
+                    fn, key))
+                return False
+            val = hdr[key]
+            if strip:
+                val = val.strip()
+            if val != targetval:
+                print('Warning: header value', val, 'not equal to', targetval)
+                return False
+        return True
+
+    else:
+        raise ValueError('incorrect filetype')
+
 def create_annotated_table(leg_fn, ann_fn, camera, survey, psf=False):
     from legacypipe.annotate_ccds import annotate, init_annotations
     T = fits_table(leg_fn)
@@ -1435,57 +1482,41 @@ class Measurer(object):
         if os.path.exists(fn):
             print('Reading splinesky-merged {}'.format(fn))
             T = fits_table(fn)
+            if validate_data_model(fn, 'table', self.expnum, self.plver,
+                                   self.procdate, data=T):
+                I, = np.nonzero((T.expnum == self.expnum) *
+                                np.array([c.strip() == self.ext for c in T.ccdname]))
+                if len(I) == 1:
+                    Ti = T[I[0]]
+                    # Remove any padding
+                    h,w = Ti.gridh, Ti.gridw
+                    Ti.gridvals = Ti.gridvals[:h, :w]
+                    Ti.xgrid = Ti.xgrid[:w]
+                    Ti.ygrid = Ti.ygrid[:h]
 
-            # Validate the data model and ensure image-calibration consistency.
-            for key in ('procdate', 'plver', 'expnum'):
-                if key not in T.get_columns():
-                    print('Warning: outdated data model (missing {})'.format(key.upper()))
-                    return None
-                if not np.all(getattr(self, key).strip() == getattr(T, key).strip()):
-                    print('Warning: mismatch in {}: {} (image) != {} (calib)'.format(
-                        key.upper(), getattr(self, key), getattr(T[0], key)))
-                    return None
-                
-            I, = np.nonzero((T.expnum == self.expnum) *
-                            np.array([c.strip() == self.ext for c in T.ccdname]))
-            if len(I) == 1:
-                Ti = T[I[0]]
-
-                # Remove any padding
-                h,w = Ti.gridh, Ti.gridw
-                Ti.gridvals = Ti.gridvals[:h, :w]
-                Ti.xgrid = Ti.xgrid[:w]
-                Ti.ygrid = Ti.ygrid[:h]
-
-                skyclass = Ti.skyclass.strip()
-                clazz = get_class_from_name(skyclass)
-                fromfits = getattr(clazz, 'from_fits_row')
-                sky = fromfits(Ti)
-                return sky
+                    skyclass = Ti.skyclass.strip()
+                    clazz = get_class_from_name(skyclass)
+                    fromfits = getattr(clazz, 'from_fits_row')
+                    sky = fromfits(Ti)
+                    return sky
 
         # Look for single-CCD file
         fn = self.get_splinesky_unmerged_filename()
         #print('Reading file', fn)
         if not os.path.exists(fn):
             return None
-        
+
         print('Reading splinesky {}'.format(fn))
         hdr = read_primary_header(fn)
+
+        if not validate_data_model(fn, 'primaryheader', self.expnum, self.plver,
+                                   self.procdate, data=hdr):
+            return None
+
         try:
             skyclass = hdr['SKY']
         except NameError:
             raise NameError('SKY not in header: skyfn={}'.format(fn))
-
-        # Validate the data model and image-calibration consistency.
-        # Temporarily allow EXPNUM to not be present.
-        for key in ('procdate', 'plver'): #, 'expnum'):
-            if key.upper() not in hdr:
-                print('Warning: outdated data model (missing {})'.format(key.upper()))
-                return None
-            if getattr(self, key).strip() != hdr[key.upper()].strip():
-                print('Warning: mismatch in {}: {} (image) != {} (calib)'.format(
-                    key.upper(), getattr(self, key), hdr[key.upper()]))
-                return None
 
         clazz = get_class_from_name(skyclass)
 
@@ -1662,31 +1693,22 @@ class Measurer(object):
         if os.path.exists(fn):
             print('Reading psfex-merged {}'.format(fn))
             T = fits_table(fn)
-
-            # Validate the data model and ensure image-calibration consistency.
-            for key in ('procdate', 'plver', 'expnum'):
-                if key not in T.get_columns():
-                    print('Warning: outdated data model (missing {})'.format(key.upper()))
-                    break
-                if not np.all(getattr(self, key).strip() == getattr(T, key).strip()):
-                    print('Warning: mismatch in {}: {} (image) != {} (calib)'.format(
-                        key.upper(), getattr(self, key), getattr(T[0], key)))
-                    break
-            
-            I, = np.nonzero((T.expnum == self.expnum) *
-                            np.array([c.strip() == self.ext for c in T.ccdname]))
-            if len(I) == 1:
-                Ti = T[I[0]]
-                # Remove any padding
-                degree = Ti.poldeg1
-                # number of terms in polynomial
-                ne = (degree + 1) * (degree + 2) // 2
-                Ti.psf_mask = Ti.psf_mask[:ne, :Ti.psfaxis1, :Ti.psfaxis2]
-                psfex = tractor.PsfExModel(Ti=Ti)
-                psf = tractor.PixelizedPsfEx(None, psfex=psfex)
-                psf.fwhm = Ti.psf_fwhm
-                psf.header = {}
-                return psf
+            if validate_data_model(fn, 'table', self.expnum, self.plver,
+                                   self.procdate, data=T):
+                I, = np.nonzero((T.expnum == self.expnum) *
+                                np.array([c.strip() == self.ext for c in T.ccdname]))
+                if len(I) == 1:
+                    Ti = T[I[0]]
+                    # Remove any padding
+                    degree = Ti.poldeg1
+                    # number of terms in polynomial
+                    ne = (degree + 1) * (degree + 2) // 2
+                    Ti.psf_mask = Ti.psf_mask[:ne, :Ti.psfaxis1, :Ti.psfaxis2]
+                    psfex = tractor.PsfExModel(Ti=Ti)
+                    psf = tractor.PixelizedPsfEx(None, psfex=psfex)
+                    psf.fwhm = Ti.psf_fwhm
+                    psf.header = {}
+                    return psf
 
         # Look for single-CCD PsfEx file
         fn = os.path.join(self.calibdir, self.camera, 'psfex', expstr[:5], expstr,
@@ -1697,17 +1719,10 @@ class Measurer(object):
 
         print('Reading psfex {}'.format(fn))
         hdr = read_primary_header(fn)
-        # Validate the data model and image-calibration consistency.
-        # Temporarily allow EXPNUM to not be present.
-        for key in ('procdate', 'plver'): #, 'expnum'):
-            if key.upper() not in hdr:
-                print('Warning: outdated data model (missing {})'.format(key.upper()))
-                return None
-            if getattr(self, key).strip() != hdr[key.upper()].strip():
-                print('Warning: mismatch in {}: {} (image) != {} (calib)'.format(
-                    key.upper(), getattr(self, key), hdr[key.upper()]))
-                return None
-    
+        if not validate_data_model(fn, 'primaryheader', self.expnum, self.plver,
+                                   self.procdate, data=hdr):
+            return None
+
         hdr = fitsio.read_header(fn, ext=1)
         psf = tractor.PixelizedPsfEx(fn)
         psf.header = hdr
@@ -2954,20 +2969,10 @@ def main(image_list=None,args=None):
 
         measure = measure_image(imgfn, just_measure=True, **measureargs)
 
-        dozpt = np.zeros(3).astype(bool) # assume all are done
-        for ii, zptfile in enumerate((F.starfn_photom, F.legfn, F.annfn)):
-            if not os.path.exists(zptfile):
-                dozpt[ii] = True
-            else:
-                # Check the data model
-                cols = fitsio.FITS(zptfile)[1].get_colnames()
-                for key in ('procdate', 'plver', 'expnum'):
-                    if key not in cols:
-                        print('Warning: outdated data model: {} (missing {})'.format(
-                            zptfile, key.upper()))
-                        dozpt[ii] = True
-
-        if np.all(~dozpt):
+        zptok = [validate_data_model(fn, 'table', measure.expnum,
+                                     measure.plver, measure.procdate)
+                for fn in [F.starfn_photom, F.legfn, F.annfn]]
+        if np.all(zptok):
             print('Already finished: {}'.format(F.annfn))
             continue
 
