@@ -2549,20 +2549,6 @@ def measure_image(img_fn, run_calibs_only=False,
         primhdr = tmp[0].header
         tmp.close()
         del tmp
-#        # skip zpt for this image 
-#        print('Error reading img_fn=%s, see %s' % \
-#                (img_fn,'zpts_bad_headerskipimage.txt')) 
-#        with open('zpts_bad_headerskipimage.txt','a') as foo:
-#            foo.write('%s\n' % (img_fn,))
-#        ccds = []
-#        stars = []
-#        # FIX ME!! 4 should depend on camera, 60 for decam, 4 for mosaic,bok
-#        for cnt in range(4):
-#            ccds.append( _ccds_table() )
-#            stars.append( _stars_table() )
-#        ccds = vstack(ccds)
-#        stars = vstack(stars)
-#        return ccds,stars
     
     camera = measureargs['camera']
     camera_check = primhdr.get('INSTRUME','').strip().lower()
