@@ -86,7 +86,7 @@ def _ccds_table(camera='decam'):
         ('image_hdu', '>i2'),      
         ('camera', 'S%i' % max_camera_length),          
         ('expnum', '>i8'),         
-        ('plver', 'S6'),         
+        ('plver', 'S8'),         
         ('procdate', 'S19'),         
         ('ccdname', 'S5'),         
         ('ccdnum', '>i2'),        
@@ -95,7 +95,7 @@ def _ccds_table(camera='decam'):
         ('propid', 'S10'),     
         ('filter', 'S1'),     
         ('exptime', '>f4'),  
-        ('date_obs', 'S10'),
+        ('date_obs', 'S26'),
         ('mjd_obs', '>f8'),  
         ('ut', 'S15'),       
         ('ha', 'S13'),       
@@ -155,7 +155,7 @@ def _stars_table(nstars=1):
     cols = [('image_filename', 'S100'),('image_hdu', '>i2'),
             ('expid', 'S16'), ('filter', 'S1'),('nmatch', '>i2'), 
             ('x', 'f4'), ('y', 'f4'), ('expnum', '>i8'),
-            ('plver', 'S6'), ('procdate', 'S19'),
+            ('plver', 'S8'), ('procdate', 'S19'),
             ('gain', 'f4'),
             ('ra', 'f8'), ('dec', 'f8'), ('apmag', 'f4'),('apflux', 'f4'),('apskyflux', 'f4'),('apskyflux_perpix', 'f4'),
             ('radiff', 'f8'), ('decdiff', 'f8'),
@@ -416,7 +416,9 @@ class Measurer(object):
         for key, attrkey in zip(['AIRMASS','HA', 'DATE', 'PLVER'],
                                 ['AIRMASS','HA', 'PROCDATE', 'PLVER']):
             try:
-                val= self.primhdr[key]
+                val = self.primhdr[key]
+                if type(val) == str:
+                    val = val.strip()
             except ValueError:
                 val= -1
                 print('WARNING! not in primhdr: %s' % key) 
@@ -1665,11 +1667,13 @@ class Measurer(object):
             for key in ('procdate', 'plver', 'expnum'):
                 if key not in T.get_columns():
                     print('Warning: outdated data model (missing {})'.format(key.upper()))
-                    return None
+                    break
+                    #return None
                 if not np.all(getattr(self, key) == getattr(T, key)):
                     print('Warning: mismatch in {}: {} (image) != {} (calib)'.format(
                         key.upper(), getattr(self, key), getattr(T[0], key)))
-                    return None
+                    break
+                    #return None
             
             I, = np.nonzero((T.expnum == self.expnum) *
                             np.array([c.strip() == self.ext for c in T.ccdname]))
@@ -2120,7 +2124,7 @@ class Measurer(object):
 
         from legacypipe.survey import get_git_version
         im = survey.get_image_object(ccd)
-        print('Created legacypipe image object', im)
+        #print('Created legacypipe image object', im)
         git_version = get_git_version(dir=os.path.dirname(legacypipe.__file__))
 
         im.run_calibs(psfex=do_psf, sky=do_sky, splinesky=True,
@@ -2631,10 +2635,9 @@ def measure_image(img_fn, run_calibs=False, run_calibs_only=False,
         do_merge_calibs(measure, survey, calib_ccds, do_merge_splinesky, do_merge_psfex)
         return
 
-    pdb.set_trace()
-
     rtns = mp.map(run_one_ext, [(measure, ext, survey, psfex, splinesky, measureargs['debug'])
                                 for ext in extlist])
+    pdb.set_trace()
 
     for ext,rtn in zip(extlist,rtns):
         ccds, stars_photom, stars_astrom = rtn
@@ -2908,7 +2911,8 @@ def main(image_list=None,args=None):
         if cal is not None:
             measureargs['calibdir'] = os.path.join(cal, 'calib')
 
-    psf = not measureargs['no_psf']
+    measureargs['psf'] = not measureargs['no_psf']
+    psf = measureargs['psf']
     camera = measureargs['camera']
 
     survey = FakeLegacySurveyData()
