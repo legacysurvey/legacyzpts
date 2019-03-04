@@ -1379,8 +1379,7 @@ class Measurer(object):
 
         # Create subset table for Eddie's ubercal
         stars_photom = phot.copy()
-        cols = [#'procdate', 'plver', 'expnum',
-                'ra', 'dec', 'flux', 'dflux', 'chi2', 'fracmasked', 'instpsfmag',
+        cols = ['ra', 'dec', 'flux', 'dflux', 'chi2', 'fracmasked', 'instpsfmag',
                 'dpsfmag',
                 'bitmask', 'x_fit', 'y_fit', 'gaia_sourceid', 'ra_gaia', 'dec_gaia',
                 'phot_g_mean_mag', 'phot_bp_mean_mag', 'phot_rp_mean_mag',
@@ -1396,12 +1395,6 @@ class Measurer(object):
         for c in stars_photom.get_columns():
             if not c in cols:
                 stars_photom.delete_column(c)
-                
-        pdb.set_trace()
-        # add god's keys
-        gods_keys = ['plver', 'procdate']
-        for key in gods_keys:
-            stars_photom[key] = getattr(ccds, key)
 
         t0= ptime('all-computations-for-this-ccd',t0)
         # Plots for comparing to Arjuns zeropoints*.ps
@@ -2888,9 +2881,11 @@ def main(image_list=None,args=None):
 
         measure = measure_image(imgfn, just_measure=True, **measureargs)
 
-        zptok = [validate_procdate_plver(fn, 'table', measure.expnum,
+        zptok = ([validate_procdate_plver(fn, 'table', measure.expnum,
                                      measure.plver, measure.procdate)
-                for fn in [F.starfn_photom, F.legfn, F.annfn]]
+                for fn in [F.legfn, F.annfn]] +
+                 [validate_procdate_plver(F.starfn_photom, 'header', measure.expnum,
+                                          measure.plver, measure.procdate, ext=1)])
         if np.all(zptok):
             print('Already finished: {}'.format(F.annfn))
             continue
