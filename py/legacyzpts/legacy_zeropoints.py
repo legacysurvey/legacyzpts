@@ -1441,7 +1441,7 @@ class Measurer(object):
                 if key not in T.get_columns():
                     print('Warning: outdated data model (missing {})'.format(key.upper()))
                     return None
-                if not np.all(getattr(self, key) == getattr(T, key)):
+                if not np.all(getattr(self, key).strip() == getattr(T, key).strip()):
                     print('Warning: mismatch in {}: {} (image) != {} (calib)'.format(
                         key.upper(), getattr(self, key), getattr(T[0], key)))
                     return None
@@ -1482,7 +1482,7 @@ class Measurer(object):
             if key.upper() not in hdr:
                 print('Warning: outdated data model (missing {})'.format(key.upper()))
                 return None
-            if getattr(self, key) != hdr[key.upper()]:
+            if getattr(self, key).strip() != hdr[key.upper()].strip():
                 print('Warning: mismatch in {}: {} (image) != {} (calib)'.format(
                     key.upper(), getattr(self, key), hdr[key.upper()]))
                 return None
@@ -1669,7 +1669,7 @@ class Measurer(object):
                     print('Warning: outdated data model (missing {})'.format(key.upper()))
                     break
                     #return None
-                if not np.all(getattr(self, key) == getattr(T, key)):
+                if not np.all(getattr(self, key).strip() == getattr(T, key).strip()):
                     print('Warning: mismatch in {}: {} (image) != {} (calib)'.format(
                         key.upper(), getattr(self, key), getattr(T[0], key)))
                     break
@@ -1698,18 +1698,19 @@ class Measurer(object):
             return None
 
         print('Reading psfex {}'.format(fn))
-        hdr = fitsio.read_header(fn, ext=1)
+        hdr = read_primary_header(fn)
         # Validate the data model and image-calibration consistency.
         # Temporarily allow EXPNUM to not be present.
         for key in ('procdate', 'plver'): #, 'expnum'):
             if key.upper() not in hdr:
                 print('Warning: outdated data model (missing {})'.format(key.upper()))
                 return None
-            if getattr(self, key) != hdr[key.upper()]:
+            if getattr(self, key).strip() != hdr[key.upper()].strip():
                 print('Warning: mismatch in {}: {} (image) != {} (calib)'.format(
                     key.upper(), getattr(self, key), hdr[key.upper()]))
                 return None
     
+        hdr = fitsio.read_header(fn, ext=1)
         psf = tractor.PixelizedPsfEx(fn)
         psf.header = hdr
         psf.fwhm = hdr['PSF_FWHM']
@@ -2130,6 +2131,7 @@ class Measurer(object):
         im.run_calibs(psfex=do_psf, sky=do_sky, splinesky=True,
                       git_version=git_version, survey=survey,
                       force=True) # note!
+
         return ccd
 
 class FakeCCD(object):
