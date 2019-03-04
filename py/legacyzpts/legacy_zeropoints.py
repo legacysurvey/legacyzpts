@@ -2530,7 +2530,7 @@ def _measure_image(args):
     '''Utility function to wrap measure_image function for multiprocessing map.''' 
     return measure_image(*args)
 
-def measure_image(img_fn, run_calibs=False, run_calibs_only=False,
+def measure_image(img_fn, run_calibs_only=False,
                   just_measure=False,
                   survey=None, threads=None, **measureargs):
     '''Wrapper on the camera-specific classes to measure the CCD-level data on all
@@ -2599,37 +2599,47 @@ def measure_image(img_fn, run_calibs=False, run_calibs_only=False,
     psfex = measureargs['psf']
     splinesky = measureargs['splinesky']
 
-    def do_merge_calibs(measure, survey, ccds, splinesky, psfex):
+    do_splinesky = splinesky
+    do_psfex = psfex
+
+    if splinesky:
+        if validate_data_model(measure.get_splinesky_merged_filename(),
+                               'table', measure.expnum, measure.plver, measure.procdate):
+            do_splinesky = False
+    if psfex:
+        if validate_data_model(measure.get_psfex_merged_filename(),
+                               'table', measure.expnum, measure.plver, measure.procdate):
+            do_psfex = False
+
+    if do_splinesky or do_psfex:
+        ccds = mp.map(run_one_calib, [(measure, survey, ext, do_psfex, do_splinesky)
+                                      for ext in extlist])
         from legacypipe.merge_calibs import merge_splinesky, merge_psfex
         class FakeOpts(object):
             pass
         opts = FakeOpts()
         opts.all_found=True
-        if splinesky:
+        if do_splinesky:
             skyoutfn = measure.get_splinesky_merged_filename()
             merge_splinesky(survey, measure.expnum, ccds, skyoutfn, opts)
             print('Wrote {}'.format(skyoutfn))
-        if psfex:
+        if do_psfex:
             psfoutfn = measure.get_psfex_merged_filename()
             merge_psfex(survey, measure.expnum, ccds, psfoutfn, opts)
             print('Wrote {}'.format(psfoutfn))
 
-    do_merge_splinesky = False
-    do_merge_psfex = False
-    calib_ccds = None
+    if splinesky:
+        if not validate_data_model(measure.get_splinesky_merged_filename(),
+                                   'table', measure.expnum, measure.plver, measure.procdate):
+            raise RuntimeError('Merged splinesky file did not validate!')
+    if psfex:
+        if not validate_data_model(measure.get_psfex_merged_filename(),
+                                   'table', measure.expnum, measure.plver, measure.procdate):
+            raise RuntimeError('Merged psfex file did not validate!')
 
-    if run_calibs:
-        ccds = mp.map(run_one_calib, [(measure, survey, ext, psfex, splinesky) for ext in extlist])
-        # ccds: list of fake CCD objects
-        calib_ccds = ccds
-        if all([ccd is not None for ccd in ccds]):
-            if any([ccd.wrote_sky for ccd in ccds]):
-                do_merge_splinesky = True
-            if any([ccd.wrote_psf for ccd in ccds]):
-                do_merge_psfex = True
+    ## at this point, merged calib files exist & pass validation
 
     if run_calibs_only:
-        do_merge_calibs(measure, survey, calib_ccds, do_merge_splinesky, do_merge_psfex)
         return
 
     rtns = mp.map(run_one_ext, [(measure, ext, survey, psfex, splinesky, measureargs['debug'])
@@ -2637,7 +2647,6 @@ def measure_image(img_fn, run_calibs=False, run_calibs_only=False,
 
     for ext,rtn in zip(extlist,rtns):
         ccds, stars_photom, stars_astrom = rtn
-
         if ccds is not None:
             all_ccds.append(ccds)
         if stars_photom is not None:
@@ -2855,14 +2864,12 @@ def get_parser():
                         help='Use this option when deriving the photometric transformation equations.')
     parser.add_argument('--nproc', type=int,action='store',default=1,
                         help='set to > 1 if using legacy-zeropoints-mpiwrapper.py')
-    parser.add_argument('--run-calibs', default=False, action='store_true',
-                        help='Create PsfEx and splinesky files if they do not already exist')
     parser.add_argument('--run-calibs-only', default=False, action='store_true',
                         help='Only ensure calib files exist, do not compute zeropoints.')
-    parser.add_argument('--no-psf', default=False, action='store_true',
+    parser.add_argument('--no-psf', dest='psf', default=True, action='store_false',
                         help='Do not use PsfEx model for astrometry & photometry')
-    parser.add_argument('--splinesky', default=False, action='store_true',
-                        help='Use spline sky model for sky subtraction?')
+    parser.add_argument('--no-splinesky', dest='splinesky', default=True, action='store_false',
+                        help='Do not use spline sky model for sky subtraction?')
     parser.add_argument('--calibdir', default=None, action='store',
                         help='if None will use LEGACY_SURVEY_DIR/calib, e.g. /global/cscratch1/sd/desiproc/dr5-new/calib')
     parser.add_argument('--threads', default=None, type=int,
@@ -2889,15 +2896,11 @@ def main(image_list=None,args=None):
     measureargs.pop('image')
     nimage = len(image_list)
 
-    if measureargs.get('run_calibs_only', False):
-        measureargs['run_calibs'] = True
-
     if measureargs['calibdir'] is None:
         cal = os.getenv('LEGACY_SURVEY_DIR',None)
         if cal is not None:
             measureargs['calibdir'] = os.path.join(cal, 'calib')
 
-    measureargs['psf'] = not measureargs['no_psf']
     psf = measureargs['psf']
     camera = measureargs['camera']
 
@@ -2906,7 +2909,7 @@ def main(image_list=None,args=None):
     survey.calibdir = measureargs.get('calibdir')
     measureargs.update(survey=survey)
 
-    if psf and camera in ['mosaic', 'decam', 'megaprime', '90prime']:
+    if camera in ['mosaic', 'decam', 'megaprime', '90prime']:
         if camera in ['mosaic', 'decam', '90prime']:
             from legacyzpts.psfzpt_cuts import read_bad_expid
 
