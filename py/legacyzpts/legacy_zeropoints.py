@@ -1668,12 +1668,10 @@ class Measurer(object):
                 if key not in T.get_columns():
                     print('Warning: outdated data model (missing {})'.format(key.upper()))
                     break
-                    #return None
                 if not np.all(getattr(self, key).strip() == getattr(T, key).strip()):
                     print('Warning: mismatch in {}: {} (image) != {} (calib)'.format(
                         key.upper(), getattr(self, key), getattr(T[0], key)))
                     break
-                    #return None
             
             I, = np.nonzero((T.expnum == self.expnum) *
                             np.array([c.strip() == self.ext for c in T.ccdname]))
@@ -2615,9 +2613,11 @@ def measure_image(img_fn, run_calibs=False, run_calibs_only=False,
         if splinesky:
             skyoutfn = measure.get_splinesky_merged_filename()
             merge_splinesky(survey, measure.expnum, ccds, skyoutfn, opts)
+            print('Wrote {}'.format(skyoutfn))
         if psfex:
             psfoutfn = measure.get_psfex_merged_filename()
             merge_psfex(survey, measure.expnum, ccds, psfoutfn, opts)
+            print('Wrote {}'.format(psfoutfn))
 
     do_merge_splinesky = False
     do_merge_psfex = False
@@ -2639,7 +2639,6 @@ def measure_image(img_fn, run_calibs=False, run_calibs_only=False,
 
     rtns = mp.map(run_one_ext, [(measure, ext, survey, psfex, splinesky, measureargs['debug'])
                                 for ext in extlist])
-    pdb.set_trace()
 
     for ext,rtn in zip(extlist,rtns):
         ccds, stars_photom, stars_astrom = rtn
