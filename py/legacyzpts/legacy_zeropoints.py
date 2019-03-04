@@ -268,7 +268,7 @@ def create_legacypipe_table(T, legfn, camera=None, psf=False, bad_expid=None):
     writeto_via_temp(legfn, T)
     print('Wrote %s' % legfn)
 
-def validate_data_model(fn, filetype, expnum, plver, procdate, data=None):
+def validate_procdate_plver(fn, filetype, expnum, plver, procdate, data=None):
     if not os.path.exists(fn):
         return False
     # Check the data model
@@ -1476,7 +1476,7 @@ class Measurer(object):
         if os.path.exists(fn):
             print('Reading splinesky-merged {}'.format(fn))
             T = fits_table(fn)
-            if validate_data_model(fn, 'table', self.expnum, self.plver,
+            if validate_procdate_plver(fn, 'table', self.expnum, self.plver,
                                    self.procdate, data=T):
                 I, = np.nonzero((T.expnum == self.expnum) *
                                 np.array([c.strip() == self.ext for c in T.ccdname]))
@@ -1503,7 +1503,7 @@ class Measurer(object):
         print('Reading splinesky {}'.format(fn))
         hdr = read_primary_header(fn)
 
-        if not validate_data_model(fn, 'primaryheader', self.expnum, self.plver,
+        if not validate_procdate_plver(fn, 'primaryheader', self.expnum, self.plver,
                                    self.procdate, data=hdr):
             return None
 
@@ -1687,7 +1687,7 @@ class Measurer(object):
         if os.path.exists(fn):
             print('Reading psfex-merged {}'.format(fn))
             T = fits_table(fn)
-            if validate_data_model(fn, 'table', self.expnum, self.plver,
+            if validate_procdate_plver(fn, 'table', self.expnum, self.plver,
                                    self.procdate, data=T):
                 I, = np.nonzero((T.expnum == self.expnum) *
                                 np.array([c.strip() == self.ext for c in T.ccdname]))
@@ -1713,7 +1713,7 @@ class Measurer(object):
 
         print('Reading psfex {}'.format(fn))
         hdr = read_primary_header(fn)
-        if not validate_data_model(fn, 'primaryheader', self.expnum, self.plver,
+        if not validate_procdate_plver(fn, 'primaryheader', self.expnum, self.plver,
                                    self.procdate, data=hdr):
             return None
 
@@ -2589,11 +2589,11 @@ def measure_image(img_fn, run_calibs_only=False,
     do_psfex = psfex
 
     if splinesky:
-        if validate_data_model(measure.get_splinesky_merged_filename(),
+        if validate_procdate_plver(measure.get_splinesky_merged_filename(),
                                'table', measure.expnum, measure.plver, measure.procdate):
             do_splinesky = False
     if psfex:
-        if validate_data_model(measure.get_psfex_merged_filename(),
+        if validate_procdate_plver(measure.get_psfex_merged_filename(),
                                'table', measure.expnum, measure.plver, measure.procdate):
             do_psfex = False
 
@@ -2615,11 +2615,11 @@ def measure_image(img_fn, run_calibs_only=False,
             print('Wrote {}'.format(psfoutfn))
 
     if splinesky:
-        if not validate_data_model(measure.get_splinesky_merged_filename(),
+        if not validate_procdate_plver(measure.get_splinesky_merged_filename(),
                                    'table', measure.expnum, measure.plver, measure.procdate):
             raise RuntimeError('Merged splinesky file did not validate!')
     if psfex:
-        if not validate_data_model(measure.get_psfex_merged_filename(),
+        if not validate_procdate_plver(measure.get_psfex_merged_filename(),
                                    'table', measure.expnum, measure.plver, measure.procdate):
             raise RuntimeError('Merged psfex file did not validate!')
 
@@ -2928,7 +2928,7 @@ def main(image_list=None,args=None):
 
         measure = measure_image(imgfn, just_measure=True, **measureargs)
 
-        zptok = [validate_data_model(fn, 'table', measure.expnum,
+        zptok = [validate_procdate_plver(fn, 'table', measure.expnum,
                                      measure.plver, measure.procdate)
                 for fn in [F.starfn_photom, F.legfn, F.annfn]]
         if np.all(zptok):
