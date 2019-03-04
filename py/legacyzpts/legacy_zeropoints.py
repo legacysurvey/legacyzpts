@@ -86,6 +86,8 @@ def _ccds_table(camera='decam'):
         ('image_hdu', '>i2'),      
         ('camera', 'S%i' % max_camera_length),          
         ('expnum', '>i8'),         
+        ('plver', 'S6'),         
+        ('procdate', 'S19'),         
         ('ccdname', 'S5'),         
         ('ccdnum', '>i2'),        
         ('expid', 'S16'),        
@@ -768,6 +770,8 @@ class Measurer(object):
         ccds['ccdnum'] = self.ccdnum 
         ccds['camera'] = self.camera
         ccds['expnum'] = self.expnum
+        ccds['plver'] = self.plver
+        ccds['procdate'] = self.procdate
         ccds['ccdname'] = self.ccdname
         ccds['expid'] = self.expid
         ccds['object'] = self.obj
@@ -2718,7 +2722,7 @@ class outputFns(object):
             base = base[:-len('.fits')]
         if debug:
             base += '-debug'
-        #self.zptfn = os.path.join(outdir,dirname, base + '-zpt.fits')
+        self.zptfn = os.path.join(outdir,dirname, base + '-zpt.fits')
         #self.starfn_astrom = os.path.join(outdir,dirname, base + '-astrom.fits')
         self.starfn_photom = os.path.join(outdir,dirname, base + '-photom.fits')
         self.legfn = os.path.join(outdir,dirname, base + '-legacypipe.fits')
@@ -2946,7 +2950,7 @@ def main(image_list=None,args=None):
                 cols = fitsio.FITS(zptfile)[1].get_colnames()
                 for key in ('procdate', 'plver', 'expnum'):
                     if key not in cols:
-                        print('Warning: outdated data model in {} (missing {})'.format(
+                        print('Warning: outdated data model: {} (missing {})'.format(
                             zptfile, key.upper()))
                         zptdoit = True
             else:
@@ -2957,7 +2961,6 @@ def main(image_list=None,args=None):
             continue
         
         # Create the file
-        pdb.set_trace()
         t0=ptime('b4-run',t0)
         runit(F.imgfn,F.zptfn,F.starfn_photom,F.starfn_astrom, F.legfn, F.annfn,
               **measureargs)
