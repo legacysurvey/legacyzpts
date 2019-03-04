@@ -417,7 +417,7 @@ class Measurer(object):
                                 ['AIRMASS','HA', 'PROCDATE', 'PLVER']):
             try:
                 val= self.primhdr[key]
-            except KeyError:
+            except ValueError:
                 val= -1
                 print('WARNING! not in primhdr: %s' % key) 
             setattr(self, attrkey.lower(), val)
@@ -2547,7 +2547,7 @@ def measure_image(img_fn, run_calibs=False, run_calibs_only=False,
     except ValueError:
         # astropy can handle it
         tmp = fits_astropy.open(img_fn)
-        primhdr= tmp[0].header
+        primhdr = tmp[0].header
         tmp.close()
         del tmp
 #        # skip zpt for this image 
@@ -2570,10 +2570,6 @@ def measure_image(img_fn, run_calibs=False, run_calibs_only=False,
     # mosaic listed as mosaic3 in header, other combos maybe
     assert(camera in camera_check or camera_check in camera)
     
-    extlist = get_extlist(camera, img_fn, 
-                          debug=measureargs['debug'],
-                          choose_ccd=measureargs['choose_ccd'])
-
     if camera == 'decam':
         measure = DecamMeasurer(img_fn, **measureargs)
     elif camera == 'mosaic':
@@ -2586,7 +2582,11 @@ def measure_image(img_fn, run_calibs=False, run_calibs_only=False,
     if just_measure:
         return measure
 
-    extra_info= dict(zp_fid = measure.zeropoint( measure.band ),
+    extlist = get_extlist(camera, img_fn, 
+                          debug=measureargs['debug'],
+                          choose_ccd=measureargs['choose_ccd'])
+
+    extra_info = dict(zp_fid = measure.zeropoint( measure.band ),
                      ext_fid = measure.extinction( measure.band ),
                      exptime = measure.exptime,
                      pixscale = measure.pixscale,
@@ -2676,8 +2676,8 @@ def measure_image(img_fn, run_calibs=False, run_calibs_only=False,
     zpts = all_ccds['zpt']
     all_ccds['zptavg'] = np.median(zpts[np.isfinite(zpts)])
 
-    t0= ptime('measure-image-%s' % img_fn,t0)
-    return all_ccds, all_stars_photom, all_stars_astrom, extra_info
+    t0 = ptime('measure-image-%s' % img_fn,t0)
+    return all_ccds, all_stars_photom, all_stars_astrom, extra_info, measure
 
 def run_one_calib(X):
     measure, survey, ext, psfex, splinesky = X
@@ -2762,8 +2762,8 @@ def runit(imgfn, starfn_photom, legfn, annfn, psf=False, bad_expid=None,
     if run_calibs_only:
         return
 
-    ccds, stars_photom, stars_astrom, extra_info = results
-    t0= ptime('measure_image',t0)
+    ccds, stars_photom, stars_astrom, extra_info, measure = results
+    t0 = ptime('measure_image',t0)
 
     img_primhdr = extra_info.pop('primhdr')
 
@@ -2785,17 +2785,18 @@ def runit(imgfn, starfn_photom, legfn, annfn, psf=False, bad_expid=None,
     hdr = fitsio.FITSHDR()
     for key in ['AIRMASS', 'OBJECT', 'TELESCOP', 'INSTRUME', 'EXPTIME',
                 'DATE-OBS', 'MJD-OBS', 'EXPNUM', 'PROGRAM', 'OBSERVER',
-                'PROPID', 'FILTER', 'HA', 'ZD', 'AZ', 'DOMEAZ', 'HUMIDITY', 'PLVER',
+                'PROPID', 'FILTER', 'HA', 'ZD', 'AZ', 'DOMEAZ', 'HUMIDITY',
+                'PLVER',
                 ]:
         if not key in primhdr:
             continue
         hdr.add_record(dict(name=key, value=primhdr[key],
                             comment=primhdr.get_comment(key)))
-    procdate = primhdr.get('DATE', '')
-    if procdate.strip() == '':
-        print('Missing PROCDATE from image {}'.format(imgfn))
-        raise ValueError
-    hdr.add_record(dict(name='PROCDATE', value=procdate, comment='CP processing date'))
+    #procdate = primhdr.get('DATE', '')
+    #if procdate.strip() == '':
+    #    print('Missing PROCDATE from image {}'.format(imgfn))
+    #    raise ValueError
+    hdr.add_record(dict(name='PROCDATE', value=measure.procdate, comment='CP processing date'))
     hdr.add_record(dict(name='RA_BORE', value=hmsstring2ra(primhdr['RA']), comment='Boresight RA'))
     hdr.add_record(dict(name='DEC_BORE', value=dmsstring2dec(primhdr['DEC']), comment='Boresight Dec'))
     hdr.add_record(dict(name='CCD_ZPT', value=ccds['zpt'][0], comment='Exposure median zeropoint'))
@@ -2895,6 +2896,7 @@ def main(image_list=None,args=None):
     measureargs = vars(args)
     measureargs.pop('image_list')
     measureargs.pop('image')
+    nimage = len(image_list)
 
     if measureargs.get('run_calibs_only', False):
         measureargs['run_calibs'] = True
@@ -2938,14 +2940,11 @@ def main(image_list=None,args=None):
     #trymakedirs(outdir)
     t0 = ptime('parse-args', t0)
     for ii, imgfn in enumerate(image_list):
-        print('Working on image {}/{}: {}'.format(ii, nimage, img_fn))
+        print('Working on image {}/{}: {}'.format(ii+1, nimage, imgfn))
         
-        # Check if zpt already written
-        pdb.set_trace()
-        
+        # Check if the outputs are done and have the correct data model.
         F = outputFns(imgfn, outdir, debug=measureargs['debug'])
 
-        # Validate the data model of every file
         measure = measure_image(imgfn, just_measure=True, **measureargs)
 
         dozpt = np.zeros(3).astype(bool) # assume all are done
@@ -2966,10 +2965,10 @@ def main(image_list=None,args=None):
             continue
 
         # Create the file
-        t0=ptime('b4-run',t0)
+        t0 = ptime('b4-run',t0)
         runit(F.imgfn, F.starfn_photom, F.legfn, F.annfn, **measureargs)
-        t0=ptime('after-run',t0)
-    tnow= Time()
+        t0 = ptime('after-run',t0)
+    tnow = Time()
     print("TIMING:total %s" % (tnow-tbegin,))
     print("Done")
 
