@@ -525,6 +525,7 @@ class Measurer(object):
             wt[bitmask > 0] = 0.
 
         assert(np.all(wt >= 0.))
+        assert(np.all(np.isfinite(wt)))
 
         return wt
 
