@@ -118,8 +118,6 @@ def _ccds_table(camera='decam'):
         ('pixscale', 'f4'),   
         ('zptavg', '>f4'),   
         ('yshift', 'bool'),
-        # yuck
-        ('fixed_sky', 'bool'),
         # -- CCD-level quantities --
         ('ra', '>f8'),        
         ('dec', '>f8'),      
@@ -1151,16 +1149,6 @@ class Measurer(object):
         #ccds['fwhm'] = psf.fwhm
 
         if np.any(self.invvar[self.bitmask != 0] != 0):
-            # FIX SPLINESKIES that got hit by the fpack >0 weight bug
-            if splinesky:
-                fn = self.get_splinesky_unmerged_filename()
-                if os.path.exists(fn):
-                    print('Deleting bad splinesky file', fn)
-                    os.remove(fn)
-                print('Re-running splinesky calib')
-                self.run_calibs(survey, self.ext, psfex=False, read_hdu=False)
-                ccds['fixed_sky'] = True
-
             print('Resetting', np.sum(self.invvar[self.bitmask != 0] != 0), 'bad invvar pixels')
             self.invvar[self.bitmask != 0] = 0.
 
@@ -2662,15 +2650,6 @@ def measure_image(img_fn, run_calibs=False, run_calibs_only=False,
 
     #print('all_ccds:', type(all_ccds))
     #print(all_ccds)
-
-    # This is so ugly -- if we deleted and re-created the splinesky model, re-merge the files.
-    if np.any(all_ccds['fixed_sky']):
-        do_merge_splinesky = True
-    if do_merge_psfex or do_merge_splinesky:
-        if calib_ccds is None:
-            calib_ccds = mp.map(run_one_calib, [(measure, survey, ext, False, splinesky) for ext in extlist])
-        do_merge_calibs(measure, survey, calib_ccds, do_merge_splinesky, do_merge_psfex)
-
     # print('all_stars_photom:', all_stars_photom)
     # for p in all_stars_photom:
     #     print('  ', type(p), p)
