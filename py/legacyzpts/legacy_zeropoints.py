@@ -1116,7 +1116,7 @@ class Measurer(object):
         else:
             fit_img = self.img - sky_img
 
-        with np.seterr(invalid='ignore'):
+        with np.errstate(invalid='ignore'):
             # sqrt(0.) can trigger complaints; https://github.com/numpy/numpy/issues/11448
             ierr = np.sqrt(self.invvar)
 
@@ -1348,7 +1348,9 @@ class Measurer(object):
         for arcsec_diam in apertures_arcsec_diam:
             ap = photutils.CircularAperture(np.vstack((phot.x_fit, phot.y_fit)).T,
                                             arcsec_diam / 2. / self.pixscale)
-            apphot = photutils.aperture_photometry(fit_img, ap, error=1./ierr)
+            with np.errstate(invalid='ignore'):
+                err = 1./ierr
+            apphot = photutils.aperture_photometry(fit_img, ap, error=err, mask=(ierr==0))
             phot.set('apflux_%i'     % arcsec_diam, apphot.field('aperture_sum').data.astype(np.float32))
             phot.set('apflux_%i_err' % arcsec_diam, apphot.field('aperture_sum_err').data.astype(np.float32))
 
