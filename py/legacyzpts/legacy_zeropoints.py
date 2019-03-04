@@ -1379,7 +1379,7 @@ class Measurer(object):
 
         # Create subset table for Eddie's ubercal
         stars_photom = phot.copy()
-        cols = ['procdate', 'plver', 'expnum',
+        cols = [#'procdate', 'plver', 'expnum',
                 'ra', 'dec', 'flux', 'dflux', 'chi2', 'fracmasked', 'instpsfmag',
                 'dpsfmag',
                 'bitmask', 'x_fit', 'y_fit', 'gaia_sourceid', 'ra_gaia', 'dec_gaia',
@@ -1396,6 +1396,12 @@ class Measurer(object):
         for c in stars_photom.get_columns():
             if not c in cols:
                 stars_photom.delete_column(c)
+                
+        pdb.set_trace()
+        # add god's keys
+        gods_keys = ['plver', 'procdate']
+        for key in gods_keys:
+            stars_photom[key] = getattr(ccds, key)
 
         t0= ptime('all-computations-for-this-ccd',t0)
         # Plots for comparing to Arjuns zeropoints*.ps
@@ -1734,8 +1740,7 @@ class Measurer(object):
 
         # Add additional info
         stars_photom['nmatch']= ccds['nmatch_photom']
-        self.add_ccd_info_to_stars_table(stars_photom,
-                                         ccds)
+        self.add_ccd_info_to_stars_table(stars_photom, ccds)
         star_kwargs= {"keep": final_cut,
                       "obj":obj,
                       "objra":objra,
@@ -1774,7 +1779,6 @@ class Measurer(object):
             zptmed = zp0 + dmagmed
             ccds['zpt_wbadpix5'] = zptmed
 
-        pdb.set_trace()
         # star,empty string tuple if succeeded
         return stars_photom,''
 
