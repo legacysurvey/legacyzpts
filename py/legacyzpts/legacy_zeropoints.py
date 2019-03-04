@@ -1116,7 +1116,9 @@ class Measurer(object):
         else:
             fit_img = self.img - sky_img
 
-        ierr = np.sqrt(self.invvar)
+        with np.seterr(invalid='ignore'):
+            # sqrt(0.) can trigger complaints; https://github.com/numpy/numpy/issues/11448
+            ierr = np.sqrt(self.invvar)
 
         # Gaia
         ra,dec = radec_at_mjd(gaia.ra, gaia.dec, gaia.ref_epoch.astype(float),
