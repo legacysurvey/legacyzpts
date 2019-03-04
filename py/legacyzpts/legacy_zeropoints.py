@@ -1348,7 +1348,7 @@ class Measurer(object):
         for arcsec_diam in apertures_arcsec_diam:
             ap = photutils.CircularAperture(np.vstack((phot.x_fit, phot.y_fit)).T,
                                             arcsec_diam / 2. / self.pixscale)
-            with np.errstate(invalid='ignore'):
+            with np.errstate(divide='ignore'):
                 err = 1./ierr
             apphot = photutils.aperture_photometry(fit_img, ap, error=err, mask=(ierr==0))
             phot.set('apflux_%i'     % arcsec_diam, apphot.field('aperture_sum').data.astype(np.float32))
@@ -2629,7 +2629,7 @@ def run_one_ext(X):
     return rtns
 
 class outputFns(object):
-    def __init__(self, imgfn, outdir, debug=False):
+    def __init__(self, imgfn, outdir, camera, debug=False):
         """Assigns filename, makes needed dirs
 
         Args:
@@ -2651,7 +2651,8 @@ class outputFns(object):
 
         # Keep the last directory component
         dirname = os.path.basename(os.path.dirname(imgfn))
-        trymakedirs(os.path.join(outdir, dirname))
+        basedir = os.path.join(outdir, camera, dirname)
+        trymakedirs(basedir)
 
         basename = os.path.basename(imgfn) 
         # zpt,star fns
@@ -2664,9 +2665,9 @@ class outputFns(object):
             base += '-debug'
         #self.zptfn = os.path.join(outdir,dirname, base + '-zpt.fits')
         #self.starfn_astrom = os.path.join(outdir,dirname, base + '-astrom.fits')
-        self.starfn_photom = os.path.join(outdir,dirname, base + '-photom.fits')
-        self.legfn = os.path.join(outdir,dirname, base + '-legacypipe.fits')
-        self.annfn = os.path.join(outdir,dirname, base + '-annotated.fits')
+        self.starfn_photom = os.path.join(basedir, base + '-photom.fits')
+        self.legfn = os.path.join(basedir, base + '-legacypipe.fits')
+        self.annfn = os.path.join(basedir, base + '-annotated.fits')
             
 #def success(ccds,imgfn, debug=False, choose_ccd=None):
 #    num_ccds= dict(decam=60,mosaic=4)
@@ -2877,7 +2878,7 @@ def main(image_list=None,args=None):
         print('Working on image {}/{}: {}'.format(ii+1, nimage, imgfn))
         
         # Check if the outputs are done and have the correct data model.
-        F = outputFns(imgfn, outdir, debug=measureargs['debug'])
+        F = outputFns(imgfn, outdir, camera, debug=measureargs['debug'])
 
         measure = measure_image(imgfn, just_measure=True, **measureargs)
 
