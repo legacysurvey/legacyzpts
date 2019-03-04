@@ -2631,6 +2631,8 @@ def measure_image(img_fn, run_calibs=False, run_calibs_only=False,
         do_merge_calibs(measure, survey, calib_ccds, do_merge_splinesky, do_merge_psfex)
         return
 
+    pdb.set_trace()
+
     rtns = mp.map(run_one_ext, [(measure, ext, survey, psfex, splinesky, measureargs['debug'])
                                 for ext in extlist])
 
@@ -2868,8 +2870,8 @@ def get_parser():
                         help='Create PsfEx and splinesky files if they do not already exist')
     parser.add_argument('--run-calibs-only', default=False, action='store_true',
                         help='Only ensure calib files exist, do not compute zeropoints.')
-    parser.add_argument('--psf', default=True, action='store_true',
-                        help='Use PsfEx model for astrometry & photometry')
+    parser.add_argument('--no-psf', default=False, action='store_true',
+                        help='Do not use PsfEx model for astrometry & photometry')
     parser.add_argument('--splinesky', default=False, action='store_true',
                         help='Use spline sky model for sky subtraction?')
     parser.add_argument('--calibdir', default=None, action='store',
@@ -2906,7 +2908,7 @@ def main(image_list=None,args=None):
         if cal is not None:
             measureargs['calibdir'] = os.path.join(cal, 'calib')
 
-    psf = measureargs['psf']
+    psf = not measureargs['no_psf']
     camera = measureargs['camera']
 
     survey = FakeLegacySurveyData()
