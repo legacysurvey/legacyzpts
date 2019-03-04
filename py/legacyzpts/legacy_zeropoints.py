@@ -556,8 +556,8 @@ class Measurer(object):
     def remap_bitmask(self, mask):
         return mask
     
-    def read_weight(self, scale=True):
-        fn= get_weight_fn(self.fn)
+    def read_weight(self, scale=True, bitmask=None):
+        fn = get_weight_fn(self.fn)
 
         if self.slc is not None:
             wt = fitsio.FITS(fn)[self.ext][self.slc]
@@ -566,6 +566,14 @@ class Measurer(object):
 
         if scale:
             wt = self.scale_weight(wt)
+
+        if bitmask is not None:
+            # Set all masked pixels to have weight zero.
+            # bitmask value 1 = bad
+            wt[bitmask > 0] = 0.
+
+        assert(np.all(wt >= 0.))
+
         return wt
 
     def read_image(self):
@@ -872,7 +880,8 @@ class Measurer(object):
             print('Exptime = 0')
             return self.return_on_error(err_message='Exptime = 0', ccds=ccds)
 
-        weight = self.read_weight(scale=False)
+        self.bitmask = self.read_bitmask()
+        weight = self.read_weight(bitmask=self.bitmask, scale=False)
         if np.all(weight == 0):
             txt = 'All weight-map pixels are zero'
             print(txt)
@@ -894,7 +903,6 @@ class Measurer(object):
                 return self.return_on_error(err_message='Bad PSF model', ccds=ccds)
 
         self.img,hdr = self.read_image()
-        self.bitmask = self.read_bitmask()
 
         # Per-pixel error -- weight is 1/sig*2, scaled by scale_weight()
         medweight = np.median(weight[(weight > 0) * (self.bitmask == 0)])
@@ -2129,7 +2137,8 @@ class Measurer(object):
             return ccd
 
         # Check for all-zero weight maps
-        wt = self.read_weight()
+        bitmask = self.read_bitmask()
+        wt = self.read_weight(bitmask=bitmask)
         if np.all(wt == 0):
             print('Weight map is all zero -- skipping')
             return
@@ -2235,20 +2244,6 @@ class DecamMeasurer(Measurer):
 
     def get_wcs(self):
         return wcs_pv2sip_hdr(self.hdr) # PV distortion
-
-    def read_weight(self, clip=True, clipThresh=0.01, **kwargs):
-        invvar = super(DecamMeasurer, self).read_weight(**kwargs)
-        # from legacypipe/image.py : read_invvar_clipped
-        if clip:
-            # Clamp near-zero (incl negative!) invvars to zero.
-            # These arise due to fpack.
-            if clipThresh > 0.:
-                med = np.median(invvar[invvar > 0])
-                thresh = clipThresh * med
-            else:
-                thresh = 0.
-            invvar[invvar < thresh] = 0
-        return invvar
 
     def remap_bitmask(self, mask):
         from legacypipe.image import remap_dq_cp_codes
