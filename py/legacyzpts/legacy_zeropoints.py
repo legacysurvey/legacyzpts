@@ -1379,7 +1379,8 @@ class Measurer(object):
 
         # Create subset table for Eddie's ubercal
         stars_photom = phot.copy()
-        cols = ['ra', 'dec', 'flux', 'dflux', 'chi2', 'fracmasked', 'instpsfmag',
+        cols = ['procdate', 'plver', 'expnum',
+                'ra', 'dec', 'flux', 'dflux', 'chi2', 'fracmasked', 'instpsfmag',
                 'dpsfmag',
                 'bitmask', 'x_fit', 'y_fit', 'gaia_sourceid', 'ra_gaia', 'dec_gaia',
                 'phot_g_mean_mag', 'phot_bp_mean_mag', 'phot_rp_mean_mag',
@@ -1773,6 +1774,7 @@ class Measurer(object):
             zptmed = zp0 + dmagmed
             ccds['zpt_wbadpix5'] = zptmed
 
+        pdb.set_trace()
         # star,empty string tuple if succeeded
         return stars_photom,''
 
