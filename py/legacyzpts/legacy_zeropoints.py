@@ -154,7 +154,8 @@ def _stars_table(nstars=1):
     '''
     cols = [('image_filename', 'S100'),('image_hdu', '>i2'),
             ('expid', 'S16'), ('filter', 'S1'),('nmatch', '>i2'), 
-            ('x', 'f4'), ('y', 'f4'),('expnum', '>i8'),
+            ('x', 'f4'), ('y', 'f4'), ('expnum', '>i8'),
+            ('plver', 'S6'), ('procdate', 'S19'),
             ('gain', 'f4'),
             ('ra', 'f8'), ('dec', 'f8'), ('apmag', 'f4'),('apflux', 'f4'),('apskyflux', 'f4'),('apskyflux_perpix', 'f4'),
             ('radiff', 'f8'), ('decdiff', 'f8'),
@@ -179,6 +180,8 @@ def cols_for_legacypipe_table(which='all'):
         when compute it)
     """
     assert(which in ['all','numeric','nonzero_diff'])
+    martins_keys = ['airmass', 'ccdskymag']
+    gods_keys = ['plver', 'procdate']
     if which == 'all':
         need_arjuns_keys= ['ra','dec','ra_bore','dec_bore',
                            'image_filename','image_hdu','expnum','ccdname','object',
@@ -190,7 +193,6 @@ def cols_for_legacypipe_table(which='all'):
                            'cd1_1','cd2_2','cd1_2','cd2_1',
                            'crval1','crval2','crpix1','crpix2']
         dustins_keys= ['skyrms', 'sig1', 'yshift']
-        martins_keys = ['airmass', 'ccdskymag']
     elif which == 'numeric':
         need_arjuns_keys= ['ra','dec','ra_bore','dec_bore',
                            'expnum',
@@ -200,20 +202,18 @@ def cols_for_legacypipe_table(which='all'):
                            'cd1_1','cd2_2','cd1_2','cd2_1',
                            'crval1','crval2','crpix1','crpix2']
         dustins_keys= ['skyrms']
-        martins_keys = ['airmass', 'ccdskymag']
     elif which == 'nonzero_diff':
         need_arjuns_keys= ['ra','dec','ccdnmatch',
                            'fwhm','zpt','ccdzpt','ccdraoff','ccddecoff']
         dustins_keys= ['skyrms']
-        martins_keys = ['airmass','ccdskymag']
-    return need_arjuns_keys + dustins_keys + martins_keys
+    return need_arjuns_keys + dustins_keys + martins_keys + gods_keys
  
 def create_legacypipe_table(T, legfn, camera=None, psf=False, bad_expid=None):
     """input _ccds_table fn
     output a table formatted for legacypipe/runbrick
     """
     assert(camera in CAMERAS)
-    need_keys= cols_for_legacypipe_table(which='all')
+    need_keys = cols_for_legacypipe_table(which='all')
     # Rename
     rename_keys= [('zpt','ccdzpt'),
                   ('zptavg','zpt'),
@@ -1742,7 +1742,7 @@ class Measurer(object):
         ccds['nmatch_photom'] = len(obj[final_cut])
         print('Photometry %s stars after obj cuts' % ccds['nmatch_photom'])
 
-        stars_photom = _stars_table(nstars= ccds['nmatch_photom'])
+        stars_photom = _stars_table(nstars=ccds['nmatch_photom'])
         stars_photom['apmag'] = phot['apmags'][final_cut]
         stars_photom['ps1_mag'] = ps1.legacy_survey_mag[final_cut]
 
@@ -1978,9 +1978,11 @@ class Measurer(object):
             stars: the stars table
             ccds: ccds table
         """
-        stars['image_filename'] =ccds['image_filename']
+        stars['image_filename'] = ccds['image_filename']
         stars['image_hdu']= ccds['image_hdu'] 
         stars['expnum'] = self.expnum
+        stars['plver'] = self.plver
+        stars['procdate'] = self.procdate
         stars['expid'] = self.expid
         stars['filter'] = self.band
         stars['ccdname'] = self.ccdname
@@ -2722,7 +2724,7 @@ class outputFns(object):
             base = base[:-len('.fits')]
         if debug:
             base += '-debug'
-        self.zptfn = os.path.join(outdir,dirname, base + '-zpt.fits')
+        #self.zptfn = os.path.join(outdir,dirname, base + '-zpt.fits')
         #self.starfn_astrom = os.path.join(outdir,dirname, base + '-astrom.fits')
         self.starfn_photom = os.path.join(outdir,dirname, base + '-photom.fits')
         self.legfn = os.path.join(outdir,dirname, base + '-legacypipe.fits')
@@ -2751,14 +2753,15 @@ def writeto_via_temp(outfn, obj, func_write=False, **kwargs):
         obj.writeto(tempfn, **kwargs)
     os.rename(tempfn, outfn)
 
-def runit(imgfn,zptfn,starfn_photom,starfn_astrom, legfn, annfn,
-          psf=False, bad_expid=None, survey=None, run_calibs_only=False, **measureargs):
+def runit(imgfn, starfn_photom, legfn, annfn, psf=False, bad_expid=None,
+          survey=None, run_calibs_only=False, **measureargs):
     '''Generate a legacypipe-compatible CCDs file for a given image.
     '''
 
     t0 = Time()
 
     results = measure_image(imgfn, psf=psf, survey=survey, run_calibs_only=run_calibs_only, **measureargs)
+    pdb.set_trace()
     if run_calibs_only:
         return
 
@@ -2767,17 +2770,16 @@ def runit(imgfn,zptfn,starfn_photom,starfn_astrom, legfn, annfn,
 
     img_primhdr = extra_info.pop('primhdr')
 
-    # Write out.
-    if False:
-        writeto_via_temp(zptfn, ccds, func_write=True, overwrite=True)
-        # Header <-- fiducial zp,ext, also exptime, pixscale
-        hdulist = fits_astropy.open(zptfn, mode='update')
-        prihdr = hdulist[0].header
-        for key,val in extra_info.items():
-            prihdr[key] = val
-        hdulist.close() # Save changes
-        print('Wrote {}'.format(zptfn))
-
+    ## Write out.
+    #if False:
+    #    writeto_via_temp(zptfn, ccds, func_write=True, overwrite=True)
+    #    # Header <-- fiducial zp,ext, also exptime, pixscale
+    #    hdulist = fits_astropy.open(zptfn, mode='update')
+    #    prihdr = hdulist[0].header
+    #    for key,val in extra_info.items():
+    #        prihdr[key] = val
+    #    hdulist.close() # Save changes
+    #    print('Wrote {}'.format(zptfn))
 
     # Two stars tables
     primhdr = img_primhdr
@@ -2944,26 +2946,27 @@ def main(image_list=None,args=None):
         # Validate the data model of every file
         measure = measure_image(imgfn, just_measure=True, **measureargs)
 
-        for zptfile in (F.starfn_photom, F.legfn, F.annfn):
-            zptdoit = False
-            if os.path.exists(zptfile):
+        dozpt = np.zeros(3).astype(bool) # assume all are done
+        for ii, zptfile in enumerate((F.starfn_photom, F.legfn, F.annfn)):
+            if not os.path.exists(zptfile):
+                dozpt[ii] = True
+            else:
+                # Check the data model
                 cols = fitsio.FITS(zptfile)[1].get_colnames()
                 for key in ('procdate', 'plver', 'expnum'):
                     if key not in cols:
                         print('Warning: outdated data model: {} (missing {})'.format(
                             zptfile, key.upper()))
-                        zptdoit = True
-            else:
-                zptdoit = False
+                        dozpt[ii] = True
+                print(zptfile, dozpt[ii])
 
-        if not zptdoit:
+        if np.all(~dozpt):
             print('Already finished: {}'.format(F.annfn))
             continue
-        
+
         # Create the file
         t0=ptime('b4-run',t0)
-        runit(F.imgfn,F.zptfn,F.starfn_photom,F.starfn_astrom, F.legfn, F.annfn,
-              **measureargs)
+        runit(F.imgfn, F.starfn_photom, F.legfn, F.annfn, **measureargs)
         t0=ptime('after-run',t0)
     tnow= Time()
     print("TIMING:total %s" % (tnow-tbegin,))
