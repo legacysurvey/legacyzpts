@@ -2538,9 +2538,7 @@ def measure_image(img_fn, run_calibs=False, run_calibs_only=False,
     the FITS extensions for a given set of images.
     '''
     from astrometry.util.multiproc import multiproc
-    t0= Time()
-
-    print('Working on {}'.format(img_fn))
+    t0 = Time()
 
     # Fitsio can throw error: ValueError: CONTINUE not supported
     try:
@@ -2575,7 +2573,6 @@ def measure_image(img_fn, run_calibs=False, run_calibs_only=False,
     extlist = get_extlist(camera, img_fn, 
                           debug=measureargs['debug'],
                           choose_ccd=measureargs['choose_ccd'])
-    nnext = len(extlist)
 
     if camera == 'decam':
         measure = DecamMeasurer(img_fn, **measureargs)
@@ -2585,14 +2582,15 @@ def measure_image(img_fn, run_calibs=False, run_calibs_only=False,
         measure = NinetyPrimeMeasurer(img_fn, **measureargs)
     elif camera == 'megaprime':
         measure = MegaPrimeMeasurer(img_fn, **measureargs)
+        
+    if just_measure:
+        return measure
+
     extra_info= dict(zp_fid = measure.zeropoint( measure.band ),
                      ext_fid = measure.extinction( measure.band ),
                      exptime = measure.exptime,
                      pixscale = measure.pixscale,
                      primhdr = measure.primhdr)
-
-    if just_measure:
-        return measure
 
     mp = multiproc(nthreads=(threads or 1))
     
@@ -2691,7 +2689,7 @@ def run_one_ext(X):
     return rtns
 
 class outputFns(object):
-    def __init__(self,imgfn,outdir, debug=False):
+    def __init__(self, imgfn, outdir, debug=False):
         """Assigns filename, makes needed dirs
 
         Args:
@@ -2869,7 +2867,7 @@ def get_parser():
                         help='Create PsfEx and splinesky files if they do not already exist')
     parser.add_argument('--run-calibs-only', default=False, action='store_true',
                         help='Only ensure calib files exist, do not compute zeropoints.')
-    parser.add_argument('--psf', default=False, action='store_true',
+    parser.add_argument('--psf', default=True, action='store_true',
                         help='Use PsfEx model for astrometry & photometry')
     parser.add_argument('--splinesky', default=False, action='store_true',
                         help='Use spline sky model for sky subtraction?')
@@ -2891,7 +2889,7 @@ def main(image_list=None,args=None):
     assert(not args is None)
     assert(not image_list is None)
     t0 = Time()
-    tbegin=t0
+    tbegin = t0
     
     # Build a dictionary with the optional inputs.
     measureargs = vars(args)
@@ -2915,15 +2913,15 @@ def main(image_list=None,args=None):
     measureargs.update(survey=survey)
 
     if psf and camera in ['mosaic', 'decam', 'megaprime', '90prime']:
-        if camera in ['mosaic', 'decam']:
+        if camera in ['mosaic', 'decam', '90prime']:
             from legacyzpts.psfzpt_cuts import read_bad_expid
 
             fn = resource_filename('legacyzpts', 'data/{}-bad_expid.txt'.format(camera))
             if os.path.isfile(fn):
                 print('Reading {}'.format(fn))
-                measureargs.update(bad_expid = read_bad_expid(fn))
+                measureargs.update(bad_expid=read_bad_expid(fn))
             else:
-                print('No bad exposure file for camera {}'.format(camera))
+                print('No bad exposure file found for camera {}'.format(camera))
 
         cal = measureargs.get('calibdir')
         if cal is not None:
@@ -2934,12 +2932,17 @@ def main(image_list=None,args=None):
             survey.image_typemap['megaprime'] = MegaPrimeImage
         except:
             print('MegaPrimeImage class not found')
+            raise IOError
 
     outdir = measureargs.pop('outdir')
-    trymakedirs(outdir)
-    t0=ptime('parse-args',t0)
-    for imgfn in image_list:
+    #trymakedirs(outdir)
+    t0 = ptime('parse-args', t0)
+    for ii, imgfn in enumerate(image_list):
+        print('Working on image {}/{}: {}'.format(ii, nimage, img_fn))
+        
         # Check if zpt already written
+        pdb.set_trace()
+        
         F = outputFns(imgfn, outdir, debug=measureargs['debug'])
 
         # Validate the data model of every file
