@@ -12,9 +12,6 @@ import datetime
 import sys
 
 import numpy as np
-from glob import glob
-from pickle import dump
-from scipy.optimize import curve_fit
 from scipy.stats import sigmaclip
 from scipy.ndimage.filters import median_filter
 
@@ -2069,8 +2066,10 @@ class Measurer(object):
         ccd.width = self.width
         ccd.height = self.height
         ccd.arawgain = self.gain
-        ccd.wrote_sky = do_sky
-        ccd.wrote_psf = do_psf
+
+        ccd.sig1 = None
+        ccd.plver = self.plver
+        ccd.procdate = self.procdate
 
         if (not do_psf) and (not do_sky):
             # Nothing to do!
