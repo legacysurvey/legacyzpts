@@ -274,7 +274,8 @@ def create_annotated_table(leg_fn, ann_fn, camera, survey, psf=False):
     T = fits_table(leg_fn)
     T = survey.cleanup_ccds_table(T)
     init_annotations(T)
-    annotate(T, survey, mzls=(camera == 'mosaic'), normalizePsf=psf)
+    annotate(T, survey, mzls=(camera == 'mosaic'), bass=(camera == '90prime'),
+             normalizePsf=psf, carryOn=False)
     writeto_via_temp(ann_fn, T)
     print('Wrote %s' % ann_fn)
 
