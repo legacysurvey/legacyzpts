@@ -2725,7 +2725,7 @@ def runit(imgfn, starfn_photom, legfn, annfn, psf=False, bad_expid=None,
     #print(primhdr)
     hdr = fitsio.FITSHDR()
     for key in ['AIRMASS', 'OBJECT', 'TELESCOP', 'INSTRUME', 'EXPTIME',
-                'DATE-OBS', 'MJD-OBS', 'EXPNUM', 'PROGRAM', 'OBSERVER',
+                'DATE-OBS', 'MJD-OBS', 'PROGRAM', 'OBSERVER',
                 'PROPID', 'FILTER', 'HA', 'ZD', 'AZ', 'DOMEAZ', 'HUMIDITY',
                 'PLVER',
                 ]:
@@ -2736,6 +2736,7 @@ def runit(imgfn, starfn_photom, legfn, annfn, psf=False, bad_expid=None,
             v = v.strip()
         hdr.add_record(dict(name=key, value=v,
                             comment=primhdr.get_comment(key)))
+    hdr.add_record(dict(name='EXPNUM', value=measure.expnum, comment='Exposure number'))
     hdr.add_record(dict(name='PROCDATE', value=measure.procdate, comment='CP processing date'))
     hdr.add_record(dict(name='RA_BORE', value=hmsstring2ra(primhdr['RA']), comment='Boresight RA'))
     hdr.add_record(dict(name='DEC_BORE', value=dmsstring2dec(primhdr['DEC']), comment='Boresight Dec'))
