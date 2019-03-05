@@ -867,7 +867,7 @@ class Measurer(object):
 
         # Measure the sky brightness and (sky) noise level.
         zp0 = self.zeropoint(self.band)
-        print('Computing the sky background.')
+        #print('Computing the sky background.')
         sky_img, skymed, skyrms = self.get_sky_and_sigma(self.img)
         img_sub_sky= self.img - sky_img
 
@@ -875,7 +875,7 @@ class Measurer(object):
         # Median of absolute deviation (MAD), std dev = 1.4826 * MAD
         print('sky from median of image= %.2f' % skymed)
         skybr = zp0 - 2.5*np.log10(skymed / self.pixscale / self.pixscale / exptime)
-        print('  Sky brightness: {:.3f} mag/arcsec^2 (assuming nominal zeropoint)'.format(skybr))
+        print('Sky brightness: {:.3f} mag/arcsec^2 (assuming nominal zeropoint)'.format(skybr))
 
         ccds['skyrms'] = skyrms / exptime # e/sec
         ccds['skycounts'] = skymed / exptime # [electron/pix]
@@ -2757,13 +2757,12 @@ def runit(imgfn, starfn_photom, legfn, annfn, psf=False, bad_expid=None,
 
     accds = astropy_to_astrometry_table(ccds)
 
-    # zpt --> Legacypipe table
+    # Legacypipe table
     create_legacypipe_table(accds, legfn, camera=measureargs['camera'],
                             psf=psf, bad_expid=bad_expid)
     # legacypipe --> annotated
     create_annotated_table(legfn, annfn, measureargs['camera'], survey, psf=psf)
 
-    # Clean up
     t0 = ptime('write-results-to-fits',t0)
     
 def parse_coords(s):
@@ -2882,13 +2881,18 @@ def main(image_list=None,args=None):
 
         measure = measure_image(imgfn, just_measure=True, **measureargs)
 
-        zptok = ([validate_procdate_plver(fn, 'table', measure.expnum,
-                                     measure.plver, measure.procdate)
-                for fn in [F.legfn, F.annfn]] +
-                 [validate_procdate_plver(F.starfn_photom, 'header', measure.expnum,
-                                          measure.plver, measure.procdate, ext=1)])
-        if np.all(zptok):
+        legok,annok = [validate_procdate_plver(fn, 'table', measure.expnum,
+                                               measure.plver, measure.procdate)
+                       for fn in [F.legfn, F.annfn]]
+        photok = validate_procdate_plver(F.starfn_photom, 'header', measure.expnum,
+                                         measure.plver, measure.procdate, ext=1)
+        if legok and annok and photok:
             print('Already finished: {}'.format(F.annfn))
+            continue
+
+        if legok and photok:
+            # legacypipe --> annotated
+            create_annotated_table(F.legfn, F.annfn, camera, survey, psf=psf)
             continue
 
         # Create the file
