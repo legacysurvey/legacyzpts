@@ -2558,6 +2558,8 @@ def measure_image(img_fn, run_calibs_only=False,
     do_splinesky = splinesky
     do_psfex = psfex
 
+    # Validate the splinesky and psfex merged files, and (re)make them if
+    # they're missing.
     if splinesky:
         if validate_procdate_plver(measure.get_splinesky_merged_filename(),
                                'table', measure.expnum, measure.plver, measure.procdate):
@@ -2569,14 +2571,9 @@ def measure_image(img_fn, run_calibs_only=False,
 
     if do_splinesky or do_psfex:
         # for DR8, allow grabbing old PsfEx individual-CCD PsfEx files
-        be_forgiving=True
+        be_forgiving = True
         ccds = mp.map(run_one_calib, [(measure, survey, ext, do_psfex, do_splinesky, be_forgiving)
                                       for ext in extlist])
-        for ii, cc in enumerate(ccds):
-            if cc is None:
-                pdb.set_trace()
-            if cc.camera != 'decam':
-                pdb.set_trace()
         
         from legacypipe.merge_calibs import merge_splinesky, merge_psfex
         class FakeOpts(object):
@@ -2593,11 +2590,21 @@ def measure_image(img_fn, run_calibs_only=False,
             merge_psfex(survey, measure.expnum, ccds, psfoutfn, opts)
             print('Wrote {}'.format(psfoutfn))
 
+    # Now, if they're still missing it's because the entire exposure is borked
+    # (WCS failed, weight maps are all zero, etc.), so exit gracefully.
     if splinesky:
+        fn = measure.get_splinesky_merged_filename()
+        if not os.path.exists(fn):
+            print('Merged splinesky file not found {}'.format(fn))
+            return []
         if not validate_procdate_plver(measure.get_splinesky_merged_filename(),
-                                   'table', measure.expnum, measure.plver, measure.procdate):
+                                       'table', measure.expnum, measure.plver, measure.procdate):
             raise RuntimeError('Merged splinesky file did not validate!')
     if psfex:
+        fn = measure.get_psfex_merged_filename()
+        if not os.path.exists(fn):
+            print('Merged psfex file not found {}'.format(fn))
+            return []
         if not validate_procdate_plver(measure.get_psfex_merged_filename(),
                                    'table', measure.expnum, measure.plver, measure.procdate):
             raise RuntimeError('Merged psfex file did not validate!')
@@ -2728,6 +2735,10 @@ def runit(imgfn, starfn_photom, legfn, annfn, psf=False, bad_expid=None,
 
     results = measure_image(imgfn, psf=psf, survey=survey, run_calibs_only=run_calibs_only, **measureargs)
     if run_calibs_only:
+        return
+
+    if len(results) == 0:
+        print('All CCDs bad, quitting.')
         return
 
     ccds, stars_photom, stars_astrom, extra_info, measure = results
