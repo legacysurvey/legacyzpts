@@ -522,7 +522,7 @@ class Measurer(object):
             # bitmask value 1 = bad
             wt[bitmask > 0] = 0.
             
-        if clip:
+        if clip and np.sum(wt > 0) > 0:
             # Additionally clamp near-zero (incl negative!) weight to zero,
             # which arise due to fpack.
             if clipThresh > 0.:
@@ -2040,19 +2040,9 @@ class Measurer(object):
 
     def run_calibs(self, survey, ext, psfex=True, splinesky=True, read_hdu=True,
                    be_forgiving=False):
-        if not self.goodWcs:
-            print('WCS Failed; not trying to run calibs')
-            return
-        if self.exptime == 0:
-            print('Exptime = 0')
-            return
+
+        # Initialize with some basic data
         self.set_hdu(ext)
-        do_psf = False
-        do_sky = False
-        if psfex and self.get_psfex_model(be_forgiving=be_forgiving) is None:
-            do_psf = True
-        if splinesky and self.get_splinesky() is None:
-            do_sky = True
 
         ccd = FakeCCD()
         ccd.image_filename = self.fn
@@ -2085,6 +2075,19 @@ class Measurer(object):
         ccd.sig1 = None
         ccd.plver = self.plver
         ccd.procdate = self.procdate
+        
+        if not self.goodWcs:
+            print('WCS Failed; not trying to run calibs')
+            return ccd
+        if self.exptime == 0:
+            print('Exptime = 0')
+            return ccd
+        do_psf = False
+        do_sky = False
+        if psfex and self.get_psfex_model(be_forgiving=be_forgiving) is None:
+            do_psf = True
+        if splinesky and self.get_splinesky() is None:
+            do_sky = True
 
         if (not do_psf) and (not do_sky):
             # Nothing to do!
@@ -2096,7 +2099,7 @@ class Measurer(object):
         wt = self.read_weight(bitmask=bitmask)
         if np.all(wt == 0):
             print('Weight map is all zero -- skipping')
-            return
+            return ccd
 
         from legacypipe.survey import get_git_version
         im = survey.get_image_object(ccd)
@@ -2569,6 +2572,12 @@ def measure_image(img_fn, run_calibs_only=False,
         be_forgiving=True
         ccds = mp.map(run_one_calib, [(measure, survey, ext, do_psfex, do_splinesky, be_forgiving)
                                       for ext in extlist])
+        for ii, cc in enumerate(ccds):
+            if cc is None:
+                pdb.set_trace()
+            if cc.camera != 'decam':
+                pdb.set_trace()
+        
         from legacypipe.merge_calibs import merge_splinesky, merge_psfex
         class FakeOpts(object):
             pass
