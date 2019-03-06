@@ -2582,7 +2582,8 @@ def measure_image(img_fn, run_calibs_only=False,
         class FakeOpts(object):
             pass
         opts = FakeOpts()
-        opts.all_found=True
+        # Allow some CCDs to be missing, e.g., if the weight map is all zero.
+        opts.all_found = False
         if do_splinesky:
             skyoutfn = measure.get_splinesky_merged_filename()
             merge_splinesky(survey, measure.expnum, ccds, skyoutfn, opts)
@@ -2766,8 +2767,17 @@ def runit(imgfn, starfn_photom, legfn, annfn, psf=False, bad_expid=None,
     hdr.add_record(dict(name='PROCDATE', value=measure.procdate, comment='CP processing date'))
     hdr.add_record(dict(name='RA_BORE', value=hmsstring2ra(primhdr['RA']), comment='Boresight RA'))
     hdr.add_record(dict(name='DEC_BORE', value=dmsstring2dec(primhdr['DEC']), comment='Boresight Dec'))
-    hdr.add_record(dict(name='CCD_ZPT', value=ccds['zpt'][0], comment='Exposure median zeropoint'))
-    fwhm = np.median(ccds['fwhm'])
+
+    medzpt = np.nanmedian(ccds['zpt'])
+    if not np.isfinite(medzpt):
+        medzpt = 0.0
+    hdr.add_record(dict(name='CCD_ZPT', value=medzpt, comment='Exposure median zeropoint'))
+
+    goodfwhm = (ccds['fwhm'] > 0)
+    if np.sum(goodfwhm) > 0:
+        fwhm = np.median(ccds['fwhm'][goodfwhm])
+    else:
+        fwhm = 0.0
     pixscale = extra_info['pixscale']
     hdr.add_record(dict(name='FWHM', value=fwhm, comment='Exposure median FWHM (CP)'))
     hdr.add_record(dict(name='SEEING', value=fwhm * pixscale, comment='Exposure median seeing (FWHM*pixscale)'))
