@@ -506,7 +506,7 @@ class Measurer(object):
     def remap_bitmask(self, mask):
         return mask
     
-    def read_weight(self, scale=True, bitmask=None):
+    def read_weight(self, clip=True, clipThresh=0.1, scale=True, bitmask=None):
         fn = get_weight_fn(self.fn)
 
         if self.slc is not None:
@@ -521,7 +521,16 @@ class Measurer(object):
             # Set all masked pixels to have weight zero.
             # bitmask value 1 = bad
             wt[bitmask > 0] = 0.
-
+            
+        if clip:
+            # Additionally clamp near-zero (incl negative!) weight to zero,
+            # which arise due to fpack.
+            if clipThresh > 0.:
+                thresh = clipThresh * np.median(wt[wt > 0])
+            else:
+                thresh = 0.
+            wt[wt < thresh] = 0
+            
         assert(np.all(wt >= 0.))
         assert(np.all(np.isfinite(wt)))
 
