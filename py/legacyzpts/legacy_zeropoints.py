@@ -88,7 +88,7 @@ def _ccds_table(camera='decam'):
         ('procdate', 'S19'),         
         ('ccdname', 'S5'),         
         ('ccdnum', '>i2'),        
-        ('expid', 'S16'),        
+        ('expid', 'S17'),        
         ('object', 'S35'),      
         ('propid', 'S10'),     
         ('filter', 'S1'),     
