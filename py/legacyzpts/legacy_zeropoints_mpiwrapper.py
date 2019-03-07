@@ -13,7 +13,7 @@ try:
     from astrometry.util.ttime import Time
 except ImportError:
     pass
-from legacyzpts.legacy_zeropoints import get_parser,ptime,read_lines,try_mkdir,outputFns
+from legacyzpts.legacy_zeropoints import get_parser, ptime, read_lines, try_mkdir, outputFns
 from legacyzpts.legacy_zeropoints import main as legacy_main
 
 ######## 
@@ -106,17 +106,18 @@ if __name__ == "__main__":
         images= [args.image]
 
     if args.nproc > 1:
-        image_list= np.array_split(images, comm.size)[comm.rank]
+        image_list = np.array_split(images, comm.size)[comm.rank]
     else:
-        image_list= np.array_split(images, 1)[0]
+        image_list = np.array_split(images, 1)[0]
     print('comm.rank=%d working on %d/%d images' % (comm.rank, len(image_list),len(images)))
     if args.nproc > 1:
         kwargs= dict(camera=args.camera)
         for projfn in image_list:
-            # args modified by legacy_mean so hand it a copy
-            args_copy= argparse.Namespace(**vars(args))
-            F= outputFns(projfn,args_copy.outdir,**kwargs)
-            logfn= F.zptfn.replace('-zpt.fits','.log')
+            # args modified by legacy_main so hand it a copy
+            args_copy = argparse.Namespace(**vars(args))
+            F = outputFns(projfn,args_copy.outdir,**kwargs)
+            logfn = F.zptfn.replace('-legacypipe.fits','.log')
+            #logfn = F.zptfn.replace('-zpt.fits','.log')
             print('rank %d logfn=%s' % (comm.rank,logfn))
             try_mkdir(os.path.dirname(logfn))    
             # Log to unique file

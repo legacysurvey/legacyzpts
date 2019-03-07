@@ -270,6 +270,12 @@
 432858 expfactor=0.008  seeing=1.284
 432859 expfactor=0.012  seeing=0.986
 433305 expfactor=0.282  seeing=1.210
+
+# Non-DECaLS exposures
+454540 HMAP, not a science exposure but a T&E calibration
+458441 Isolated controller glitch, visible in the raw, effects one backplane
+
+
 483634 expfactor=0.168  seeing=1.339
 483636 expfactor=0.250  seeing=1.484
 483692 expfactor=0.203  seeing=1.531
@@ -3125,4 +3131,45 @@
 820566 expfactor=0.090  seeing=1.201  filter=g  pass=1
 820569 expfactor=0.149  seeing=1.348  filter=g  pass=1
 820584 expfactor=0.252  seeing=1.031  filter=g  pass=2
+
+# 2019-03-02
+829486 expfactor=0.211  seeing=1.222  filter=g  pass=2
+829487 expfactor=0.257  seeing=1.306  filter=g  pass=1
+829488 expfactor=0.041  seeing=1.350  filter=g  pass=2
+829489 expfactor=0.074  seeing=1.306  filter=g  pass=2
+829490 expfactor=0.173  seeing=1.243  filter=g  pass=1
+829493 expfactor=0.108  seeing=1.507  filter=g  pass=3
+829494 expfactor=0.064  seeing=1.545  filter=g  pass=2
+829495 expfactor=0.019  seeing=1.632  filter=g  pass=2
+829497 expfactor=0.197  seeing=1.159  filter=z  pass=1
+829501 expfactor=0.256  seeing=1.406  filter=z  pass=3
+829502 expfactor=0.010  seeing=1.651  filter=g  pass=2
+829503 expfactor=0.018  seeing=1.296  filter=z  pass=3
+829504 expfactor=0.013  seeing=1.379  filter=z  pass=2
+829524 expfactor=0.012  seeing=1.232  filter=g  pass=2
+829525 expfactor=0.012  seeing=0.998  filter=z  pass=3
+829526 expfactor=0.022  seeing=1.201  filter=z  pass=3
+829527 expfactor=0.099  seeing=1.438  filter=z  pass=2
+
+# 2019-03-03
+#829697 expfactor=0.723  seeing=1.704  filter=r  pass=1
+829699 expfactor=0.625  seeing=2.140  filter=g  pass=1
+829700 expfactor=0.507  seeing=2.440  filter=g  pass=2
+#829701 expfactor=0.899  seeing=1.999  filter=z  pass=1
+829720 expfactor=0.551  seeing=2.120  filter=g  pass=1
+#829721 expfactor=1.342  seeing=1.882  filter=r  pass=1
+#829724 expfactor=0.861  seeing=2.019  filter=g  pass=1
+#829751 expfactor=0.989  seeing=1.916  filter=g  pass=1
+829755 expfactor=0.751  seeing=2.024  filter=r  pass=1
+#829756 expfactor=1.209  seeing=1.800  filter=g  pass=1
+#829758 expfactor=0.924  seeing=1.706  filter=r  pass=1
+829763 expfactor=0.717  seeing=2.010  filter=r  pass=1
+829764 expfactor=0.723  seeing=2.188  filter=g  pass=1
+#829767 expfactor=1.171  seeing=1.703  filter=r  pass=1
+#829768 expfactor=0.979  seeing=1.979  filter=g  pass=1
+
+# 2019-03-04
+
+# 2019-03-05
+830281 expfactor=0.0000 seeing=1.588  filter=r  pass=2
 
