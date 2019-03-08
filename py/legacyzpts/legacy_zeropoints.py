@@ -167,8 +167,8 @@ def get_pixscale(camera='decam'):
           '90prime':0.470,
           'megaprime':0.185}[camera]
 
-def cols_for_legacypipe_table(which='all'):
-    """Return list of -legacypipe.fits table colums
+def cols_for_survey_table(which='all'):
+    """Return list of -survey.fits table colums
 
     Args:
         which: all, numeric, 
@@ -204,12 +204,12 @@ def cols_for_legacypipe_table(which='all'):
         dustins_keys= ['skyrms']
     return need_arjuns_keys + dustins_keys + martins_keys + gods_keys
  
-def create_legacypipe_table(T, legfn, camera=None, psf=False, bad_expid=None):
+def create_survey_table(T, surveyfn, camera=None, psf=False, bad_expid=None):
     """input _ccds_table fn
     output a table formatted for legacypipe/runbrick
     """
     assert(camera in CAMERAS)
-    need_keys = cols_for_legacypipe_table(which='all')
+    need_keys = cols_for_survey_table(which='all')
     # Rename
     rename_keys= [('zpt','ccdzpt'),
                   ('zptavg','zpt'),
@@ -263,8 +263,8 @@ def create_legacypipe_table(T, legfn, camera=None, psf=False, bad_expid=None):
         zpt_hi = dict(g=g0+dg[1], r=r0+dr[1], i=i0+dr[1], z=z0+dz[1])
         psf_zeropoint_cuts(T, 0.262, zpt_lo, zpt_hi, bad_expid, camera)
 
-    writeto_via_temp(legfn, T)
-    print('Wrote %s' % legfn)
+    writeto_via_temp(surveyfn, T)
+    print('Wrote %s' % surveyfn)
 
 def create_annotated_table(leg_fn, ann_fn, camera, survey, psf=False):
     from legacypipe.annotate_ccds import annotate, init_annotations
@@ -2697,27 +2697,10 @@ class outputFns(object):
             base = base[:-len('.fits')]
         if debug:
             base += '-debug'
-        #self.zptfn = os.path.join(outdir,dirname, base + '-zpt.fits')
-        #self.starfn_astrom = os.path.join(outdir,dirname, base + '-astrom.fits')
         self.starfn_photom = os.path.join(basedir, base + '-photom.fits')
-        self.legfn = os.path.join(basedir, base + '-legacypipe.fits')
+        self.surveyfn = os.path.join(basedir, base + '-survey.fits')
         self.annfn = os.path.join(basedir, base + '-annotated.fits')
             
-#def success(ccds,imgfn, debug=False, choose_ccd=None):
-#    num_ccds= dict(decam=60,mosaic=4)
-#    num_ccds['90prime']=4
-#    hdu= fitsio.FITS(imgfn)
-#    #if len(ccds) >= num_ccds.get(camera,0):
-#    if len(ccds) == len(hdu)-1:
-#        return True
-#    elif debug and len(ccds) >= 1:
-#        # only 1 ccds needs to be done if debuggin
-#        return True
-#    elif choose_ccd and len(ccds) >= 1:
-#        return True
-#    else:
-#        return False
-
 def writeto_via_temp(outfn, obj, func_write=False, **kwargs):
     tempfn = os.path.join(os.path.dirname(outfn), 'tmp-' + os.path.basename(outfn))
     if func_write:
@@ -2726,9 +2709,9 @@ def writeto_via_temp(outfn, obj, func_write=False, **kwargs):
         obj.writeto(tempfn, **kwargs)
     os.rename(tempfn, outfn)
 
-def runit(imgfn, starfn_photom, legfn, annfn, psf=False, bad_expid=None,
+def runit(imgfn, starfn_photom, surveyfn, annfn, psf=False, bad_expid=None,
           survey=None, run_calibs_only=False, **measureargs):
-    '''Generate a legacypipe-compatible CCDs file for a given image.
+    '''Generate a legacypipe-compatible (survey) CCDs file for a given image.
     '''
 
     t0 = Time()
@@ -2805,11 +2788,11 @@ def runit(imgfn, starfn_photom, legfn, annfn, psf=False, bad_expid=None,
 
     accds = astropy_to_astrometry_table(ccds)
 
-    # Legacypipe table
-    create_legacypipe_table(accds, legfn, camera=measureargs['camera'],
-                            psf=psf, bad_expid=bad_expid)
-    # legacypipe --> annotated
-    create_annotated_table(legfn, annfn, measureargs['camera'], survey, psf=psf)
+    # survey table
+    create_survey_table(accds, surveyfn, camera=measureargs['camera'],
+                        psf=psf, bad_expid=bad_expid)
+    # survey --> annotated
+    create_annotated_table(surveyfn, annfn, measureargs['camera'], survey, psf=psf)
 
     t0 = ptime('write-results-to-fits',t0)
     
@@ -2826,7 +2809,7 @@ def get_parser():
     '''return parser object, tells it what options to look for
     options can come from a list of strings or command line'''
     parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter,\
-                                     description='Generate a legacypipe-compatible CCDs file \
+                                     description='Generate a legacypipe-compatible (survey) CCDs file \
                                                   from a set of reduced imaging.')
     parser.add_argument('--camera',choices=['decam','mosaic','90prime','megaprime'],action='store',required=True)
     parser.add_argument('--image',action='store',default=None,help='relative path to image starting from decam,bok,mosaicz dir',required=False)
@@ -2931,7 +2914,7 @@ def main(image_list=None,args=None):
 
         legok,annok = [validate_procdate_plver(fn, 'table', measure.expnum,
                                                measure.plver, measure.procdate)
-                       for fn in [F.legfn, F.annfn]]
+                       for fn in [F.surveyfn, F.annfn]]
         photok = validate_procdate_plver(F.starfn_photom, 'header', measure.expnum,
                                          measure.plver, measure.procdate, ext=1)
         if legok and annok and photok:
@@ -2939,13 +2922,13 @@ def main(image_list=None,args=None):
             continue
 
         if legok and photok:
-            # legacypipe --> annotated
-            create_annotated_table(F.legfn, F.annfn, camera, survey, psf=psf)
+            # survey --> annotated
+            create_annotated_table(F.surveyfn, F.annfn, camera, survey, psf=psf)
             continue
 
         # Create the file
         t0 = ptime('b4-run',t0)
-        runit(F.imgfn, F.starfn_photom, F.legfn, F.annfn, **measureargs)
+        runit(F.imgfn, F.starfn_photom, F.surveyfn, F.annfn, **measureargs)
         t0 = ptime('after-run',t0)
     tnow = Time()
     print("TIMING:total %s" % (tnow-tbegin,))
@@ -3003,7 +2986,6 @@ def read_primary_header(fn):
             break
     ff.close()
     return hdr
-
    
 if __name__ == "__main__":
     parser= get_parser()  
@@ -3014,5 +2996,3 @@ if __name__ == "__main__":
         images= [args.image]
 
     main(image_list=images,args=args)
-
-
