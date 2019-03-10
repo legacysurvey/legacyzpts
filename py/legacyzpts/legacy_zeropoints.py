@@ -355,7 +355,8 @@ class Measurer(object):
 
     def __init__(self, fn, image_dir='images', aprad=3.5, skyrad_inner=7.0,
                  skyrad_outer=10.0, det_thresh=8., match_radius=3., sn_min=None,
-                 sn_max=None, aper_sky_sub=False, calibrate=False, **kwargs):
+                 sn_max=None, aper_sky_sub=False, calibrate=False, quiet=False,
+                 **kwargs):
         # Set extra kwargs
         self.ps1_pattern= kwargs['ps1_pattern']
         
@@ -421,9 +422,10 @@ class Measurer(object):
             setattr(self, attrkey.lower(), val)
 
         self.expnum = self.get_expnum(self.primhdr)
-        print('CP Header: EXPNUM = ',self.expnum)
-        print('CP Header: PROCDATE = ',self.procdate)
-        print('CP Header: PLVER = ',self.plver)
+        if not quiet:
+            print('CP Header: EXPNUM = ',self.expnum)
+            print('CP Header: PROCDATE = ',self.procdate)
+            print('CP Header: PLVER = ',self.plver)
         self.obj = self.primhdr['OBJECT']
 
     def get_good_image_subregion(self):
@@ -2850,6 +2852,7 @@ def get_parser():
                         help='if None will use LEGACY_SURVEY_DIR/calib, e.g. /global/cscratch1/sd/desiproc/dr5-new/calib')
     parser.add_argument('--threads', default=None, type=int,
                         help='Multiprocessing threads (parallel by HDU)')
+    parser.add_argument('--quiet', default=False, action='store_true', help='quiet down')
     return parser
 
 
