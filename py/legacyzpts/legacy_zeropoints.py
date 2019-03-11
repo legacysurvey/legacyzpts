@@ -759,7 +759,6 @@ class Measurer(object):
         if ccds is None:
             ccds= _ccds_table(self.camera)
             ccds['image_filename'] = self.fn_base
-        pdb.set_trace()
         ccds['err_message']= err_message
         ccds['zpt']= np.nan
         return ccds, stars_photom, stars_astrom
@@ -2049,7 +2048,6 @@ class Measurer(object):
         self.set_hdu(ext)
 
         ccd = FakeCCD()
-        pdb.set_trace()
         ccd.image_filename = self.fn_base
         ccd.image_hdu = self.image_hdu
         ccd.expnum = self.expnum
