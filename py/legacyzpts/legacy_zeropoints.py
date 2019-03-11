@@ -837,16 +837,16 @@ class Measurer(object):
         t0= ptime('header-info',t0)
 
         if not self.goodWcs:
-            print('WCS Failed')
+            print('WCS Failed on CCD {}'.format(self.ccdname))
             return self.return_on_error(err_message='WCS Failed', ccds=ccds)
         if self.exptime == 0:
-            print('Exptime = 0')
+            print('Exptime = 0 on CCD {}'.format(self.ccdname))
             return self.return_on_error(err_message='Exptime = 0', ccds=ccds)
 
         self.bitmask = self.read_bitmask()
         weight = self.read_weight(bitmask=self.bitmask, scale=False)
         if np.all(weight == 0):
-            txt = 'All weight-map pixels are zero'
+            txt = 'All weight-map pixels are zero on CCD {}'.format(self.ccdname)
             print(txt)
             return self.return_on_error(txt,ccds=ccds)
         # bizarro image CP20151119/k4m_151120_040715_oow_zd_v1.fits.fz
@@ -2080,10 +2080,10 @@ class Measurer(object):
         ccd.procdate = self.procdate
         
         if not self.goodWcs:
-            print('WCS Failed; not trying to run calibs')
+            print('WCS Failed on CCD {}, skipping calibs'.format(self.ccdname))
             return ccd
         if self.exptime == 0:
-            print('Exptime = 0')
+            print('Exptime = 0 on CCD {}, skipping calibs'.format(self.ccdname))
             return ccd
         do_psf = False
         do_sky = False
@@ -2101,7 +2101,7 @@ class Measurer(object):
         bitmask = self.read_bitmask()
         wt = self.read_weight(bitmask=bitmask)
         if np.all(wt == 0):
-            print('Weight map is all zero -- skipping')
+            print('Weight map is all zero on CCD {} -- skipping'.format(self.ccdname))
             return ccd
 
         from legacypipe.survey import get_git_version
@@ -2587,12 +2587,18 @@ def measure_image(img_fn, image_dir='images', run_calibs_only=False, just_measur
         opts.all_found = False
         if do_splinesky:
             skyoutfn = measure.get_splinesky_merged_filename()
-            merge_splinesky(survey, measure.expnum, ccds, skyoutfn, opts)
-            print('Wrote {}'.format(skyoutfn))
+            err_splinesky = merge_splinesky(survey, measure.expnum, ccds, skyoutfn, opts)
+            if err_splinesky == 1:
+                print('Wrote {}'.format(skyoutfn))
+            else:
+                print('Problem writing {}'.format(skyoutfn))
         if do_psfex:
             psfoutfn = measure.get_psfex_merged_filename()
-            merge_psfex(survey, measure.expnum, ccds, psfoutfn, opts)
-            print('Wrote {}'.format(psfoutfn))
+            err_psfex = merge_psfex(survey, measure.expnum, ccds, psfoutfn, opts)
+            if err_psfex == 1:
+                print('Wrote {}'.format(psfoutfn))
+            else:
+                print('Problem writing {}'.format(psfoutfn))
 
     # Now, if they're still missing it's because the entire exposure is borked
     # (WCS failed, weight maps are all zero, etc.), so exit gracefully.
