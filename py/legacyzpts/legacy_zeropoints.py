@@ -167,8 +167,8 @@ def get_pixscale(camera='decam'):
           '90prime':0.470,
           'megaprime':0.185}[camera]
 
-def cols_for_legacypipe_table(which='all'):
-    """Return list of -legacypipe.fits table colums
+def cols_for_survey_table(which='all'):
+    """Return list of -survey.fits table colums
 
     Args:
         which: all, numeric, 
@@ -204,12 +204,12 @@ def cols_for_legacypipe_table(which='all'):
         dustins_keys= ['skyrms']
     return need_arjuns_keys + dustins_keys + martins_keys + gods_keys
  
-def create_legacypipe_table(T, legfn, camera=None, psf=False, bad_expid=None):
+def create_survey_table(T, surveyfn, camera=None, psf=False, bad_expid=None):
     """input _ccds_table fn
     output a table formatted for legacypipe/runbrick
     """
     assert(camera in CAMERAS)
-    need_keys = cols_for_legacypipe_table(which='all')
+    need_keys = cols_for_survey_table(which='all')
     # Rename
     rename_keys= [('zpt','ccdzpt'),
                   ('zptavg','zpt'),
@@ -263,8 +263,8 @@ def create_legacypipe_table(T, legfn, camera=None, psf=False, bad_expid=None):
         zpt_hi = dict(g=g0+dg[1], r=r0+dr[1], i=i0+dr[1], z=z0+dz[1])
         psf_zeropoint_cuts(T, 0.262, zpt_lo, zpt_hi, bad_expid, camera)
 
-    writeto_via_temp(legfn, T)
-    print('Wrote %s' % legfn)
+    writeto_via_temp(surveyfn, T)
+    print('Wrote %s' % surveyfn)
 
 def create_annotated_table(leg_fn, ann_fn, camera, survey, psf=False):
     from legacypipe.annotate_ccds import annotate, init_annotations
@@ -353,9 +353,10 @@ class Measurer(object):
         aper_sky_sub: do aperture sky subtraction instead of splinesky
     """
 
-    def __init__(self, fn, aprad=3.5, skyrad_inner=7.0, skyrad_outer=10.0,
-                 det_thresh=8., match_radius=3.,sn_min=None,sn_max=None,
-                 aper_sky_sub=False, calibrate=False, **kwargs):
+    def __init__(self, fn, image_dir='images', aprad=3.5, skyrad_inner=7.0,
+                 skyrad_outer=10.0, det_thresh=8., match_radius=3., sn_min=None,
+                 sn_max=None, aper_sky_sub=False, calibrate=False, quiet=False,
+                 **kwargs):
         # Set extra kwargs
         self.ps1_pattern= kwargs['ps1_pattern']
         
@@ -363,7 +364,8 @@ class Measurer(object):
         self.prefix= kwargs.get('prefix')
         self.verboseplots= kwargs.get('verboseplots')
         
-        self.fn = fn
+        self.fn = os.path.join(image_dir, fn)
+        self.fn_base = fn
         self.debug= kwargs.get('debug')
         self.outdir= kwargs.get('outdir')
         self.calibdir = kwargs.get('calibdir')
@@ -388,10 +390,10 @@ class Measurer(object):
         self.nominal_fwhm = 5.0 # [pixels]
         
         try:
-            self.primhdr = read_primary_header(fn)
+            self.primhdr = read_primary_header(self.fn)
         except ValueError:
             # astropy can handle it
-            tmp= fits_astropy.open(fn)
+            tmp= fits_astropy.open(self.fn)
             self.primhdr= tmp[0].header
             tmp.close()
             del tmp
@@ -420,9 +422,10 @@ class Measurer(object):
             setattr(self, attrkey.lower(), val)
 
         self.expnum = self.get_expnum(self.primhdr)
-        print('CP Header: EXPNUM = ',self.expnum)
-        print('CP Header: PROCDATE = ',self.procdate)
-        print('CP Header: PLVER = ',self.plver)
+        if not quiet:
+            print('CP Header: EXPNUM = ',self.expnum)
+            print('CP Header: PROCDATE = ',self.procdate)
+            print('CP Header: PLVER = ',self.plver)
         self.obj = self.primhdr['OBJECT']
 
     def get_good_image_subregion(self):
@@ -755,7 +758,7 @@ class Measurer(object):
         assert(len(err_message) > 0 & len(err_message) <= 30)
         if ccds is None:
             ccds= _ccds_table(self.camera)
-            ccds['image_filename'] = self.fn
+            ccds['image_filename'] = self.fn_base
         ccds['err_message']= err_message
         ccds['zpt']= np.nan
         return ccds, stars_photom, stars_astrom
@@ -780,7 +783,7 @@ class Measurer(object):
         # Initialize 
         ccds = _ccds_table(self.camera)
         # FIXME -- could clean up paths here??
-        ccds['image_filename'] = self.fn
+        ccds['image_filename'] = self.fn_base
         ccds['image_hdu'] = self.image_hdu 
         ccds['ccdnum'] = self.ccdnum 
         ccds['camera'] = self.camera
@@ -2045,7 +2048,7 @@ class Measurer(object):
         self.set_hdu(ext)
 
         ccd = FakeCCD()
-        ccd.image_filename = self.fn
+        ccd.image_filename = self.fn_base
         ccd.image_hdu = self.image_hdu
         ccd.expnum = self.expnum
         ccd.ccdname = self.ccdname
@@ -2500,8 +2503,7 @@ def _measure_image(args):
     '''Utility function to wrap measure_image function for multiprocessing map.''' 
     return measure_image(*args)
 
-def measure_image(img_fn, run_calibs_only=False,
-                  just_measure=False,
+def measure_image(img_fn, image_dir='images', run_calibs_only=False, just_measure=False,
                   survey=None, threads=None, **measureargs):
     '''Wrapper on the camera-specific classes to measure the CCD-level data on all
     the FITS extensions for a given set of images.
@@ -2509,13 +2511,15 @@ def measure_image(img_fn, run_calibs_only=False,
     from astrometry.util.multiproc import multiproc
     t0 = Time()
 
+    img_fn_full = os.path.join(image_dir, img_fn)
+
     # Fitsio can throw error: ValueError: CONTINUE not supported
     try:
         #print('img_fn=%s' % img_fn)
-        primhdr = read_primary_header(img_fn)
+        primhdr = read_primary_header(img_fn_full)
     except ValueError:
         # astropy can handle it
-        tmp = fits_astropy.open(img_fn)
+        tmp = fits_astropy.open(img_fn_full)
         primhdr = tmp[0].header
         tmp.close()
         del tmp
@@ -2526,18 +2530,18 @@ def measure_image(img_fn, run_calibs_only=False,
     assert(camera in camera_check or camera_check in camera)
     
     if camera == 'decam':
-        measure = DecamMeasurer(img_fn, **measureargs)
+        measure = DecamMeasurer(img_fn, image_dir=image_dir, **measureargs)
     elif camera == 'mosaic':
-        measure = Mosaic3Measurer(img_fn, **measureargs)
+        measure = Mosaic3Measurer(img_fn, image_dir=image_dir, **measureargs)
     elif camera == '90prime':
-        measure = NinetyPrimeMeasurer(img_fn, **measureargs)
+        measure = NinetyPrimeMeasurer(img_fn, image_dir=image_dir, **measureargs)
     elif camera == 'megaprime':
-        measure = MegaPrimeMeasurer(img_fn, **measureargs)
+        measure = MegaPrimeMeasurer(img_fn, image_dir=image_dir, **measureargs)
         
     if just_measure:
         return measure
 
-    extlist = get_extlist(camera, img_fn, 
+    extlist = get_extlist(camera, measure.fn, 
                           debug=measureargs['debug'],
                           choose_ccd=measureargs['choose_ccd'])
 
@@ -2663,7 +2667,7 @@ def run_one_ext(X):
     return rtns
 
 class outputFns(object):
-    def __init__(self, imgfn, outdir, camera, debug=False):
+    def __init__(self, imgfn, outdir, camera, image_dir='images', debug=False):
         """Assigns filename, makes needed dirs
 
         Args:
@@ -2682,13 +2686,14 @@ class outputFns(object):
             outdir/decam/DECam_CP/CP20151226/img_fn-star%s.fits
         """
         self.imgfn = imgfn
+        self.image_dir = image_dir
 
         # Keep the last directory component
-        dirname = os.path.basename(os.path.dirname(imgfn))
+        dirname = os.path.basename(os.path.dirname(self.imgfn))
         basedir = os.path.join(outdir, camera, dirname)
         trymakedirs(basedir)
 
-        basename = os.path.basename(imgfn) 
+        basename = os.path.basename(self.imgfn) 
         # zpt,star fns
         base = basename
         if base.endswith('.fz'):
@@ -2697,27 +2702,10 @@ class outputFns(object):
             base = base[:-len('.fits')]
         if debug:
             base += '-debug'
-        #self.zptfn = os.path.join(outdir,dirname, base + '-zpt.fits')
-        #self.starfn_astrom = os.path.join(outdir,dirname, base + '-astrom.fits')
         self.starfn_photom = os.path.join(basedir, base + '-photom.fits')
-        self.legfn = os.path.join(basedir, base + '-legacypipe.fits')
+        self.surveyfn = os.path.join(basedir, base + '-survey.fits')
         self.annfn = os.path.join(basedir, base + '-annotated.fits')
             
-#def success(ccds,imgfn, debug=False, choose_ccd=None):
-#    num_ccds= dict(decam=60,mosaic=4)
-#    num_ccds['90prime']=4
-#    hdu= fitsio.FITS(imgfn)
-#    #if len(ccds) >= num_ccds.get(camera,0):
-#    if len(ccds) == len(hdu)-1:
-#        return True
-#    elif debug and len(ccds) >= 1:
-#        # only 1 ccds needs to be done if debuggin
-#        return True
-#    elif choose_ccd and len(ccds) >= 1:
-#        return True
-#    else:
-#        return False
-
 def writeto_via_temp(outfn, obj, func_write=False, **kwargs):
     tempfn = os.path.join(os.path.dirname(outfn), 'tmp-' + os.path.basename(outfn))
     if func_write:
@@ -2726,9 +2714,9 @@ def writeto_via_temp(outfn, obj, func_write=False, **kwargs):
         obj.writeto(tempfn, **kwargs)
     os.rename(tempfn, outfn)
 
-def runit(imgfn, starfn_photom, legfn, annfn, psf=False, bad_expid=None,
+def runit(imgfn, starfn_photom, surveyfn, annfn, psf=False, bad_expid=None,
           survey=None, run_calibs_only=False, **measureargs):
-    '''Generate a legacypipe-compatible CCDs file for a given image.
+    '''Generate a legacypipe-compatible (survey) CCDs file for a given image.
     '''
 
     t0 = Time()
@@ -2805,11 +2793,11 @@ def runit(imgfn, starfn_photom, legfn, annfn, psf=False, bad_expid=None,
 
     accds = astropy_to_astrometry_table(ccds)
 
-    # Legacypipe table
-    create_legacypipe_table(accds, legfn, camera=measureargs['camera'],
-                            psf=psf, bad_expid=bad_expid)
-    # legacypipe --> annotated
-    create_annotated_table(legfn, annfn, measureargs['camera'], survey, psf=psf)
+    # survey table
+    create_survey_table(accds, surveyfn, camera=measureargs['camera'],
+                        psf=psf, bad_expid=bad_expid)
+    # survey --> annotated
+    create_annotated_table(surveyfn, annfn, measureargs['camera'], survey, psf=psf)
 
     t0 = ptime('write-results-to-fits',t0)
     
@@ -2826,11 +2814,12 @@ def get_parser():
     '''return parser object, tells it what options to look for
     options can come from a list of strings or command line'''
     parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter,\
-                                     description='Generate a legacypipe-compatible CCDs file \
+                                     description='Generate a legacypipe-compatible (survey) CCDs file \
                                                   from a set of reduced imaging.')
     parser.add_argument('--camera',choices=['decam','mosaic','90prime','megaprime'],action='store',required=True)
     parser.add_argument('--image',action='store',default=None,help='relative path to image starting from decam,bok,mosaicz dir',required=False)
     parser.add_argument('--image_list',action='store',default=None,help='text file listing multiples images in same was as --image',required=False)
+    parser.add_argument('--image_dir', type=str, default='images', help='Directory containing the imaging data (analogous to legacypipe.LegacySurveyData.image_dir).')
     parser.add_argument('--outdir', type=str, default='.', help='Where to write zpts/,images/,logs/')
     parser.add_argument('--debug', action='store_true', default=False, help='Write additional files and plots for debugging')
     parser.add_argument('--choose_ccd', action='store', default=None, help='forced to use only the specified ccd')
@@ -2861,6 +2850,7 @@ def get_parser():
                         help='if None will use LEGACY_SURVEY_DIR/calib, e.g. /global/cscratch1/sd/desiproc/dr5-new/calib')
     parser.add_argument('--threads', default=None, type=int,
                         help='Multiprocessing threads (parallel by HDU)')
+    parser.add_argument('--quiet', default=False, action='store_true', help='quiet down')
     return parser
 
 
@@ -2890,9 +2880,10 @@ def main(image_list=None,args=None):
 
     psf = measureargs['psf']
     camera = measureargs['camera']
+    image_dir = measureargs['image_dir']
 
     survey = FakeLegacySurveyData()
-    survey.imagedir = ''
+    survey.imagedir = image_dir
     survey.calibdir = measureargs.get('calibdir')
     measureargs.update(survey=survey)
 
@@ -2923,15 +2914,15 @@ def main(image_list=None,args=None):
     t0 = ptime('parse-args', t0)
     for ii, imgfn in enumerate(image_list):
         print('Working on image {}/{}: {}'.format(ii+1, nimage, imgfn))
-        
-        # Check if the outputs are done and have the correct data model.
-        F = outputFns(imgfn, outdir, camera, debug=measureargs['debug'])
 
-        measure = measure_image(imgfn, just_measure=True, **measureargs)
+        # Check if the outputs are done and have the correct data model.
+        F = outputFns(imgfn, outdir, camera, image_dir=image_dir, debug=measureargs['debug'])
+
+        measure = measure_image(F.imgfn, just_measure=True, **measureargs)
 
         legok,annok = [validate_procdate_plver(fn, 'table', measure.expnum,
                                                measure.plver, measure.procdate)
-                       for fn in [F.legfn, F.annfn]]
+                       for fn in [F.surveyfn, F.annfn]]
         photok = validate_procdate_plver(F.starfn_photom, 'header', measure.expnum,
                                          measure.plver, measure.procdate, ext=1)
         if legok and annok and photok:
@@ -2939,13 +2930,13 @@ def main(image_list=None,args=None):
             continue
 
         if legok and photok:
-            # legacypipe --> annotated
-            create_annotated_table(F.legfn, F.annfn, camera, survey, psf=psf)
+            # survey --> annotated
+            create_annotated_table(F.surveyfn, F.annfn, camera, survey, psf=psf)
             continue
 
         # Create the file
         t0 = ptime('b4-run',t0)
-        runit(F.imgfn, F.starfn_photom, F.legfn, F.annfn, **measureargs)
+        runit(F.imgfn, F.starfn_photom, F.surveyfn, F.annfn, **measureargs)
         t0 = ptime('after-run',t0)
     tnow = Time()
     print("TIMING:total %s" % (tnow-tbegin,))
@@ -3003,7 +2994,6 @@ def read_primary_header(fn):
             break
     ff.close()
     return hdr
-
    
 if __name__ == "__main__":
     parser= get_parser()  
@@ -3014,5 +3004,3 @@ if __name__ == "__main__":
         images= [args.image]
 
     main(image_list=images,args=args)
-
-

@@ -119,7 +119,8 @@ if __name__ == "__main__":
     else:
         cats=[]
         for cnt,fn in enumerate(fns):
-            print('Reading %d/%d' % (cnt,len(fns)))
+            if (cnt % 500) == 0:
+                print('Reading CCDs table %d/%d' % (cnt,len(fns)))
             t = fits_table(fn)
             cats.append(t)
         cats= merge_tables(cats, columns='fillzero')
