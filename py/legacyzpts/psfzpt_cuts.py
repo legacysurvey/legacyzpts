@@ -34,17 +34,17 @@ CCD_CUT_BITS= dict(
 
 MJD_EARLY_DECAM = 56730.
 
-def detrend_decam_zeropoints(P):
+def detrend_zeropoints(P, airmass_terms, mjd_terms):
     '''
-    Per Arjun's email 2019-02-27 "Zeropoint variations with MJD for
-    DECam data", correct zeropoints for trends with airmass and MJD
+    Correct zeropoints for trends with airmass and MJD
     before making too-big/too-small cuts.
+
+    *airmass_terms*: list of (band, airmass) coeffs.
+    *mjd_terms*: list of (band, zpt0, [ (terms...)]) coeffs.
     '''
     zpt_corr = P.ccdzpt.copy()
     ntot = 0
-    for band,k in [('g', 0.173),
-                   ('r', 0.090),
-                   ('z', 0.060),]:
+    for band,k in airmass_terms:
         I = np.flatnonzero((P.filter == band) * (P.airmass >= 1.0))
         if len(I) == 0:
             continue
@@ -52,7 +52,41 @@ def detrend_decam_zeropoints(P):
         zpt_corr[I] += k * (P.airmass[I] - 1.0)
 
     if ntot < len(P):
-        print('In detrend_decam_zeropoints: did not detrend for airmass variation for', len(P)-ntot, 'CCDs due to unknown band or bad airmass')
+        print('In detrend_zeropoints: did not detrend for airmass variation for', len(P)-ntot, 'CCDs due to unknown band or bad airmass')
+
+    ntot = 0
+    mjd0 = 56658.5
+    for band,zpt0,terms in mjd_terms:
+        I = np.flatnonzero((P.filter == band) * (P.mjd_obs > 0))
+        if len(I) == 0:
+            continue
+        day = P.mjd_obs[I] - mjd0
+        # Piecewise linear function
+        for day_i, day_f, zpt_i, zpt_f, c0, c1 in terms:
+            c1 = (zpt_f - zpt_i) / (day_f - day_i)
+            Jday = (day >= day_i) * (day < day_f)
+            J = I[Jday]
+            if len(J) == 0:
+                continue
+            ntot += len(J)
+            zpt_corr[J] += zpt0 - (c0 + c1*day[Jday])
+    if ntot < len(P):
+        print('In detrend_zeropoints: did not detrend for temporal variation for', len(P)-ntot, 'CCDs due to unknown band or MJD_OBS')
+
+    # Zeros stay zero!
+    zpt_corr[P.ccdzpt == 0] = 0
+
+    return zpt_corr
+
+def detrend_decam_zeropoints(P):
+    '''
+    Per Arjun's email 2019-02-27 "Zeropoint variations with MJD for
+    DECam data".
+    '''
+    airmass_terms = [
+        ('g', 0.173),
+        ('r', 0.090),
+        ('z', 0.060),]
 
     mjd_terms = [
         ('g', 25.08, [
@@ -81,29 +115,65 @@ def detrend_decam_zeropoints(P):
             (1270.0, 1650.0, 25.030, 24.890, 25.498,  -3.6842e-04),
             (1650.0, 1900.0, 25.070, 24.940, 25.928,  -5.2000e-04),]),]
 
-    ntot = 0
-    mjd0 = 56658.5
-    for band,zpt0,terms in mjd_terms:
-        I = np.flatnonzero((P.filter == band) * (P.mjd_obs > 0))
-        if len(I) == 0:
-            continue
-        day = P.mjd_obs[I] - mjd0
-        # Piecewise linear function
-        for day_i, day_f, zpt_i, zpt_f, c0, c1 in terms:
-            c1 = (zpt_f - zpt_i) / (day_f - day_i)
-            Jday = (day >= day_i) * (day < day_f)
-            J = I[Jday]
-            if len(J) == 0:
-                continue
-            ntot += len(J)
-            zpt_corr[J] += zpt0 - (c0 + c1*day[Jday])
-    if ntot < len(P):
-        print('In detrend_decam_zeropoints: did not detrend for temporal variation for', len(P)-ntot, 'CCDs due to unknown band or MJD_OBS')
+    return detrend_zeropoints(P, airmass_terms, mjd_terms)
 
-    # Zeros stay zero!
-    zpt_corr[P.ccdzpt == 0] = 0
+def detrend_mzlsbass_zeropoints(P):
 
-    return zpt_corr
+    airmass_terms = [
+        ('g', 0.291),
+        ('r', 0.176),
+        ('z', 0.165),
+        ]
+
+    mjd_terms = [
+        ('g', 25.74, [
+            (   0.0,  720.0, 25.900, 25.900,  25.900,  0.0000e+00),
+            ( 720.0,  810.0, 25.900, 25.750,  27.100, -1.6667e-03),
+            ( 810.0,  900.0, 25.880, 25.780,  26.780, -1.1111e-03),
+            ( 900.0,  950.0, 25.780, 25.920,  23.260,  2.8000e-03),
+            ( 950.0, 1100.0, 25.950, 25.950,  25.950,  0.0000e+00),
+            (1100.0, 1255.0, 25.950, 25.750,  27.369, -1.2903e-03),
+            (1255.0, 1280.0, 25.850, 25.400,  48.440, -1.8000e-02),
+            (1280.0, 1500.0, 25.880, 25.800,  26.345, -3.6364e-04),
+            (1500.0, 1520.0, 25.800, 25.880,  19.800,  4.0000e-03),
+            (1520.0, 1550.0, 25.750, 25.900,  18.150,  5.0000e-03),
+            (1550.0, 1580.0, 25.700, 25.850,  17.950,  5.0000e-03),
+            (1580.0, 1600.0, 25.850, 25.800,  29.800, -2.5001e-03),
+            (1600.0, 1615.0, 25.800, 25.800,  25.800,  0.0000e+00),
+            (1615.0, 1621.0, 25.800, 25.700,  52.716, -1.6666e-02),
+            (1621.0, 1626.0, 25.700, 25.850, -22.930,  3.0000e-02),
+            (1626.0, 1645.0, 25.830, 25.790,  29.253, -2.1052e-03),
+            (1645.0, 1658.0, 25.800, 25.600,  51.108, -1.5385e-02),
+            (1658.0, 1668.0, 25.600, 25.850, -15.850,  2.5000e-02),
+            ]),
+        ('r', 25.52, [
+            (   0.0,  720.0, 25.600, 25.600, 25.600,  0.0000e+00),
+            ( 720.0,  815.0, 25.600, 25.500, 26.358, -1.0526e-03),
+            ( 815.0,  882.0, 25.600, 25.600, 25.600,  0.0000e+00),
+            ( 882.0,  930.0, 25.450, 25.600, 22.694,  3.1250e-03),
+            ( 930.0, 1100.0, 25.680, 25.680, 25.680,  0.0000e+00),
+            (1100.0, 1220.0, 25.600, 25.540, 26.150, -5.0000e-04),
+            (1220.0, 1280.0, 25.550, 25.380, 29.007, -2.8333e-03),
+            (1280.0, 1420.0, 25.500, 25.500, 25.500,  0.0000e+00),
+            (1420.0, 1450.0, 25.650, 25.700, 23.283,  1.6667e-03),
+            (1450.0, 1550.0, 25.550, 25.550, 25.550,  0.0000e+00),
+            (1550.0, 1610.0, 25.500, 25.600, 22.917,  1.6667e-03),
+            (1610.0, 1635.0, 25.450, 25.600, 15.790,  6.0000e-03),
+            (1635.0, 1670.0, 25.550, 25.400, 32.557, -4.2857e-03),
+            ]),
+        ('z', 26.20, [
+            (   0.0,  720.0, 26.200, 26.200, 26.200,  0.0000e+00),
+            ( 720.0,  920.0, 26.550, 26.050, 28.350, -2.5000e-03),
+            ( 920.0, 1030.0, 26.150, 26.150, 26.150,  0.0000e+00),
+            (1030.0, 1070.0, 26.500, 26.500, 26.500,  0.0000e+00),
+            (1070.0, 1115.0, 26.500, 26.350, 30.067, -3.3333e-03),
+            (1115.0, 1300.0, 26.470, 26.330, 27.314, -7.5675e-04),
+            (1300.0, 1355.0, 26.250, 26.200, 27.432, -9.0908e-04),
+            (1355.0, 1500.0, 26.350, 26.350, 26.350,  0.0000e+00),
+            ]),
+    ]
+
+    return detrend_zeropoints(P, airmass_terms, mjd_terms)
 
 def psf_zeropoint_cuts(P, pixscale,
                        zpt_cut_lo, zpt_cut_hi, bad_expid, camera):
@@ -127,7 +197,7 @@ def psf_zeropoint_cuts(P, pixscale,
     if camera == 'decam':
         ccdzpt = detrend_decam_zeropoints(P)
     else:
-        ccdzpt = P.ccdzpt
+        ccdzpt = detrend_mzlsbass_zeropoints(P)
 
     cuts = [
         ('not_grz',   np.array([f.strip() not in keys for f in P.filter])),
