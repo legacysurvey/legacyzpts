@@ -306,6 +306,31 @@ if __name__ == '__main__':
     T = merge_tables([Tm, Tb])
     T.writeto('/tmp/survey-ccds-updated.fits')
 
+    g0 = 25.74
+    r0 = 25.52
+    z0 = 26.20
+    dg = (-0.5, 0.18)
+    dr = (-0.5, 0.18)
+    dz = (-0.8, 0.8)
+    zpt_lo = dict(g=g0+dg[0], r=r0+dr[0], i=i0+dr[0], z=z0+dz[0])
+    zpt_hi = dict(g=g0+dg[1], r=r0+dr[1], i=i0+dr[1], z=z0+dz[1])
+    for band in ['g','r','z']:
+        I, = np.nonzero(f[0] == band for f in T.filter)
+        detrend = detrend_mzlsbass_zeropoints(T[I])
+        from astrometry.util.plotutils import *
+        plt.clf()
+        plt.subplot(2,1,1)
+        ylo,yhi = zpt_lo[band], zpt_hi[band]
+        ha = dict(doclf=False, docolorbar=False, nbins=200,
+                  range=((T.mjd_obs.min(), T.mjd_obs.max()),
+                         (ylo-0.01, yhi+0.01)))
+        loghist(T.mjd_obs[I], np.clip(T.ccdzpt[I], ylo, yhi), **ha)
+        plt.title('Original zpt %s' % band)
+        plt.subplot(2,1,2)
+        loghist(T.mjd_obs[I], np.clip(detrend, ylo, yhi), **ha)
+        plt.title('Detrended')
+        plt.savefig('detrend-h2-%s.png' % band)
+    
     sys.exit(0)
     
     # DECam updated for DR8, post detrend_decam_zeropoints.
