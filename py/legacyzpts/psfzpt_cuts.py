@@ -312,10 +312,10 @@ if __name__ == '__main__':
     dg = (-0.5, 0.18)
     dr = (-0.5, 0.18)
     dz = (-0.8, 0.8)
-    zpt_lo = dict(g=g0+dg[0], r=r0+dr[0], i=i0+dr[0], z=z0+dz[0])
-    zpt_hi = dict(g=g0+dg[1], r=r0+dr[1], i=i0+dr[1], z=z0+dz[1])
+    zpt_lo = dict(g=g0+dg[0], r=r0+dr[0], z=z0+dz[0])
+    zpt_hi = dict(g=g0+dg[1], r=r0+dr[1], z=z0+dz[1])
     for band in ['g','r','z']:
-        I, = np.nonzero(f[0] == band for f in T.filter)
+        I, = np.nonzero([f[0] == band for f in T.filter])
         detrend = detrend_mzlsbass_zeropoints(T[I])
         from astrometry.util.plotutils import *
         plt.clf()
