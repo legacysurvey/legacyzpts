@@ -85,7 +85,8 @@ def _ccds_table(camera='decam'):
         ('camera', 'S%i' % max_camera_length),          
         ('expnum', '>i8'),         
         ('plver', 'S8'),         
-        ('procdate', 'S19'),         
+        ('procdate', 'S19'),
+        ('plprocid', 'S7'),
         ('ccdname', 'S5'),         
         ('ccdnum', '>i2'),        
         ('expid', 'S17'),        
@@ -151,7 +152,7 @@ def _stars_table(nstars=1):
     cols = [('image_filename', 'S100'),('image_hdu', '>i2'),
             ('expid', 'S16'), ('filter', 'S1'),('nmatch', '>i2'), 
             ('x', 'f4'), ('y', 'f4'), ('expnum', '>i8'),
-            ('plver', 'S8'), ('procdate', 'S19'),
+            ('plver', 'S8'), ('procdate', 'S19'), ('plprocid', 'S7'),
             ('gain', 'f4'),
             ('ra', 'f8'), ('dec', 'f8'), ('apmag', 'f4'),('apflux', 'f4'),('apskyflux', 'f4'),('apskyflux_perpix', 'f4'),
             ('radiff', 'f8'), ('decdiff', 'f8'),
@@ -177,7 +178,7 @@ def cols_for_survey_table(which='all'):
     """
     assert(which in ['all','numeric','nonzero_diff'])
     martins_keys = ['airmass', 'ccdskymag']
-    gods_keys = ['plver', 'procdate']
+    gods_keys = ['plver', 'procdate', 'plprocid']
     if which == 'all':
         need_arjuns_keys= ['ra','dec','ra_bore','dec_bore',
                            'image_filename','image_hdu','expnum','ccdname','object',
@@ -412,8 +413,8 @@ class Measurer(object):
         self.date_obs = self.primhdr['DATE-OBS']
         self.mjd_obs = self.primhdr['MJD-OBS']
         # Add more attributes.
-        for key, attrkey in zip(['AIRMASS','HA', 'DATE', 'PLVER'],
-                                ['AIRMASS','HA', 'PROCDATE', 'PLVER']):
+        for key, attrkey in zip(['AIRMASS','HA', 'DATE', 'PLVER', 'PLPROCID'],
+                                ['AIRMASS','HA', 'PROCDATE', 'PLVER', 'PLPROCID']):
             val = self.primhdr[key]
             if type(val) == str:
                 val = val.strip()
@@ -426,6 +427,7 @@ class Measurer(object):
             print('CP Header: EXPNUM = ',self.expnum)
             print('CP Header: PROCDATE = ',self.procdate)
             print('CP Header: PLVER = ',self.plver)
+            print('CP Header: PLPROCID = ',self.plprocid)
         self.obj = self.primhdr['OBJECT']
 
     def get_good_image_subregion(self):
@@ -790,6 +792,7 @@ class Measurer(object):
         ccds['expnum'] = self.expnum
         ccds['plver'] = self.plver
         ccds['procdate'] = self.procdate
+        ccds['plprocid'] = self.plprocid
         ccds['ccdname'] = self.ccdname
         ccds['expid'] = self.expid
         ccds['object'] = self.obj
@@ -1441,7 +1444,7 @@ class Measurer(object):
             print('Reading splinesky-merged {}'.format(fn))
             T = fits_table(fn)
             if validate_procdate_plver(fn, 'table', self.expnum, self.plver,
-                                   self.procdate, data=T):
+                                   self.procdate, self.plprocid, data=T):
                 I, = np.nonzero((T.expnum == self.expnum) *
                                 np.array([c.strip() == self.ext for c in T.ccdname]))
                 if len(I) == 1:
@@ -1468,7 +1471,7 @@ class Measurer(object):
         hdr = read_primary_header(fn)
 
         if not validate_procdate_plver(fn, 'primaryheader', self.expnum, self.plver,
-                                   self.procdate, data=hdr):
+                                   self.procdate, self.plprocid, data=hdr):
             return None
 
         try:
@@ -1652,7 +1655,7 @@ class Measurer(object):
             print('Reading psfex-merged {}'.format(fn))
             T = fits_table(fn)
             if validate_procdate_plver(fn, 'table', self.expnum, self.plver,
-                                   self.procdate, data=T):
+                                   self.procdate, self.plprocid, data=T):
                 I, = np.nonzero((T.expnum == self.expnum) *
                                 np.array([c.strip() == self.ext for c in T.ccdname]))
                 if len(I) == 1:
@@ -1678,7 +1681,7 @@ class Measurer(object):
         print('Reading psfex {}'.format(fn))
         hdr = read_primary_header(fn)
         val = validate_procdate_plver(fn, 'primaryheader', self.expnum, self.plver,
-                                   self.procdate, data=hdr)
+                                   self.procdate, self.plprocid, data=hdr)
         if not val:
             if be_forgiving:
                 print('Warning: allowing PsfEx file that does not validate, because be_forgiving=True;', fn)
@@ -1962,6 +1965,7 @@ class Measurer(object):
         stars['expnum'] = self.expnum
         stars['plver'] = self.plver
         stars['procdate'] = self.procdate
+        stars['plprocid'] = self.plprocid
         stars['expid'] = self.expid
         stars['filter'] = self.band
         stars['ccdname'] = self.ccdname
@@ -2078,6 +2082,7 @@ class Measurer(object):
         ccd.sig1 = None
         ccd.plver = self.plver
         ccd.procdate = self.procdate
+        ccd.plprocid = self.plprocid
         
         if not self.goodWcs:
             print('WCS Failed on CCD {}, skipping calibs'.format(self.ccdname))
@@ -2566,11 +2571,11 @@ def measure_image(img_fn, image_dir='images', run_calibs_only=False, just_measur
     # they're missing.
     if splinesky:
         if validate_procdate_plver(measure.get_splinesky_merged_filename(),
-                               'table', measure.expnum, measure.plver, measure.procdate):
+                               'table', measure.expnum, measure.plver, measure.procdate, measure.plprocid):
             do_splinesky = False
     if psfex:
         if validate_procdate_plver(measure.get_psfex_merged_filename(),
-                               'table', measure.expnum, measure.plver, measure.procdate):
+                               'table', measure.expnum, measure.plver, measure.procdate, measure.plprocid):
             do_psfex = False
 
     if do_splinesky or do_psfex:
@@ -2608,7 +2613,7 @@ def measure_image(img_fn, image_dir='images', run_calibs_only=False, just_measur
             print('Merged splinesky file not found {}'.format(fn))
             return []
         if not validate_procdate_plver(measure.get_splinesky_merged_filename(),
-                                       'table', measure.expnum, measure.plver, measure.procdate):
+                                       'table', measure.expnum, measure.plver, measure.procdate, measure.plprocid):
             raise RuntimeError('Merged splinesky file did not validate!')
     if psfex:
         fn = measure.get_psfex_merged_filename()
@@ -2616,7 +2621,7 @@ def measure_image(img_fn, image_dir='images', run_calibs_only=False, just_measur
             print('Merged psfex file not found {}'.format(fn))
             return []
         if not validate_procdate_plver(measure.get_psfex_merged_filename(),
-                                   'table', measure.expnum, measure.plver, measure.procdate):
+                                   'table', measure.expnum, measure.plver, measure.procdate, measure.plprocid):
             raise RuntimeError('Merged psfex file did not validate!')
 
     ## at this point, merged calib files exist & pass validation
@@ -2770,6 +2775,7 @@ def runit(imgfn, starfn_photom, surveyfn, annfn, psf=False, bad_expid=None,
                             comment=primhdr.get_comment(key)))
     hdr.add_record(dict(name='EXPNUM', value=measure.expnum, comment='Exposure number'))
     hdr.add_record(dict(name='PROCDATE', value=measure.procdate, comment='CP processing date'))
+    hdr.add_record(dict(name='PLPROCID', value=measure.plprocid, comment='CP processing batch'))
     hdr.add_record(dict(name='RA_BORE', value=hmsstring2ra(primhdr['RA']), comment='Boresight RA'))
     hdr.add_record(dict(name='DEC_BORE', value=dmsstring2dec(primhdr['DEC']), comment='Boresight Dec'))
 
@@ -2927,10 +2933,10 @@ def main(image_list=None,args=None):
         measure = measure_image(F.imgfn, just_measure=True, **measureargs)
 
         legok,annok = [validate_procdate_plver(fn, 'table', measure.expnum,
-                                               measure.plver, measure.procdate)
+                                               measure.plver, measure.procdate, measure.plprocid)
                        for fn in [F.surveyfn, F.annfn]]
         photok = validate_procdate_plver(F.starfn_photom, 'header', measure.expnum,
-                                         measure.plver, measure.procdate, ext=1)
+                                         measure.plver, measure.procdate, measure.plprocid, ext=1)
         if legok and annok and photok:
             print('Already finished: {}'.format(F.annfn))
             continue
