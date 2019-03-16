@@ -238,15 +238,22 @@ def create_survey_table(T, surveyfn, camera=None, psf=False, bad_expid=None):
 
     if camera == 'mosaic' and psf:
         from legacyzpts.psfzpt_cuts import psf_zeropoint_cuts
-        #g0 = 25.74
-        #r0 = 25.52
+        # Arjun: 2019-03-15
         z0 = 26.20
-        #dg = (-0.5, 0.18)
-        #dr = (-0.5, 0.18)
-        dz = (-0.6, 0.6)
+        dz = (-0.8, 0.8)
         zpt_lo = dict(z=z0+dz[0])
         zpt_hi = dict(z=z0+dz[1])
         psf_zeropoint_cuts(T, 0.262, zpt_lo, zpt_hi, bad_expid, camera)
+
+    elif camera == '90prime' and psf:
+        from legacyzpts.psfzpt_cuts import psf_zeropoint_cuts
+        g0 = 25.74
+        r0 = 25.52
+        dg = (-0.5, 0.18)
+        dr = (-0.5, 0.18)
+        zpt_lo = dict(g=g0+dg[0], r=r0+dr[0])
+        zpt_hi = dict(g=g0+dg[1], r=r0+dr[1])
+        psf_zeropoint_cuts(T, 0.45, zpt_lo, zpt_hi, bad_expid, camera)
 
     elif camera == 'decam' and psf:
         from legacyzpts.psfzpt_cuts import psf_zeropoint_cuts
