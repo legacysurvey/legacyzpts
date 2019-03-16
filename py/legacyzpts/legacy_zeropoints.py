@@ -236,40 +236,9 @@ def create_survey_table(T, surveyfn, camera=None, psf=False, bad_expid=None):
     T.cd2_1 = T.cd2_1.astype(np.float32)
     T.cd2_2 = T.cd2_2.astype(np.float32)
 
-    if camera == 'mosaic' and psf:
-        from legacyzpts.psfzpt_cuts import psf_zeropoint_cuts
-        # Arjun: 2019-03-15
-        z0 = 26.20
-        dz = (-0.8, 0.8)
-        zpt_lo = dict(z=z0+dz[0])
-        zpt_hi = dict(z=z0+dz[1])
-        psf_zeropoint_cuts(T, 0.262, zpt_lo, zpt_hi, bad_expid, camera)
-
-    elif camera == '90prime' and psf:
-        from legacyzpts.psfzpt_cuts import psf_zeropoint_cuts
-        g0 = 25.74
-        r0 = 25.52
-        dg = (-0.5, 0.18)
-        dr = (-0.5, 0.18)
-        zpt_lo = dict(g=g0+dg[0], r=r0+dr[0])
-        zpt_hi = dict(g=g0+dg[1], r=r0+dr[1])
-        psf_zeropoint_cuts(T, 0.45, zpt_lo, zpt_hi, bad_expid, camera)
-
-    elif camera == 'decam' and psf:
-        from legacyzpts.psfzpt_cuts import psf_zeropoint_cuts
-        # These are from DR5; eg
-        # https://github.com/legacysurvey/legacypipe/blob/dr5.0/py/legacypipe/decam.py#L50
-        g0 = 25.08
-        r0 = 25.29
-        i0 = 25.26
-        z0 = 24.92
-        dg = (-0.5, 0.25)
-        di = (-0.5, 0.25)
-        dr = (-0.5, 0.25)
-        dz = (-0.5, 0.25)
-        zpt_lo = dict(g=g0+dg[0], r=r0+dr[0], i=i0+dr[0], z=z0+dz[0])
-        zpt_hi = dict(g=g0+dg[1], r=r0+dr[1], i=i0+dr[1], z=z0+dz[1])
-        psf_zeropoint_cuts(T, 0.262, zpt_lo, zpt_hi, bad_expid, camera)
+    if psf:
+        from legacyzpts.psfzpt_cuts import add_psfzpt_cuts
+        add_psfzpt_cuts(T, camera, bad_expid)
 
     writeto_via_temp(surveyfn, T)
     print('Wrote %s' % surveyfn)

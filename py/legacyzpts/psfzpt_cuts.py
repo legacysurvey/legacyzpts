@@ -222,6 +222,41 @@ def psf_zeropoint_cuts(P, pixscale,
         P.ccd_cuts += CCD_CUT_BITS[name] * cut
         print(np.count_nonzero(cut), 'CCDs cut by', name)
 
+def add_psfzpt_cuts(T, camera, bad_expid):
+    if camera == 'mosaic':
+        # Arjun: 2019-03-15
+        z0 = 26.20
+        dz = (-0.8, 0.8)
+        zpt_lo = dict(z=z0+dz[0])
+        zpt_hi = dict(z=z0+dz[1])
+        psf_zeropoint_cuts(T, 0.262, zpt_lo, zpt_hi, bad_expid, camera)
+
+    elif camera == '90prime':
+        g0 = 25.74
+        r0 = 25.52
+        dg = (-0.5, 0.18)
+        dr = (-0.5, 0.18)
+        zpt_lo = dict(g=g0+dg[0], r=r0+dr[0])
+        zpt_hi = dict(g=g0+dg[1], r=r0+dr[1])
+        psf_zeropoint_cuts(T, 0.45, zpt_lo, zpt_hi, bad_expid, camera)
+
+    elif camera == 'decam':
+        # These are from DR5; eg
+        # https://github.com/legacysurvey/legacypipe/blob/dr5.0/py/legacypipe/decam.py#L50
+        g0 = 25.08
+        r0 = 25.29
+        i0 = 25.26
+        z0 = 24.92
+        dg = (-0.5, 0.25)
+        di = (-0.5, 0.25)
+        dr = (-0.5, 0.25)
+        dz = (-0.5, 0.25)
+        zpt_lo = dict(g=g0+dg[0], r=r0+dr[0], i=i0+dr[0], z=z0+dz[0])
+        zpt_hi = dict(g=g0+dg[1], r=r0+dr[1], i=i0+dr[1], z=z0+dz[1])
+        psf_zeropoint_cuts(T, 0.262, zpt_lo, zpt_hi, bad_expid, camera)
+    else:
+        assert(False)
+        
 def read_bad_expid(fn='bad_expid.txt'):
     bad_expid = {}
     f = open(fn)
@@ -247,8 +282,33 @@ if __name__ == '__main__':
     import sys
     from pkg_resources import resource_filename
 
-    # DECam updated for DR8, post detrend_decam_zeropoints.
+    # MzLS, BASS DR8b updates
+    T = fits_table('/global/project/projectdirs/cosmo/work/legacysurvey/dr8b/runbrick-90prime-mosaic/survey-ccds-dr8b-90prime-mosaic-nocuts.kd.fits')
 
+    from collections import Counter
+    print('Cameras:', Counter(T.camera))
+
+    camera = 'mosaic'
+    fn = resource_filename('legacyzpts', 'data/{}-bad_expid.txt'.format(camera))
+    print('Reading', fn)
+    bad_expid = read_bad_expid(fn)
+
+    I, = np.nonzero([cam.strip() == camera for cam in T.camera])
+    Tm = T[I]
+    add_psfzpt_cuts(Tm, camera, bad_expid)
+
+    camera = '90prime'
+    ## NO BAD_EXPID!
+    I, = np.nonzero([cam.strip() == camera for cam in T.camera])
+    Tb = T[I]
+    add_psfzpt_cuts(Tb, camera, [])
+
+    T = merge_tables([Tm, Tb])
+    T.writeto('/tmp/survey-ccds-updated.fits')
+
+    sys.exit(0)
+    
+    # DECam updated for DR8, post detrend_decam_zeropoints.
     camera = 'decam'
     fn = resource_filename('legacyzpts', 'data/{}-bad_expid.txt'.format(camera))
     if os.path.isfile(fn):
