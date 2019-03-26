@@ -39,7 +39,7 @@ try:
     import legacypipe
     from legacypipe.ps1cat import ps1cat
     from legacypipe.gaiacat import GaiaCatalog
-    from legacypipe.survey import radec_at_mjd
+    from legacypipe.survey import radec_at_mjd, get_git_version
     from legacypipe.image import validate_procdate_plver
 
 except ImportError:
@@ -1657,7 +1657,7 @@ class Measurer(object):
         print('Reading psfex {}'.format(fn))
         hdr = read_primary_header(fn)
         val = validate_procdate_plver(fn, 'primaryheader', self.expnum, self.plver,
-                                   self.procdate, self.plprocid, data=hdr)
+                                      self.procdate, self.plprocid, data=hdr)
         if not val:
             if be_forgiving:
                 print('Warning: allowing PsfEx file that does not validate, because be_forgiving=True;', fn)
@@ -2085,10 +2085,9 @@ class Measurer(object):
             print('Weight map is all zero on CCD {} -- skipping'.format(self.ccdname))
             return ccd
 
-        from legacypipe.survey import get_git_version
         im = survey.get_image_object(ccd)
         #print('Created legacypipe image object', im)
-        git_version = get_git_version(dir=os.path.dirname(legacypipe.__file__))
+        git_version = get_git_version(dirnm=os.path.dirname(legacypipe.__file__))
 
         im.run_calibs(psfex=do_psf, sky=do_sky, splinesky=True,
                       git_version=git_version, survey=survey,
