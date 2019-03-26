@@ -18,8 +18,8 @@ CCD_CUT_BITS= dict(
     err_legacyzpts = 0x1,
     not_grz = 0x2,
     not_third_pix = 0x4, # Mosaic3 one-third-pixel interpolation problem
-    exptime_lt_30 = 0x8,
-    ccdnmatch_lt_20 = 0x10, 
+    exptime = 0x8,
+    ccdnmatch = 0x10,
     zpt_diff_avg = 0x20, 
     zpt_small = 0x40,  
     zpt_large = 0x80,
@@ -201,22 +201,30 @@ def psf_zeropoint_cuts(P, pixscale,
 
     cuts = [
         ('not_grz',   np.array([f.strip() not in keys for f in P.filter])),
+        ('ccdnmatch', P.ccdnmatch < 20),
         ('zpt_small', np.array([ccdzpt < zpt_cut_lo.get(f,0) for f,ccdzpt in zip(P.filter, ccdzpt)])),
         ('zpt_large', np.array([ccdzpt > zpt_cut_hi.get(f,0) for f,ccdzpt in zip(P.filter, ccdzpt)])),
         ('phrms',     P.ccdphrms > 0.1),
-        ('radecrms',  np.logical_or(P.ccdrarms > 0.25,
-                                    P.ccddecrms > 0.25)),
-        ('exptime_lt_30', P.exptime < 30),
-        ('zpt_diff_avg', (np.abs(P.ccdzpt - P.zpt) > 0.25)),
+        ('exptime', P.exptime < 30),
+        ('zpt_diff_avg', (np.abs(P.ccdzpt - P.zpt) > 0.1)),
         ('seeing_bad', np.logical_or(seeing < 0, seeing > 3.0)),
         ('badexp_file', np.array([expnum in bad_expid for expnum in P.expnum])),
     ]
 
+    if camera == '90prime':
+        cuts.append(('radecrms',  np.hypot(P.ccdrarms, P.ccddecrms) > 0.2))
+        cuts.append(('sky_is_bright', P.ccdskycounts > 150))
+
     if camera == 'mosaic':
         cuts.append(('not_third_pix', (np.logical_not(P.yshift) * (P.mjd_obs < 57674.))))
+        cuts.append(('radecrms',  np.hypot(P.ccdrarms, P.ccddecrms) > 0.1))
+        cuts.append(('sky_is_bright', P.ccdskycounts > 250))
 
     if camera == 'decam':
         cuts.append(('early_decam', P.mjd_obs < MJD_EARLY_DECAM))
+        cuts.append(('radecrms',  np.hypot(P.ccdrarms, P.ccddecrms) > 0.1))
+        # No DECam sky cut (and we would want it band-specific anyway...)
+        # cuts.append(('sky_is_bright', P.ccdskycounts > 250))
 
     for name,cut in cuts:
         P.ccd_cuts += CCD_CUT_BITS[name] * cut
@@ -226,7 +234,7 @@ def add_psfzpt_cuts(T, camera, bad_expid):
     if camera == 'mosaic':
         # Arjun: 2019-03-15
         z0 = 26.20
-        dz = (-0.8, 0.8)
+        dz = (-1.0, 0.18)
         zpt_lo = dict(z=z0+dz[0])
         zpt_hi = dict(z=z0+dz[1])
         psf_zeropoint_cuts(T, 0.262, zpt_lo, zpt_hi, bad_expid, camera)

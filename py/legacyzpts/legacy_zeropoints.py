@@ -1289,7 +1289,7 @@ class Measurer(object):
             dzpt = zptmed - zp0
             kext = self.extinction(self.band)
             transp = 10.**(-0.4 * (-dzpt - kext * (airmass - 1.0)))
-    
+
             print('Number of stars used for zeropoint median %d' % nphotom)
             print('Zeropoint %.4f' % zptmed)
             print('Offset from nominal: %.4f' % dzpt)
