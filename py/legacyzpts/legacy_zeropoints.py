@@ -1620,7 +1620,7 @@ class Measurer(object):
                           '%s-%s.fits' % (self.camera, expstr))
         return fn
 
-    def get_psfex_model(self, be_forgiving=False):
+    def get_psfex_model(self):
         import tractor
 
         # Look for merged PsfEx file
@@ -1656,13 +1656,9 @@ class Measurer(object):
 
         print('Reading psfex {}'.format(fn))
         hdr = read_primary_header(fn)
-        val = validate_procdate_plver(fn, 'primaryheader', self.expnum, self.plver,
-                                      self.procdate, self.plprocid, data=hdr)
-        if not val:
-            if be_forgiving:
-                print('Warning: allowing PsfEx file that does not validate, because be_forgiving=True;', fn)
-            else:
-                return None
+        if not validate_procdate_plver(fn, 'primaryheader', self.expnum, self.plver,
+                                       self.procdate, self.plprocid, data=hdr):
+            return None
 
         hdr = fitsio.read_header(fn, ext=1)
         psf = tractor.PixelizedPsfEx(fn)
@@ -2021,8 +2017,7 @@ class Measurer(object):
         plt.close()
         print('Wrote %s' % fn)
 
-    def run_calibs(self, survey, ext, psfex=True, splinesky=True, read_hdu=True,
-                   be_forgiving=False):
+    def run_calibs(self, survey, ext, psfex=True, splinesky=True, read_hdu=True):
 
         # Initialize with some basic data
         self.set_hdu(ext)
@@ -2068,7 +2063,7 @@ class Measurer(object):
             return ccd
         do_psf = False
         do_sky = False
-        if psfex and self.get_psfex_model(be_forgiving=be_forgiving) is None:
+        if psfex and self.get_psfex_model() is None:
             do_psf = True
         if splinesky and self.get_splinesky() is None:
             do_sky = True
@@ -2554,8 +2549,7 @@ def measure_image(img_fn, image_dir='images', run_calibs_only=False, just_measur
 
     if do_splinesky or do_psfex:
         # for DR8, allow grabbing old PsfEx individual-CCD PsfEx files
-        be_forgiving = True
-        ccds = mp.map(run_one_calib, [(measure, survey, ext, do_psfex, do_splinesky, be_forgiving)
+        ccds = mp.map(run_one_calib, [(measure, survey, ext, do_psfex, do_splinesky)
                                       for ext in extlist])
         
         from legacypipe.merge_calibs import merge_splinesky, merge_psfex
@@ -2642,9 +2636,8 @@ def measure_image(img_fn, image_dir='images', run_calibs_only=False, just_measur
     return all_ccds, all_stars_photom, all_stars_astrom, extra_info, measure
 
 def run_one_calib(X):
-    measure, survey, ext, psfex, splinesky, be_forgiving = X
-    return measure.run_calibs(survey, ext, psfex=psfex, splinesky=splinesky,
-                              be_forgiving=be_forgiving)
+    measure, survey, ext, psfex, splinesky = X
+    return measure.run_calibs(survey, ext, psfex=psfex, splinesky=splinesky)
 
 def run_one_ext(X):
     measure, ext, survey, psfex, splinesky, debug = X
