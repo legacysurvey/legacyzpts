@@ -618,7 +618,7 @@ class Measurer(object):
                 slc=[slice(500,1500),slice(500,1500)]
             else:
                 raise RuntimeError('unknown camera %s' % self.camera)
-            clip_vals,_,_ = sigmaclip(img[slc],low=nsigma,high=nsigma)
+            clip_vals,_,_ = sigmaclip(img[tuple(slc)],low=nsigma,high=nsigma)
             skymed= np.median(clip_vals) 
             skystd= np.std(clip_vals) 
             skyimg= np.zeros(img.shape) + skymed
