@@ -39,7 +39,7 @@ try:
     import legacypipe
     from legacypipe.ps1cat import ps1cat
     from legacypipe.gaiacat import GaiaCatalog
-    from legacypipe.survey import radec_at_mjd
+    from legacypipe.survey import radec_at_mjd, get_git_version
     from legacypipe.image import validate_procdate_plver
 
 except ImportError:
@@ -85,7 +85,8 @@ def _ccds_table(camera='decam'):
         ('camera', 'S%i' % max_camera_length),          
         ('expnum', '>i8'),         
         ('plver', 'S8'),         
-        ('procdate', 'S19'),         
+        ('procdate', 'S19'),
+        ('plprocid', 'S7'),
         ('ccdname', 'S5'),         
         ('ccdnum', '>i2'),        
         ('expid', 'S17'),        
@@ -151,7 +152,7 @@ def _stars_table(nstars=1):
     cols = [('image_filename', 'S100'),('image_hdu', '>i2'),
             ('expid', 'S16'), ('filter', 'S1'),('nmatch', '>i2'), 
             ('x', 'f4'), ('y', 'f4'), ('expnum', '>i8'),
-            ('plver', 'S8'), ('procdate', 'S19'),
+            ('plver', 'S8'), ('procdate', 'S19'), ('plprocid', 'S7'),
             ('gain', 'f4'),
             ('ra', 'f8'), ('dec', 'f8'), ('apmag', 'f4'),('apflux', 'f4'),('apskyflux', 'f4'),('apskyflux_perpix', 'f4'),
             ('radiff', 'f8'), ('decdiff', 'f8'),
@@ -177,7 +178,7 @@ def cols_for_survey_table(which='all'):
     """
     assert(which in ['all','numeric','nonzero_diff'])
     martins_keys = ['airmass', 'ccdskymag']
-    gods_keys = ['plver', 'procdate']
+    gods_keys = ['plver', 'procdate', 'plprocid']
     if which == 'all':
         need_arjuns_keys= ['ra','dec','ra_bore','dec_bore',
                            'image_filename','image_hdu','expnum','ccdname','object',
@@ -235,33 +236,9 @@ def create_survey_table(T, surveyfn, camera=None, psf=False, bad_expid=None):
     T.cd2_1 = T.cd2_1.astype(np.float32)
     T.cd2_2 = T.cd2_2.astype(np.float32)
 
-    if camera == 'mosaic' and psf:
-        from legacyzpts.psfzpt_cuts import psf_zeropoint_cuts
-        #g0 = 25.74
-        #r0 = 25.52
-        z0 = 26.20
-        #dg = (-0.5, 0.18)
-        #dr = (-0.5, 0.18)
-        dz = (-0.6, 0.6)
-        zpt_lo = dict(z=z0+dz[0])
-        zpt_hi = dict(z=z0+dz[1])
-        psf_zeropoint_cuts(T, 0.262, zpt_lo, zpt_hi, bad_expid, camera)
-
-    elif camera == 'decam' and psf:
-        from legacyzpts.psfzpt_cuts import psf_zeropoint_cuts
-        # These are from DR5; eg
-        # https://github.com/legacysurvey/legacypipe/blob/dr5.0/py/legacypipe/decam.py#L50
-        g0 = 25.08
-        r0 = 25.29
-        i0 = 25.26
-        z0 = 24.92
-        dg = (-0.5, 0.25)
-        di = (-0.5, 0.25)
-        dr = (-0.5, 0.25)
-        dz = (-0.5, 0.25)
-        zpt_lo = dict(g=g0+dg[0], r=r0+dr[0], i=i0+dr[0], z=z0+dz[0])
-        zpt_hi = dict(g=g0+dg[1], r=r0+dr[1], i=i0+dr[1], z=z0+dz[1])
-        psf_zeropoint_cuts(T, 0.262, zpt_lo, zpt_hi, bad_expid, camera)
+    if psf:
+        from legacyzpts.psfzpt_cuts import add_psfzpt_cuts
+        add_psfzpt_cuts(T, camera, bad_expid)
 
     writeto_via_temp(surveyfn, T)
     print('Wrote %s' % surveyfn)
@@ -412,8 +389,8 @@ class Measurer(object):
         self.date_obs = self.primhdr['DATE-OBS']
         self.mjd_obs = self.primhdr['MJD-OBS']
         # Add more attributes.
-        for key, attrkey in zip(['AIRMASS','HA', 'DATE', 'PLVER'],
-                                ['AIRMASS','HA', 'PROCDATE', 'PLVER']):
+        for key, attrkey in zip(['AIRMASS','HA', 'DATE', 'PLVER', 'PLPROCID'],
+                                ['AIRMASS','HA', 'PROCDATE', 'PLVER', 'PLPROCID']):
             val = self.primhdr[key]
             if type(val) == str:
                 val = val.strip()
@@ -426,6 +403,7 @@ class Measurer(object):
             print('CP Header: EXPNUM = ',self.expnum)
             print('CP Header: PROCDATE = ',self.procdate)
             print('CP Header: PLVER = ',self.plver)
+            print('CP Header: PLPROCID = ',self.plprocid)
         self.obj = self.primhdr['OBJECT']
 
     def get_good_image_subregion(self):
@@ -640,7 +618,7 @@ class Measurer(object):
                 slc=[slice(500,1500),slice(500,1500)]
             else:
                 raise RuntimeError('unknown camera %s' % self.camera)
-            clip_vals,_,_ = sigmaclip(img[slc],low=nsigma,high=nsigma)
+            clip_vals,_,_ = sigmaclip(img[tuple(slc)],low=nsigma,high=nsigma)
             skymed= np.median(clip_vals) 
             skystd= np.std(clip_vals) 
             skyimg= np.zeros(img.shape) + skymed
@@ -790,6 +768,7 @@ class Measurer(object):
         ccds['expnum'] = self.expnum
         ccds['plver'] = self.plver
         ccds['procdate'] = self.procdate
+        ccds['plprocid'] = self.plprocid
         ccds['ccdname'] = self.ccdname
         ccds['expid'] = self.expid
         ccds['object'] = self.obj
@@ -1310,7 +1289,7 @@ class Measurer(object):
             dzpt = zptmed - zp0
             kext = self.extinction(self.band)
             transp = 10.**(-0.4 * (-dzpt - kext * (airmass - 1.0)))
-    
+
             print('Number of stars used for zeropoint median %d' % nphotom)
             print('Zeropoint %.4f' % zptmed)
             print('Offset from nominal: %.4f' % dzpt)
@@ -1441,7 +1420,7 @@ class Measurer(object):
             print('Reading splinesky-merged {}'.format(fn))
             T = fits_table(fn)
             if validate_procdate_plver(fn, 'table', self.expnum, self.plver,
-                                   self.procdate, data=T):
+                                   self.procdate, self.plprocid, data=T):
                 I, = np.nonzero((T.expnum == self.expnum) *
                                 np.array([c.strip() == self.ext for c in T.ccdname]))
                 if len(I) == 1:
@@ -1468,7 +1447,7 @@ class Measurer(object):
         hdr = read_primary_header(fn)
 
         if not validate_procdate_plver(fn, 'primaryheader', self.expnum, self.plver,
-                                   self.procdate, data=hdr):
+                                   self.procdate, self.plprocid, data=hdr):
             return None
 
         try:
@@ -1641,7 +1620,7 @@ class Measurer(object):
                           '%s-%s.fits' % (self.camera, expstr))
         return fn
 
-    def get_psfex_model(self, be_forgiving=False):
+    def get_psfex_model(self):
         import tractor
 
         # Look for merged PsfEx file
@@ -1652,7 +1631,7 @@ class Measurer(object):
             print('Reading psfex-merged {}'.format(fn))
             T = fits_table(fn)
             if validate_procdate_plver(fn, 'table', self.expnum, self.plver,
-                                   self.procdate, data=T):
+                                   self.procdate, self.plprocid, data=T):
                 I, = np.nonzero((T.expnum == self.expnum) *
                                 np.array([c.strip() == self.ext for c in T.ccdname]))
                 if len(I) == 1:
@@ -1677,13 +1656,9 @@ class Measurer(object):
 
         print('Reading psfex {}'.format(fn))
         hdr = read_primary_header(fn)
-        val = validate_procdate_plver(fn, 'primaryheader', self.expnum, self.plver,
-                                   self.procdate, data=hdr)
-        if not val:
-            if be_forgiving:
-                print('Warning: allowing PsfEx file that does not validate, because be_forgiving=True;', fn)
-            else:
-                return None
+        if not validate_procdate_plver(fn, 'primaryheader', self.expnum, self.plver,
+                                       self.procdate, self.plprocid, data=hdr):
+            return None
 
         hdr = fitsio.read_header(fn, ext=1)
         psf = tractor.PixelizedPsfEx(fn)
@@ -1962,6 +1937,7 @@ class Measurer(object):
         stars['expnum'] = self.expnum
         stars['plver'] = self.plver
         stars['procdate'] = self.procdate
+        stars['plprocid'] = self.plprocid
         stars['expid'] = self.expid
         stars['filter'] = self.band
         stars['ccdname'] = self.ccdname
@@ -2041,8 +2017,7 @@ class Measurer(object):
         plt.close()
         print('Wrote %s' % fn)
 
-    def run_calibs(self, survey, ext, psfex=True, splinesky=True, read_hdu=True,
-                   be_forgiving=False):
+    def run_calibs(self, survey, ext, psfex=True, splinesky=True, read_hdu=True):
 
         # Initialize with some basic data
         self.set_hdu(ext)
@@ -2078,6 +2053,7 @@ class Measurer(object):
         ccd.sig1 = None
         ccd.plver = self.plver
         ccd.procdate = self.procdate
+        ccd.plprocid = self.plprocid
         
         if not self.goodWcs:
             print('WCS Failed on CCD {}, skipping calibs'.format(self.ccdname))
@@ -2087,7 +2063,7 @@ class Measurer(object):
             return ccd
         do_psf = False
         do_sky = False
-        if psfex and self.get_psfex_model(be_forgiving=be_forgiving) is None:
+        if psfex and self.get_psfex_model() is None:
             do_psf = True
         if splinesky and self.get_splinesky() is None:
             do_sky = True
@@ -2104,14 +2080,12 @@ class Measurer(object):
             print('Weight map is all zero on CCD {} -- skipping'.format(self.ccdname))
             return ccd
 
-        from legacypipe.survey import get_git_version
         im = survey.get_image_object(ccd)
         #print('Created legacypipe image object', im)
-        git_version = get_git_version(dir=os.path.dirname(legacypipe.__file__))
+        git_version = get_git_version(dirnm=os.path.dirname(legacypipe.__file__))
 
         im.run_calibs(psfex=do_psf, sky=do_sky, splinesky=True,
-                      git_version=git_version, survey=survey,
-                      force=True) # note!
+                      git_version=git_version, survey=survey)#, force=True)
 
         return ccd
 
@@ -2566,17 +2540,16 @@ def measure_image(img_fn, image_dir='images', run_calibs_only=False, just_measur
     # they're missing.
     if splinesky:
         if validate_procdate_plver(measure.get_splinesky_merged_filename(),
-                               'table', measure.expnum, measure.plver, measure.procdate):
+                               'table', measure.expnum, measure.plver, measure.procdate, measure.plprocid):
             do_splinesky = False
     if psfex:
         if validate_procdate_plver(measure.get_psfex_merged_filename(),
-                               'table', measure.expnum, measure.plver, measure.procdate):
+                               'table', measure.expnum, measure.plver, measure.procdate, measure.plprocid):
             do_psfex = False
 
     if do_splinesky or do_psfex:
         # for DR8, allow grabbing old PsfEx individual-CCD PsfEx files
-        be_forgiving = True
-        ccds = mp.map(run_one_calib, [(measure, survey, ext, do_psfex, do_splinesky, be_forgiving)
+        ccds = mp.map(run_one_calib, [(measure, survey, ext, do_psfex, do_splinesky)
                                       for ext in extlist])
         
         from legacypipe.merge_calibs import merge_splinesky, merge_psfex
@@ -2608,7 +2581,7 @@ def measure_image(img_fn, image_dir='images', run_calibs_only=False, just_measur
             print('Merged splinesky file not found {}'.format(fn))
             return []
         if not validate_procdate_plver(measure.get_splinesky_merged_filename(),
-                                       'table', measure.expnum, measure.plver, measure.procdate):
+                                       'table', measure.expnum, measure.plver, measure.procdate, measure.plprocid):
             raise RuntimeError('Merged splinesky file did not validate!')
     if psfex:
         fn = measure.get_psfex_merged_filename()
@@ -2616,7 +2589,7 @@ def measure_image(img_fn, image_dir='images', run_calibs_only=False, just_measur
             print('Merged psfex file not found {}'.format(fn))
             return []
         if not validate_procdate_plver(measure.get_psfex_merged_filename(),
-                                   'table', measure.expnum, measure.plver, measure.procdate):
+                                   'table', measure.expnum, measure.plver, measure.procdate, measure.plprocid):
             raise RuntimeError('Merged psfex file did not validate!')
 
     ## at this point, merged calib files exist & pass validation
@@ -2663,9 +2636,8 @@ def measure_image(img_fn, image_dir='images', run_calibs_only=False, just_measur
     return all_ccds, all_stars_photom, all_stars_astrom, extra_info, measure
 
 def run_one_calib(X):
-    measure, survey, ext, psfex, splinesky, be_forgiving = X
-    return measure.run_calibs(survey, ext, psfex=psfex, splinesky=splinesky,
-                              be_forgiving=be_forgiving)
+    measure, survey, ext, psfex, splinesky = X
+    return measure.run_calibs(survey, ext, psfex=psfex, splinesky=splinesky)
 
 def run_one_ext(X):
     measure, ext, survey, psfex, splinesky, debug = X
@@ -2770,6 +2742,7 @@ def runit(imgfn, starfn_photom, surveyfn, annfn, psf=False, bad_expid=None,
                             comment=primhdr.get_comment(key)))
     hdr.add_record(dict(name='EXPNUM', value=measure.expnum, comment='Exposure number'))
     hdr.add_record(dict(name='PROCDATE', value=measure.procdate, comment='CP processing date'))
+    hdr.add_record(dict(name='PLPROCID', value=measure.plprocid, comment='CP processing batch'))
     hdr.add_record(dict(name='RA_BORE', value=hmsstring2ra(primhdr['RA']), comment='Boresight RA'))
     hdr.add_record(dict(name='DEC_BORE', value=dmsstring2dec(primhdr['DEC']), comment='Boresight Dec'))
 
@@ -2927,10 +2900,10 @@ def main(image_list=None,args=None):
         measure = measure_image(F.imgfn, just_measure=True, **measureargs)
 
         legok,annok = [validate_procdate_plver(fn, 'table', measure.expnum,
-                                               measure.plver, measure.procdate)
+                                               measure.plver, measure.procdate, measure.plprocid)
                        for fn in [F.surveyfn, F.annfn]]
         photok = validate_procdate_plver(F.starfn_photom, 'header', measure.expnum,
-                                         measure.plver, measure.procdate, ext=1)
+                                         measure.plver, measure.procdate, measure.plprocid, ext=1)
         if legok and annok and photok:
             print('Already finished: {}'.format(F.annfn))
             continue
