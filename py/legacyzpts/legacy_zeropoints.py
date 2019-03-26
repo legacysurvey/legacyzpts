@@ -2090,8 +2090,7 @@ class Measurer(object):
         git_version = get_git_version(dirnm=os.path.dirname(legacypipe.__file__))
 
         im.run_calibs(psfex=do_psf, sky=do_sky, splinesky=True,
-                      git_version=git_version, survey=survey,
-                      force=True) # note!
+                      git_version=git_version, survey=survey)#, force=True)
 
         return ccd
 
